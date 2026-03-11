@@ -251,22 +251,31 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if m.selectedIndex < len(m.posts) {
 				post := m.posts[m.selectedIndex].Post
-				return m, func() tea.Msg { return ComposeReplyMsg{URI: post.Uri, CID: post.Cid} }
+				if post != nil {
+					return m, func() tea.Msg { return ComposeReplyMsg{URI: post.Uri, CID: post.Cid} }
+				}
 			}
 			return m, func() tea.Msg { return FeedRefreshMsg{} }
 		case "enter":
 			if m.selectedIndex < len(m.posts) {
-				return m, func() tea.Msg { return ViewThreadMsg{URI: m.posts[m.selectedIndex].Post.Uri} }
+				post := m.posts[m.selectedIndex].Post
+				if post != nil {
+					return m, func() tea.Msg { return ViewThreadMsg{URI: post.Uri} }
+				}
 			}
 		case "l":
 			if m.selectedIndex < len(m.posts) {
 				post := m.posts[m.selectedIndex].Post
-				return m, func() tea.Msg { return LikePostMsg{URI: post.Uri, CID: post.Cid} }
+				if post != nil {
+					return m, func() tea.Msg { return LikePostMsg{URI: post.Uri, CID: post.Cid} }
+				}
 			}
 		case "t":
 			if m.selectedIndex < len(m.posts) {
 				post := m.posts[m.selectedIndex].Post
-				return m, func() tea.Msg { return RepostMsg{URI: post.Uri, CID: post.Cid} }
+				if post != nil {
+					return m, func() tea.Msg { return RepostMsg{URI: post.Uri, CID: post.Cid} }
+				}
 			}
 		case "c":
 			return m, func() tea.Msg { return ComposeMsg{} }

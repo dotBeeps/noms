@@ -784,6 +784,292 @@ func TestFeedLoadedMsgAppend(t *testing.T) {
 	}
 }
 
+// === Delete Post Tests ===
+
+// Test: First 'd' press on own post enters confirmation mode
+func TestDeleteFirstDPress(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{
+		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
+			createTestPost("My post", "testuser.bsky.social", "Test User", "at://did:plc:testuser/post/1", "cid1"),
+		},
+	}
+
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m.posts = client.timelinePosts
+	m.loading = false
+	// Ensure post author DID matches ownDID
+	m.posts[0].Post.Author.Did = "did:plc:testuser"
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(FeedModel)
+
+	if m.confirmDelete != 0 {
+		t.Errorf("Expected confirmDelete to be 0, got %d", m.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command on first 'd' press")
+	}
+
+	v := m.View()
+	if !strings.Contains(v.Content, "Press d to confirm delete") {
+		t.Error("Expected confirmation prompt in view")
+	}
+}
+
+// Test: Second 'd' press emits DeletePostMsg
+func TestDeleteSecondDPress(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{
+		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
+			createTestPost("My post", "testuser.bsky.social", "Test User", "at://did:plc:testuser/post/1", "cid1"),
+		},
+	}
+
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m.posts = client.timelinePosts
+	m.loading = false
+	m.posts[0].Post.Author.Did = "did:plc:testuser"
+
+	// First 'd' — enter confirmation
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(FeedModel)
+
+	// Second 'd' — confirm delete
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(FeedModel)
+
+	if cmd == nil {
+		t.Fatal("Expected command on second 'd' press")
+	}
+
+	msg := cmd()
+	deleteMsg, ok := msg.(DeletePostMsg)
+	if !ok {
+		t.Fatalf("Expected DeletePostMsg, got %T", msg)
+	}
+	if deleteMsg.URI != "at://did:plc:testuser/post/1" {
+		t.Errorf("Expected URI 'at://did:plc:testuser/post/1', got %q", deleteMsg.URI)
+	}
+}
+
+// Test: Pressing another key after 'd' cancels confirmation
+func TestDeleteCancelOnOtherKey(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{
+		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
+			createTestPost("My post", "testuser.bsky.social", "Test User", "at://did:plc:testuser/post/1", "cid1"),
+			createTestPost("Other post", "other.bsky.social", "Other", "at://did:plc:other/post/2", "cid2"),
+		},
+	}
+
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m.posts = client.timelinePosts
+	m.loading = false
+	m.posts[0].Post.Author.Did = "did:plc:testuser"
+
+	// First 'd' — enter confirmation
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(FeedModel)
+	if m.confirmDelete != 0 {
+		t.Fatalf("Expected confirmDelete=0, got %d", m.confirmDelete)
+	}
+
+	// Press 'j' — should cancel confirmation
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "j"})
+	m = updated.(FeedModel)
+
+	if m.confirmDelete != -1 {
+		t.Errorf("Expected confirmDelete to be reset to -1, got %d", m.confirmDelete)
+	}
+}
+
+// Test: 'd' on non-own post does nothing
+func TestDeleteNotOwnPost(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{
+		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
+			createTestPost("Not my post", "other.bsky.social", "Other", "at://did:plc:other/post/1", "cid1"),
+		},
+	}
+
+	m := NewFeedModel(client, "did:plc:me", 80, 24)
+	m.posts = client.timelinePosts
+	m.loading = false
+	m.posts[0].Post.Author.Did = "did:plc:other"
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(FeedModel)
+
+	if m.confirmDelete != -1 {
+		t.Errorf("Expected confirmDelete to remain -1 for non-own post, got %d", m.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command when pressing 'd' on non-own post")
+	}
+}
+
+// Test: DeletePostResultMsg removes post from list
+func TestDeletePostResultRemovesPost(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m.posts = []*bsky.FeedDefs_FeedViewPost{
+		createTestPost("Post 1", "a.bsky.social", "A", "at://post1", "c1"),
+		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
+		createTestPost("Post 3", "c.bsky.social", "C", "at://post3", "c3"),
+	}
+	m.loading = false
+	m.selectedIndex = 1
+
+	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
+	m = updated.(FeedModel)
+
+	if len(m.posts) != 2 {
+		t.Errorf("Expected 2 posts after delete, got %d", len(m.posts))
+	}
+	// Verify the correct post was removed
+	for _, p := range m.posts {
+		if p.Post.Uri == "at://post2" {
+			t.Error("Deleted post should not exist in list")
+		}
+	}
+}
+
+// Test: Deleting last post adjusts selectedIndex
+func TestDeletePostResultAdjustsIndex(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m.posts = []*bsky.FeedDefs_FeedViewPost{
+		createTestPost("Post 1", "a.bsky.social", "A", "at://post1", "c1"),
+		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
+	}
+	m.loading = false
+	m.selectedIndex = 1 // On the last post
+
+	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
+	m = updated.(FeedModel)
+
+	if len(m.posts) != 1 {
+		t.Fatalf("Expected 1 post after delete, got %d", len(m.posts))
+	}
+	if m.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex adjusted to 0, got %d", m.selectedIndex)
+	}
+}
+
+// === Mouse Scroll Tests ===
+
+func TestFeedMouseWheelDownScrolls(t *testing.T) {
+	t.Parallel()
+	posts := make([]*bsky.FeedDefs_FeedViewPost, 10)
+	for i := range 10 {
+		posts[i] = createTestPost("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
+	}
+	client := &mockBlueskyClient{timelinePosts: posts}
+
+	m := NewFeedModel(client, "", 80, 24)
+	m.posts = posts
+	m.loading = false
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(FeedModel)
+
+	if m.selectedIndex != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	}
+}
+
+func TestFeedMouseWheelUpScrolls(t *testing.T) {
+	t.Parallel()
+	posts := make([]*bsky.FeedDefs_FeedViewPost, 10)
+	for i := range 10 {
+		posts[i] = createTestPost("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
+	}
+	client := &mockBlueskyClient{timelinePosts: posts}
+
+	m := NewFeedModel(client, "", 80, 24)
+	m.posts = posts
+	m.loading = false
+	m.selectedIndex = 5
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(FeedModel)
+
+	if m.selectedIndex != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.selectedIndex)
+	}
+}
+
+func TestFeedMouseWheelBoundsCheck(t *testing.T) {
+	t.Parallel()
+	posts := make([]*bsky.FeedDefs_FeedViewPost, 2)
+	for i := range 2 {
+		posts[i] = createTestPost("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
+	}
+	client := &mockBlueskyClient{timelinePosts: posts}
+
+	m := NewFeedModel(client, "", 80, 24)
+	m.posts = posts
+	m.loading = false
+
+	// Scroll down — should cap at last post (index 1)
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(FeedModel)
+	if m.selectedIndex != 1 {
+		t.Errorf("Expected selectedIndex capped at 1, got %d", m.selectedIndex)
+	}
+
+	// Scroll up from 0 — should stay at 0
+	m.selectedIndex = 0
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(FeedModel)
+	if m.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.selectedIndex)
+	}
+}
+
+// === Loading Spinner Tests ===
+
+func TestFeedSpinnerTickDuringLoad(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewFeedModel(client, "", 80, 24)
+	// loading is true by default
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd == nil {
+		t.Error("Expected spinner tick to return a command when loading")
+	}
+}
+
+func TestFeedSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewFeedModel(client, "", 80, 24)
+	m.loading = false
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd != nil {
+		t.Error("Expected spinner tick to return nil command when not loading")
+	}
+}
+
+func TestFeedLoadingViewShowsSpinner(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewFeedModel(client, "", 80, 24)
+	// loading is true by default
+
+	v := m.View()
+	if !strings.Contains(v.Content, "Loading") {
+		t.Error("Expected loading text in view while loading")
+	}
+}
+
 // Test 23: TestEngagementLine
 func TestEngagementLine(t *testing.T) {
 	t.Parallel()

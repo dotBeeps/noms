@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -67,16 +66,6 @@ func GeneratePKCEVerifier() (string, error) {
 func GeneratePKCEChallenge(verifier string) string {
 	h := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(h[:])
-}
-
-func DetectOAuthFlow() OAuthFlow {
-	if os.Getenv("SSH_CONNECTION") != "" {
-		return NewPasteCodeFlow()
-	}
-	if os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "" {
-		return NewLoopbackFlow()
-	}
-	return NewPasteCodeFlow()
 }
 
 func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Session, error) {

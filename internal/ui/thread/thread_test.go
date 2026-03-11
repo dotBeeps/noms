@@ -497,7 +497,237 @@ func TestThreadWindowSizeMsg(t *testing.T) {
 	}
 }
 
-// 16. TestThreadNotFoundRoot
+// 16. TestThreadDeleteFirstDPress
+func TestThreadDeleteFirstDPress(t *testing.T) {
+	t.Parallel()
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post: makePost("at://target", "testuser", "Target Post"),
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(ThreadModel)
+
+	if m.confirmDelete != 0 {
+		t.Errorf("Expected confirmDelete=0, got %d", m.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command on first 'd' press")
+	}
+
+	v := m.View().Content
+	if !strings.Contains(v, "Press d to confirm delete") {
+		t.Error("Expected confirmation prompt in view")
+	}
+}
+
+// 17. TestThreadDeleteSecondDPress
+func TestThreadDeleteSecondDPress(t *testing.T) {
+	t.Parallel()
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post: makePost("at://target", "testuser", "Target Post"),
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	m = doUpdate(m, tea.KeyPressMsg{Text: "d"})
+
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	if cmd == nil {
+		t.Fatal("Expected command on second 'd' press")
+	}
+	msg := cmd()
+	deleteMsg, ok := msg.(feed.DeletePostMsg)
+	if !ok {
+		t.Fatalf("Expected DeletePostMsg, got %T", msg)
+	}
+	if deleteMsg.URI != "at://target" {
+		t.Errorf("Expected URI 'at://target', got %q", deleteMsg.URI)
+	}
+}
+
+// 18. TestThreadDeleteCancelOnOtherKey
+func TestThreadDeleteCancelOnOtherKey(t *testing.T) {
+	t.Parallel()
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post: makePost("at://target", "testuser", "Target Post"),
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	m = doUpdate(m, tea.KeyPressMsg{Text: "d"})
+	if m.confirmDelete != 0 {
+		t.Fatalf("Expected confirmDelete=0, got %d", m.confirmDelete)
+	}
+
+	m = doUpdate(m, tea.KeyPressMsg{Text: "j"})
+	if m.confirmDelete != -1 {
+		t.Errorf("Expected confirmDelete reset to -1, got %d", m.confirmDelete)
+	}
+}
+
+// 19. TestThreadDeleteNotOwnPost
+func TestThreadDeleteNotOwnPost(t *testing.T) {
+	t.Parallel()
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post: makePost("at://target", "otheruser", "Other Post"),
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "did:plc:me", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
+	m = updated.(ThreadModel)
+
+	if m.confirmDelete != -1 {
+		t.Errorf("Expected confirmDelete to remain -1 for non-own post, got %d", m.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command when pressing 'd' on non-own post")
+	}
+}
+
+// 20. TestThreadDeletePostResultRemovesPost
+func TestThreadDeletePostResultRemovesPost(t *testing.T) {
+	t.Parallel()
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post: makePost("at://target", "user", "Target"),
+					Replies: []*bsky.FeedDefs_ThreadViewPost_Replies_Elem{
+						{FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{Post: makePost("at://reply1", "user", "Reply")}},
+					},
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "did:plc:user", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	if len(m.threadPosts) != 2 {
+		t.Fatalf("Expected 2 thread posts, got %d", len(m.threadPosts))
+	}
+
+	m = doUpdate(m, feed.DeletePostResultMsg{URI: "at://reply1", Err: nil})
+	if len(m.threadPosts) != 1 {
+		t.Errorf("Expected 1 thread post after delete, got %d", len(m.threadPosts))
+	}
+}
+
+// 21. TestThreadMouseWheelDownScrolls
+func TestThreadMouseWheelDownScrolls(t *testing.T) {
+	t.Parallel()
+	replies := make([]*bsky.FeedDefs_ThreadViewPost_Replies_Elem, 10)
+	for i := range 10 {
+		replies[i] = &bsky.FeedDefs_ThreadViewPost_Replies_Elem{
+			FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+				Post: makePost("at://reply"+string(rune('0'+i)), "user", "Reply"),
+			},
+		}
+	}
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post:    makePost("at://target", "user", "Target"),
+					Replies: replies,
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m = doUpdate(m, m.Init()())
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(ThreadModel)
+
+	if m.selectedIndex != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	}
+}
+
+// 22. TestThreadMouseWheelUpScrolls
+func TestThreadMouseWheelUpScrolls(t *testing.T) {
+	t.Parallel()
+	replies := make([]*bsky.FeedDefs_ThreadViewPost_Replies_Elem, 10)
+	for i := range 10 {
+		replies[i] = &bsky.FeedDefs_ThreadViewPost_Replies_Elem{
+			FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+				Post: makePost("at://reply"+string(rune('0'+i)), "user", "Reply"),
+			},
+		}
+	}
+	client := &mockClient{
+		threadResult: &bsky.FeedGetPostThread_Output{
+			Thread: &bsky.FeedGetPostThread_Output_Thread{
+				FeedDefs_ThreadViewPost: &bsky.FeedDefs_ThreadViewPost{
+					Post:    makePost("at://target", "user", "Target"),
+					Replies: replies,
+				},
+			},
+		},
+	}
+	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m = doUpdate(m, m.Init()())
+	m.selectedIndex = 6
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(ThreadModel)
+
+	if m.selectedIndex != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel up from 6, got %d", m.selectedIndex)
+	}
+}
+
+// 23. TestThreadSpinnerTickDuringLoad
+func TestThreadSpinnerTickDuringLoad(t *testing.T) {
+	t.Parallel()
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd == nil {
+		t.Error("Expected spinner tick to return a command when loading")
+	}
+}
+
+// 24. TestThreadSpinnerTickIgnoredWhenNotLoading
+func TestThreadSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
+	t.Parallel()
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m.loading = false
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd != nil {
+		t.Error("Expected spinner tick to return nil command when not loading")
+	}
+}
+
+// 25. TestThreadNotFoundRoot
 func TestThreadNotFoundRoot(t *testing.T) {
 	t.Parallel()
 	client := &mockClient{

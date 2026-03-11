@@ -176,8 +176,10 @@ func (m LoginModel) handleInputState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "tab":
-		m.state = LoginStateChoosing
-		return m, nil
+		if strings.TrimSpace(m.handleInput.Value()) != "" {
+			m.state = LoginStateChoosing
+			return m, nil
+		}
 	}
 
 	var cmd tea.Cmd

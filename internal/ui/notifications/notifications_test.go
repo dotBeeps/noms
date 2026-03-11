@@ -638,6 +638,109 @@ func TestGetNotificationStyle(t *testing.T) {
 	}
 }
 
+func TestNotificationMouseWheelDownScrolls(t *testing.T) {
+	t.Parallel()
+	notifs := make([]*bsky.NotificationListNotifications_Notification, 10)
+	for i := range 10 {
+		notifs[i] = createTestNotification("like", "user.bsky.social", "did:plc:user", false, time.Now().Add(-time.Duration(i)*time.Minute).Format(time.RFC3339))
+		notifs[i].ReasonSubject = strPtr("at://subject" + string(rune('0'+i)))
+	}
+
+	mockClient := &mockBlueskyClient{notifications: notifs}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(NotificationsModel)
+
+	if m.selected != 3 {
+		t.Errorf("Expected selected=3 after mouse wheel down, got %d", m.selected)
+	}
+}
+
+func TestNotificationMouseWheelUpScrolls(t *testing.T) {
+	t.Parallel()
+	notifs := make([]*bsky.NotificationListNotifications_Notification, 10)
+	for i := range 10 {
+		notifs[i] = createTestNotification("like", "user.bsky.social", "did:plc:user", false, time.Now().Add(-time.Duration(i)*time.Minute).Format(time.RFC3339))
+		notifs[i].ReasonSubject = strPtr("at://subject" + string(rune('0'+i)))
+	}
+
+	mockClient := &mockBlueskyClient{notifications: notifs}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+	m.selected = 6
+
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(NotificationsModel)
+
+	if m.selected != 3 {
+		t.Errorf("Expected selected=3 after mouse wheel up from 6, got %d", m.selected)
+	}
+}
+
+func TestNotificationMouseWheelBoundsCheck(t *testing.T) {
+	t.Parallel()
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "a.bsky.social", "did:plc:a", false, time.Now().Format(time.RFC3339)),
+		createTestNotification("follow", "b.bsky.social", "did:plc:b", false, time.Now().Format(time.RFC3339)),
+	}
+
+	mockClient := &mockBlueskyClient{notifications: notifs}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(NotificationsModel)
+	if m.selected != 1 {
+		t.Errorf("Expected selected capped at 1, got %d", m.selected)
+	}
+
+	m.selected = 0
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(NotificationsModel)
+	if m.selected != 0 {
+		t.Errorf("Expected selected to stay at 0, got %d", m.selected)
+	}
+}
+
+func TestNotificationSpinnerTickDuringLoad(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd == nil {
+		t.Error("Expected spinner tick to return a command when loading")
+	}
+}
+
+func TestNotificationSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	m.loading = false
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd != nil {
+		t.Error("Expected spinner tick to return nil command when not loading")
+	}
+}
+
+func TestNotificationLoadingViewShowsSpinner(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+
+	v := m.View()
+	if !strings.Contains(v.Content, "Loading") {
+		t.Error("Expected loading text in view while loading")
+	}
+}
+
 func TestInitReturnsCommands(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{
@@ -650,5 +753,274 @@ func TestInitReturnsCommands(t *testing.T) {
 
 	if cmd == nil {
 		t.Error("Expected Init() to return non-nil command")
+	}
+}
+
+func TestGroupingLikesSamePost(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group for 3 likes on same post, got %d", len(m.groups))
+	}
+	if m.groups[0].count != 3 {
+		t.Errorf("Expected group count 3, got %d", m.groups[0].count)
+	}
+	if len(m.groups[0].authors) != 3 {
+		t.Errorf("Expected 3 authors in group, got %d", len(m.groups[0].authors))
+	}
+}
+
+func TestGroupingRepostsSamePost(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("repost", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("repost", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group for 2 reposts on same post, got %d", len(m.groups))
+	}
+	if m.groups[0].count != 2 {
+		t.Errorf("Expected group count 2, got %d", m.groups[0].count)
+	}
+	if m.groups[0].reason != ReasonRepost {
+		t.Errorf("Expected reason 'repost', got %q", m.groups[0].reason)
+	}
+}
+
+func TestGroupingMixedTypes(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("follow", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+	notifs[0].ReasonSubject = &subject
+	notifs[1].ReasonSubject = &subject
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 2 {
+		t.Fatalf("Expected 2 groups (likes grouped + follow separate), got %d", len(m.groups))
+	}
+	if m.groups[0].reason != ReasonLike {
+		t.Errorf("Expected first group reason 'like', got %q", m.groups[0].reason)
+	}
+	if m.groups[0].count != 2 {
+		t.Errorf("Expected like group count 2, got %d", m.groups[0].count)
+	}
+	if m.groups[1].reason != ReasonFollow {
+		t.Errorf("Expected second group reason 'follow', got %q", m.groups[1].reason)
+	}
+	if m.groups[1].count != 1 {
+		t.Errorf("Expected follow group count 1, got %d", m.groups[1].count)
+	}
+}
+
+func TestGroupingIndividualNotifications(t *testing.T) {
+	t.Parallel()
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("follow", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("mention", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("reply", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 3 {
+		t.Errorf("Expected 3 individual groups for follow/mention/reply, got %d", len(m.groups))
+	}
+	for i, g := range m.groups {
+		if g.count != 1 {
+			t.Errorf("Group %d: expected count 1, got %d", i, g.count)
+		}
+	}
+}
+
+func TestGroupingPreservesOrder(t *testing.T) {
+	t.Parallel()
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("follow", "first.bsky.social", "did:plc:first", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("mention", "second.bsky.social", "did:plc:second", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("reply", "third.bsky.social", "did:plc:third", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 3 {
+		t.Fatalf("Expected 3 groups, got %d", len(m.groups))
+	}
+	if m.groups[0].reason != ReasonFollow {
+		t.Errorf("Expected first group to be follow, got %q", m.groups[0].reason)
+	}
+	if m.groups[1].reason != ReasonMention {
+		t.Errorf("Expected second group to be mention, got %q", m.groups[1].reason)
+	}
+	if m.groups[2].reason != ReasonReply {
+		t.Errorf("Expected third group to be reply, got %q", m.groups[2].reason)
+	}
+}
+
+func TestGroupingAllRead(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "alice.bsky.social", "did:plc:alice", true, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "bob.bsky.social", "did:plc:bob", true, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group, got %d", len(m.groups))
+	}
+	if !m.groups[0].allRead {
+		t.Error("Expected group allRead to be true when all notifications are read")
+	}
+}
+
+func TestGroupingPartiallyRead(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "alice.bsky.social", "did:plc:alice", true, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group, got %d", len(m.groups))
+	}
+	if m.groups[0].allRead {
+		t.Error("Expected group allRead to be false when some notifications are unread")
+	}
+}
+
+func TestGroupingEmptyList(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{
+		Notifications: []*bsky.NotificationListNotifications_Notification{},
+	})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 0 {
+		t.Errorf("Expected 0 groups for empty notification list, got %d", len(m.groups))
+	}
+}
+
+func TestGroupRenderOutput(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "and 2 others") {
+		t.Errorf("Expected 'and 2 others' in grouped notification view, got %q", content)
+	}
+	if !strings.Contains(content, "liked your post") {
+		t.Error("Expected 'liked your post' in grouped notification view")
+	}
+}
+
+func TestGroupingNavigationBounds(t *testing.T) {
+	t.Parallel()
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("follow", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("mention", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 2 {
+		t.Fatalf("Expected 2 groups, got %d", len(m.groups))
+	}
+
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "j"})
+	m = updated.(NotificationsModel)
+	if m.selected != 1 {
+		t.Errorf("Expected selected to be 1 after j, got %d", m.selected)
+	}
+
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "j"})
+	m = updated.(NotificationsModel)
+	if m.selected != 1 {
+		t.Errorf("Expected selected to stay at 1 at end, got %d", m.selected)
+	}
+
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
+	m = updated.(NotificationsModel)
+	if m.selected != 0 {
+		t.Errorf("Expected selected to be 0 after k, got %d", m.selected)
+	}
+
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
+	m = updated.(NotificationsModel)
+	if m.selected != 0 {
+		t.Errorf("Expected selected to stay at 0 at start, got %d", m.selected)
 	}
 }

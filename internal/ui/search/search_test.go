@@ -724,6 +724,110 @@ func TestSearchStatusBar(t *testing.T) {
 	})
 }
 
+func TestSearchMouseWheelDownScrolls(t *testing.T) {
+	t.Parallel()
+	posts := make([]*bsky.FeedDefs_PostView, 10)
+	for i := range 10 {
+		posts[i] = createTestPostView("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
+	}
+	client := &mockBlueskyClient{searchPosts: posts}
+	m := NewSearchModel(client, 80, 24)
+	m.mode = ModePosts
+	m.postResults = posts
+	m.input.Blur()
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(SearchModel)
+
+	if m.selectedIndex != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	}
+}
+
+func TestSearchMouseWheelUpScrolls(t *testing.T) {
+	t.Parallel()
+	posts := make([]*bsky.FeedDefs_PostView, 10)
+	for i := range 10 {
+		posts[i] = createTestPostView("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
+	}
+	client := &mockBlueskyClient{searchPosts: posts}
+	m := NewSearchModel(client, 80, 24)
+	m.mode = ModePosts
+	m.postResults = posts
+	m.input.Blur()
+	m.selectedIndex = 5
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(SearchModel)
+
+	if m.selectedIndex != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.selectedIndex)
+	}
+}
+
+func TestSearchMouseWheelBoundsCheck(t *testing.T) {
+	t.Parallel()
+	posts := []*bsky.FeedDefs_PostView{
+		createTestPostView("Post 1", "a.bsky.social", "A", "at://1", "c1"),
+		createTestPostView("Post 2", "b.bsky.social", "B", "at://2", "c2"),
+	}
+	client := &mockBlueskyClient{searchPosts: posts}
+	m := NewSearchModel(client, 80, 24)
+	m.mode = ModePosts
+	m.postResults = posts
+	m.input.Blur()
+
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	m = updated.(SearchModel)
+	if m.selectedIndex != 1 {
+		t.Errorf("Expected selectedIndex capped at 1, got %d", m.selectedIndex)
+	}
+
+	m.selectedIndex = 0
+	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	m = updated.(SearchModel)
+	if m.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.selectedIndex)
+	}
+}
+
+func TestSearchSpinnerTickDuringLoad(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewSearchModel(client, 80, 24)
+	m.loading = true
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd == nil {
+		t.Error("Expected spinner tick to return a command when loading")
+	}
+}
+
+func TestSearchSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewSearchModel(client, 80, 24)
+	m.loading = false
+
+	_, cmd := m.Update(m.spinner.Tick())
+	if cmd != nil {
+		t.Error("Expected spinner tick to return nil command when not loading")
+	}
+}
+
+func TestSearchLoadingViewShowsSpinner(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewSearchModel(client, 80, 24)
+	m.query = "test"
+	m.loading = true
+
+	v := m.View()
+	if !strings.Contains(v.Content, "Searching") {
+		t.Error("Expected searching text in view while loading")
+	}
+}
+
 // Test 17: TestSearchModeResetsResults — switching mode clears results
 func TestSearchModeResetsResults(t *testing.T) {
 	t.Parallel()

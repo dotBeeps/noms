@@ -52,47 +52,6 @@ func TestPKCEVerifier(t *testing.T) {
 	}
 }
 
-func TestEnvironmentDetection(t *testing.T) {
-	t.Run("WithDisplay", func(t *testing.T) {
-		t.Setenv("DISPLAY", ":0")
-		t.Setenv("WAYLAND_DISPLAY", "")
-		t.Setenv("SSH_CONNECTION", "")
-		flow := DetectOAuthFlow()
-		if _, ok := flow.(*LoopbackFlow); !ok {
-			t.Errorf("Expected *LoopbackFlow with DISPLAY set, got %T", flow)
-		}
-	})
-
-	t.Run("WithWayland", func(t *testing.T) {
-		t.Setenv("DISPLAY", "")
-		t.Setenv("WAYLAND_DISPLAY", "wayland-0")
-		t.Setenv("SSH_CONNECTION", "")
-		flow := DetectOAuthFlow()
-		if _, ok := flow.(*LoopbackFlow); !ok {
-			t.Errorf("Expected *LoopbackFlow with WAYLAND_DISPLAY set, got %T", flow)
-		}
-	})
-
-	t.Run("WithSSH", func(t *testing.T) {
-		t.Setenv("DISPLAY", ":0")
-		t.Setenv("SSH_CONNECTION", "1.2.3.4 5678 5.6.7.8 22")
-		flow := DetectOAuthFlow()
-		if _, ok := flow.(*PasteCodeFlow); !ok {
-			t.Errorf("Expected *PasteCodeFlow with SSH_CONNECTION set, got %T", flow)
-		}
-	})
-
-	t.Run("NoDisplay", func(t *testing.T) {
-		t.Setenv("DISPLAY", "")
-		t.Setenv("WAYLAND_DISPLAY", "")
-		t.Setenv("SSH_CONNECTION", "")
-		flow := DetectOAuthFlow()
-		if _, ok := flow.(*PasteCodeFlow); !ok {
-			t.Errorf("Expected *PasteCodeFlow with no display, got %T", flow)
-		}
-	})
-}
-
 func TestFullOAuthFlow(t *testing.T) {
 	t.Parallel()
 	var serverURL string

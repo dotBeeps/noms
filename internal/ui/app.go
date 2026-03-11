@@ -838,10 +838,10 @@ func handleAppPasswordAuth(handle, password string) tea.Cmd {
 			return login.LoginErrorMsg{Err: fmt.Errorf("app password login failed: %w", err)}
 		}
 
-		did := ""
-		if apiClient.AccountDID != nil {
-			did = apiClient.AccountDID.String()
+		if apiClient.AccountDID == nil {
+			return login.LoginErrorMsg{Err: fmt.Errorf("app password login succeeded but server returned no DID")}
 		}
+		did := apiClient.AccountDID.String()
 
 		return login.AppPasswordLoginSuccessMsg{
 			Client: apiClient,

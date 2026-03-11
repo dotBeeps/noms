@@ -11,6 +11,7 @@ import (
 
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/dotBeeps/noms/internal/ui/feed"
 )
 
 // mockClient implements bluesky.BlueskyClient for testing.
@@ -599,6 +600,205 @@ func TestNavigateFeed(t *testing.T) {
 	model = updated.(ProfileModel)
 	if model.selectedIndex != 0 {
 		t.Errorf("Expected selectedIndex to stay at 0 at start, got %d", model.selectedIndex)
+	}
+}
+
+func TestProfileDeleteFirstDPress(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+		authorFeed: []*bsky.FeedDefs_FeedViewPost{
+			makeTestPost("alice.bsky.social", "Alice", "My post", "at://post1", 0, 0, 0),
+		},
+	}
+	mock.authorFeed[0].Post.Author.Did = "did:plc:alice"
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
+	model = updated.(ProfileModel)
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
+	model = updated.(ProfileModel)
+
+	if model.confirmDelete != 0 {
+		t.Errorf("Expected confirmDelete=0, got %d", model.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command on first 'd' press")
+	}
+
+	v := model.View()
+	if !strings.Contains(v.Content, "Press d to confirm delete") {
+		t.Error("Expected confirmation prompt in view")
+	}
+}
+
+func TestProfileDeleteSecondDPress(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+		authorFeed: []*bsky.FeedDefs_FeedViewPost{
+			makeTestPost("alice.bsky.social", "Alice", "My post", "at://post1", 0, 0, 0),
+		},
+	}
+	mock.authorFeed[0].Post.Author.Did = "did:plc:alice"
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
+	model = updated.(ProfileModel)
+
+	updated, _ = model.Update(tea.KeyPressMsg{Text: "d"})
+	model = updated.(ProfileModel)
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
+	model = updated.(ProfileModel)
+
+	if cmd == nil {
+		t.Fatal("Expected command on second 'd' press")
+	}
+	msg := cmd()
+	deleteMsg, ok := msg.(feed.DeletePostMsg)
+	if !ok {
+		t.Fatalf("Expected DeletePostMsg, got %T", msg)
+	}
+	if deleteMsg.URI != "at://post1" {
+		t.Errorf("Expected URI 'at://post1', got %q", deleteMsg.URI)
+	}
+}
+
+func TestProfileDeleteNotOwnPost(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+		authorFeed: []*bsky.FeedDefs_FeedViewPost{
+			makeTestPost("alice.bsky.social", "Alice", "Not mine", "at://post1", 0, 0, 0),
+		},
+	}
+	mock.authorFeed[0].Post.Author.Did = "did:plc:other"
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:me", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
+	model = updated.(ProfileModel)
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
+	model = updated.(ProfileModel)
+
+	if model.confirmDelete != -1 {
+		t.Errorf("Expected confirmDelete=-1 for non-own post, got %d", model.confirmDelete)
+	}
+	if cmd != nil {
+		t.Error("Expected no command for non-own post delete")
+	}
+}
+
+func TestProfileDeletePostResultRemovesPost(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+	}
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	model.authorFeed = []*bsky.FeedDefs_FeedViewPost{
+		makeTestPost("alice.bsky.social", "Alice", "Post 1", "at://post1", 0, 0, 0),
+		makeTestPost("alice.bsky.social", "Alice", "Post 2", "at://post2", 0, 0, 0),
+	}
+	model.selectedIndex = 1
+
+	updated, _ = model.Update(feed.DeletePostResultMsg{URI: "at://post2", Err: nil})
+	model = updated.(ProfileModel)
+
+	if len(model.authorFeed) != 1 {
+		t.Errorf("Expected 1 post after delete, got %d", len(model.authorFeed))
+	}
+	if model.selectedIndex != 0 {
+		t.Errorf("Expected selectedIndex adjusted to 0, got %d", model.selectedIndex)
+	}
+}
+
+func TestProfileMouseWheelDownScrolls(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+	}
+	posts := make([]*bsky.FeedDefs_FeedViewPost, 10)
+	for i := range 10 {
+		posts[i] = makeTestPost("alice.bsky.social", "Alice", "Post", "at://post"+string(rune('0'+i)), 0, 0, 0)
+	}
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: posts, Cursor: ""})
+	model = updated.(ProfileModel)
+
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(ProfileModel)
+
+	if model.selectedIndex != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", model.selectedIndex)
+	}
+}
+
+func TestProfileMouseWheelUpScrolls(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+	}
+	posts := make([]*bsky.FeedDefs_FeedViewPost, 10)
+	for i := range 10 {
+		posts[i] = makeTestPost("alice.bsky.social", "Alice", "Post", "at://post"+string(rune('0'+i)), 0, 0, 0)
+	}
+
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
+	model = updated.(ProfileModel)
+	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: posts, Cursor: ""})
+	model = updated.(ProfileModel)
+	model.selectedIndex = 5
+
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(ProfileModel)
+
+	if model.selectedIndex != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", model.selectedIndex)
+	}
+}
+
+func TestProfileSpinnerTickDuringLoad(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
+	}
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+
+	_, cmd := model.Update(model.spinner.Tick())
+	if cmd == nil {
+		t.Error("Expected spinner tick to return a command when loading")
+	}
+}
+
+func TestProfileSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
+	t.Parallel()
+	mock := &mockClient{
+		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
+		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
+	}
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model.loading = false
+	model.loadingFeed = false
+
+	_, cmd := model.Update(model.spinner.Tick())
+	if cmd != nil {
+		t.Error("Expected spinner tick to return nil command when not loading")
 	}
 }
 
