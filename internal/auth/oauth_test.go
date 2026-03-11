@@ -11,7 +11,11 @@ import (
 )
 
 func TestPKCEGeneration(t *testing.T) {
-	verifier := GeneratePKCEVerifier()
+	t.Parallel()
+	verifier, err := GeneratePKCEVerifier()
+	if err != nil {
+		t.Fatalf("GeneratePKCEVerifier() error: %v", err)
+	}
 
 	if len(verifier) < 43 || len(verifier) > 128 {
 		t.Errorf("Verifier length %d outside [43, 128]", len(verifier))
@@ -22,7 +26,7 @@ func TestPKCEGeneration(t *testing.T) {
 		t.Error("Challenge should not be empty")
 	}
 
-	_, err := base64.RawURLEncoding.DecodeString(challenge)
+	_, err = base64.RawURLEncoding.DecodeString(challenge)
 	if err != nil {
 		t.Errorf("Challenge is not valid base64url: %v", err)
 	}
@@ -33,6 +37,7 @@ func TestPKCEGeneration(t *testing.T) {
 }
 
 func TestPKCEVerifier(t *testing.T) {
+	t.Parallel()
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 	c1 := GeneratePKCEChallenge(verifier)
 	c2 := GeneratePKCEChallenge(verifier)
@@ -89,6 +94,7 @@ func TestEnvironmentDetection(t *testing.T) {
 }
 
 func TestFullOAuthFlow(t *testing.T) {
+	t.Parallel()
 	var serverURL string
 
 	mux := http.NewServeMux()

@@ -37,6 +37,7 @@ func newTestClient(srv *httptest.Server) *Client {
 }
 
 func TestNewClient(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 200, nil)
 	c := newTestClient(srv)
 
@@ -49,6 +50,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestParseRateLimit(t *testing.T) {
+	t.Parallel()
 	h := http.Header{}
 	h.Set("RateLimit-Limit", "100")
 	h.Set("RateLimit-Remaining", "42")
@@ -70,6 +72,7 @@ func TestParseRateLimit(t *testing.T) {
 }
 
 func TestParseRateLimitEmpty(t *testing.T) {
+	t.Parallel()
 	rl := parseRateLimit(http.Header{})
 	if rl != nil {
 		t.Error("expected nil for empty headers")
@@ -77,6 +80,7 @@ func TestParseRateLimitEmpty(t *testing.T) {
 }
 
 func TestIsRateLimited(t *testing.T) {
+	t.Parallel()
 	err429 := &atclient.APIError{StatusCode: 429, Name: "RateLimited", Message: "too many requests"}
 	if !isRateLimited(err429) {
 		t.Error("expected 429 to be rate limited")
@@ -93,6 +97,7 @@ func TestIsRateLimited(t *testing.T) {
 }
 
 func TestWithRetrySuccess(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	err := withRetry(context.Background(), 2, func() error {
 		calls++
@@ -107,6 +112,7 @@ func TestWithRetrySuccess(t *testing.T) {
 }
 
 func TestWithRetryNonRetryable(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	err := withRetry(context.Background(), 2, func() error {
 		calls++
@@ -121,6 +127,7 @@ func TestWithRetryNonRetryable(t *testing.T) {
 }
 
 func TestWithRetryContextCancelled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -133,6 +140,7 @@ func TestWithRetryContextCancelled(t *testing.T) {
 }
 
 func TestParseATURI(t *testing.T) {
+	t.Parallel()
 	repo, col, rkey, err := parseATURI("at://did:plc:abc/app.bsky.feed.post/xyz123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -149,6 +157,7 @@ func TestParseATURI(t *testing.T) {
 }
 
 func TestParseATURIInvalid(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"https://example.com",
 		"at://did:plc:abc",
@@ -164,6 +173,7 @@ func TestParseATURIInvalid(t *testing.T) {
 }
 
 func TestWrapErr(t *testing.T) {
+	t.Parallel()
 	err := wrapErr("TestMethod", &atProtoError{message: "something failed"})
 	if err == nil {
 		t.Fatal("expected error")
@@ -177,6 +187,7 @@ func TestWrapErr(t *testing.T) {
 }
 
 func TestDPoPHeaderPresent(t *testing.T) {
+	t.Parallel()
 	// This test verifies our client sends whatever auth the http.Client transport provides.
 	// We simulate a DPoP transport by using a custom RoundTripper that adds the header.
 	var capturedReq *http.Request
@@ -218,6 +229,7 @@ func (t *fakeDPoPTransport) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 func TestRateLimitRetry(t *testing.T) {
+	t.Parallel()
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
@@ -250,6 +262,7 @@ func TestRateLimitRetry(t *testing.T) {
 }
 
 func TestAsAPIError(t *testing.T) {
+	t.Parallel()
 	apiErr := &atclient.APIError{StatusCode: 404, Name: "NotFound"}
 	got, ok := asAPIError(apiErr)
 	if !ok || got.StatusCode != 404 {
@@ -263,12 +276,14 @@ func TestAsAPIError(t *testing.T) {
 }
 
 func TestInterfaceCompliance(t *testing.T) {
+	t.Parallel()
 	// Verify Client implements BlueskyClient at compile time via the var _ assertion.
 	// This test just confirms the assertion file compiles (it does, or the build would fail).
 	var _ BlueskyClient = (*Client)(nil)
 }
 
 func TestWithRetryBackoffRespected(t *testing.T) {
+	t.Parallel()
 	// Verify that retries happen with increasing delay.
 	start := time.Now()
 	calls := 0

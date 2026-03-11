@@ -421,6 +421,9 @@ func (m ProfileModel) renderFeed(b *strings.Builder) {
 		}
 
 		// Author line
+		if post.Post.Author == nil {
+			continue
+		}
 		authorName := post.Post.Author.Handle
 		if post.Post.Author.DisplayName != nil {
 			authorName = *post.Post.Author.DisplayName
@@ -476,11 +479,4 @@ func formatCount(count int64) string {
 		return result
 	}
 	return fmt.Sprintf("%d", count)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

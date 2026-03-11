@@ -81,6 +81,7 @@ func doUpdate(m ThreadModel, msg tea.Msg) ThreadModel {
 
 // 1. TestThreadRenderSinglePost
 func TestThreadRenderSinglePost(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -104,6 +105,7 @@ func TestThreadRenderSinglePost(t *testing.T) {
 
 // 2. TestThreadRenderWithParent
 func TestThreadRenderWithParent(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -132,6 +134,7 @@ func TestThreadRenderWithParent(t *testing.T) {
 
 // 3. TestThreadRenderDeepParentChain
 func TestThreadRenderDeepParentChain(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -164,6 +167,7 @@ func TestThreadRenderDeepParentChain(t *testing.T) {
 
 // 4. TestThreadRenderReplies
 func TestThreadRenderReplies(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -193,6 +197,7 @@ func TestThreadRenderReplies(t *testing.T) {
 
 // 5. TestThreadRenderNestedReplies
 func TestThreadRenderNestedReplies(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -229,6 +234,7 @@ func TestThreadRenderNestedReplies(t *testing.T) {
 
 // 6. TestThreadTargetPostHighlighted
 func TestThreadTargetPostHighlighted(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -251,6 +257,7 @@ func TestThreadTargetPostHighlighted(t *testing.T) {
 
 // 7. TestThreadScrollNavigation
 func TestThreadScrollNavigation(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -283,6 +290,7 @@ func TestThreadScrollNavigation(t *testing.T) {
 
 // 8. TestThreadBackNavigation
 func TestThreadBackNavigation(t *testing.T) {
+	t.Parallel()
 	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "esc"})
@@ -297,6 +305,7 @@ func TestThreadBackNavigation(t *testing.T) {
 
 // 9. TestThreadMissingParent
 func TestThreadMissingParent(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -327,6 +336,7 @@ func TestThreadMissingParent(t *testing.T) {
 
 // 10. TestThreadActionKeybinds
 func TestThreadActionKeybinds(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -366,6 +376,7 @@ func TestThreadActionKeybinds(t *testing.T) {
 
 // 11. TestThreadLoadingState
 func TestThreadLoadingState(t *testing.T) {
+	t.Parallel()
 	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
 	if !m.loading {
 		t.Errorf("Expected loading state initially")
@@ -379,6 +390,7 @@ func TestThreadLoadingState(t *testing.T) {
 
 // 12. TestThreadErrorState
 func TestThreadErrorState(t *testing.T) {
+	t.Parallel()
 	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
 	m = doUpdate(m, ThreadErrorMsg{Err: errors.New("network error")})
 
@@ -390,6 +402,7 @@ func TestThreadErrorState(t *testing.T) {
 
 // 13. TestThreadBlockedParent
 func TestThreadBlockedParent(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -420,6 +433,7 @@ func TestThreadBlockedParent(t *testing.T) {
 
 // 14. TestThreadEnterOnReply
 func TestThreadEnterOnReply(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{
@@ -458,6 +472,7 @@ func TestThreadEnterOnReply(t *testing.T) {
 
 // 15. TestThreadWindowSizeMsg
 func TestThreadWindowSizeMsg(t *testing.T) {
+	t.Parallel()
 	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
@@ -473,6 +488,7 @@ func TestThreadWindowSizeMsg(t *testing.T) {
 
 // 16. TestThreadNotFoundRoot
 func TestThreadNotFoundRoot(t *testing.T) {
+	t.Parallel()
 	client := &mockClient{
 		threadResult: &bsky.FeedGetPostThread_Output{
 			Thread: &bsky.FeedGetPostThread_Output_Thread{

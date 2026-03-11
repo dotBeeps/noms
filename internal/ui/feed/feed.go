@@ -207,7 +207,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m FeedModel) visibleCount() int {
 	// rough estimate of posts that fit in height, each post might be ~6 lines
-	return m.height / 6
+	return max(1, m.height/6)
 }
 
 func (m FeedModel) View() tea.View {

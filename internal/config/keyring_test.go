@@ -12,6 +12,7 @@ import (
 // --- MemoryStore tests (default NewTokenStore in test env) ---
 
 func TestKeyringStore(t *testing.T) {
+	t.Parallel()
 	store := config.NewMemoryStore()
 	err := store.Store("did:plc:abc123", []byte("token-data"))
 	if err != nil {
@@ -20,6 +21,7 @@ func TestKeyringStore(t *testing.T) {
 }
 
 func TestKeyringRetrieve(t *testing.T) {
+	t.Parallel()
 	store := config.NewMemoryStore()
 	want := []byte("my-secret-token")
 	if err := store.Store("did:plc:retrieve", want); err != nil {
@@ -35,6 +37,7 @@ func TestKeyringRetrieve(t *testing.T) {
 }
 
 func TestKeyringDelete(t *testing.T) {
+	t.Parallel()
 	store := config.NewMemoryStore()
 	if err := store.Store("did:plc:delete", []byte("to-delete")); err != nil {
 		t.Fatalf("Store() error: %v", err)
@@ -49,6 +52,7 @@ func TestKeyringDelete(t *testing.T) {
 }
 
 func TestKeyringListAccounts(t *testing.T) {
+	t.Parallel()
 	store := config.NewMemoryStore()
 	dids := []string{"did:plc:user1", "did:plc:user2"}
 	for _, did := range dids {

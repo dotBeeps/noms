@@ -71,7 +71,9 @@ func (s *DPoPSigner) loadOrGenerateKey() error {
 			Type:  "EC PRIVATE KEY",
 			Bytes: bytes,
 		}
-		_ = os.WriteFile(s.keyPath, pem.EncodeToMemory(block), 0600)
+		if err := os.WriteFile(s.keyPath, pem.EncodeToMemory(block), 0600); err != nil {
+			return fmt.Errorf("persisting DPoP key to %s: %w", s.keyPath, err)
+		}
 	}
 
 	return nil

@@ -12,6 +12,7 @@ import (
 )
 
 func TestAppInitShowsLogin(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	if app.Screen() != ScreenLogin {
@@ -24,6 +25,7 @@ func TestAppInitShowsLogin(t *testing.T) {
 }
 
 func TestAppLoginSuccess(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	session := &auth.Session{
@@ -49,6 +51,7 @@ func TestAppLoginSuccess(t *testing.T) {
 }
 
 func TestScreenSwitchWithNumbers(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.loggedIn = true
 	app.screen = ScreenFeed
@@ -62,6 +65,7 @@ func TestScreenSwitchWithNumbers(t *testing.T) {
 }
 
 func TestKeyBindingQuit(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.screen = ScreenLogin
 
@@ -74,6 +78,7 @@ func TestKeyBindingQuit(t *testing.T) {
 }
 
 func TestKeyBindingHelp(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.loggedIn = true
 	app.screen = ScreenFeed
@@ -91,6 +96,7 @@ func TestKeyBindingHelp(t *testing.T) {
 }
 
 func TestWindowResize(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	updated, _ := app.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -106,6 +112,7 @@ func TestWindowResize(t *testing.T) {
 }
 
 func TestAppViewLogin(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.screen = ScreenLogin
 
@@ -118,6 +125,7 @@ func TestAppViewLogin(t *testing.T) {
 }
 
 func TestAppViewFeed(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.screen = ScreenFeed
 	app.loggedIn = true
@@ -133,6 +141,7 @@ func TestAppViewFeed(t *testing.T) {
 }
 
 func TestTabBarIntegration(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.loggedIn = true
 	app.screen = ScreenFeed
@@ -148,6 +157,7 @@ func TestTabBarIntegration(t *testing.T) {
 }
 
 func TestStatusBarIntegration(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.loggedIn = true
 	app.screen = ScreenFeed
@@ -166,6 +176,7 @@ func TestStatusBarIntegration(t *testing.T) {
 }
 
 func TestHelpContextChange(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 
 	if app.help.Context != components.HelpContextLogin {
@@ -187,6 +198,7 @@ func TestHelpContextChange(t *testing.T) {
 }
 
 func TestAltScreen(t *testing.T) {
+	t.Parallel()
 	app := NewApp()
 	app.screen = ScreenLogin
 

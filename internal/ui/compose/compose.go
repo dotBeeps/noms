@@ -22,6 +22,8 @@ const (
 	ModeNewPost ComposeMode = iota
 	ModeReply
 	ModeQuote
+
+	maxPostChars = 300
 )
 
 // PostCreatedMsg is emitted when a post is successfully created
@@ -36,6 +38,11 @@ type CancelComposeMsg struct{}
 // ComposeErrorMsg represents an internal error during compose
 type ComposeErrorMsg struct {
 	Err error
+}
+
+// ParentPostLoadedMsg delivers a fetched parent post to the compose model.
+type ParentPostLoadedMsg struct {
+	Post *bsky.FeedDefs_PostView
 }
 
 // postSuccessMsg is an internal message for successful post creation
@@ -59,7 +66,7 @@ type ComposeModel struct {
 // NewComposeModel creates a new compose model
 func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost *bsky.FeedDefs_PostView, width, height int) ComposeModel {
 	ta := textarea.New()
-	ta.SetWidth(width - 4)
+	ta.SetWidth(max(1, width-4))
 	ta.SetHeight(6)
 	ta.Placeholder = "What's on your mind?"
 	ta.Focus()
@@ -89,11 +96,15 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.textarea.SetWidth(m.width - 4)
+		m.textarea.SetWidth(max(1, m.width-4))
 		return m, nil
 
 	case postSuccessMsg:
 		return m, func() tea.Msg { return PostCreatedMsg{URI: msg.uri, CID: msg.cid} }
+
+	case ParentPostLoadedMsg:
+		m.parentPost = msg.Post
+		return m, nil
 
 	case ComposeErrorMsg:
 		m.loading = false
@@ -218,13 +229,11 @@ func (m ComposeModel) View() tea.View {
 	// Character counter
 	text := m.textarea.Value()
 	charCount := len([]rune(text))
-	maxChars := 300
-
 	counterStyle := theme.StyleMuted
-	if charCount > maxChars {
+	if charCount > maxPostChars {
 		counterStyle = theme.StyleError
 	}
-	counter := counterStyle.Render(fmt.Sprintf("%d/%d", charCount, maxChars))
+	counter := counterStyle.Render(fmt.Sprintf("%d/%d", charCount, maxPostChars))
 	b.WriteString(counter)
 
 	// Key hints

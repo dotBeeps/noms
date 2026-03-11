@@ -159,6 +159,7 @@ func makeTestPost(handle, displayName, text, uri string, likes, reposts, replies
 // Tests
 
 func TestProfileHeaderRender(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Hello world!", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -185,6 +186,7 @@ func TestProfileHeaderRender(t *testing.T) {
 }
 
 func TestProfileBioWithFacets(t *testing.T) {
+	t.Parallel()
 	bio := "Check out my website https://example.com and follow @bob.bsky.social!"
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", bio, 100, 50, 25, nil),
@@ -208,6 +210,7 @@ func TestProfileBioWithFacets(t *testing.T) {
 }
 
 func TestFollowerCountFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		count    int64
 		expected string
@@ -234,6 +237,7 @@ func TestFollowerCountFormat(t *testing.T) {
 }
 
 func TestFollowAction(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -266,6 +270,7 @@ func TestFollowAction(t *testing.T) {
 }
 
 func TestUnfollowAction(t *testing.T) {
+	t.Parallel()
 	followURI := "at://did:plc:bob/app.bsky.graph.follow/123"
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, &followURI),
@@ -307,6 +312,7 @@ func TestUnfollowAction(t *testing.T) {
 }
 
 func TestOwnProfileNoFollowButton(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -339,6 +345,7 @@ func TestOwnProfileNoFollowButton(t *testing.T) {
 }
 
 func TestProfileNotFound(t *testing.T) {
+	t.Parallel()
 	testErr := errors.New("profile not found")
 	mock := &mockClient{
 		getProfileErr: testErr,
@@ -361,6 +368,7 @@ func TestProfileNotFound(t *testing.T) {
 }
 
 func TestProfileAuthorFeed(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{
@@ -393,6 +401,7 @@ func TestProfileAuthorFeed(t *testing.T) {
 }
 
 func TestProfileAuthorFeedPagination(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{
@@ -418,6 +427,7 @@ func TestProfileAuthorFeedPagination(t *testing.T) {
 }
 
 func TestBackNavigation(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -455,6 +465,7 @@ func TestBackNavigation(t *testing.T) {
 }
 
 func TestViewThreadNavigation(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{
@@ -485,6 +496,7 @@ func TestViewThreadNavigation(t *testing.T) {
 }
 
 func TestRefreshProfile(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{
@@ -526,6 +538,7 @@ func TestRefreshProfile(t *testing.T) {
 }
 
 func TestNavigateFeed(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{
@@ -590,6 +603,7 @@ func TestNavigateFeed(t *testing.T) {
 }
 
 func TestStatsLineFormat(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 1234, 5678, 90, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -617,6 +631,7 @@ func TestStatsLineFormat(t *testing.T) {
 }
 
 func TestFollowStateAfterToggle(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -654,6 +669,7 @@ func TestFollowStateAfterToggle(t *testing.T) {
 }
 
 func TestInitReturnsBatchCommands(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
@@ -668,6 +684,7 @@ func TestInitReturnsBatchCommands(t *testing.T) {
 }
 
 func TestWindowSizeUpdate(t *testing.T) {
+	t.Parallel()
 	mock := &mockClient{
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},

@@ -56,6 +56,7 @@ func session401Handler(t *testing.T) http.HandlerFunc {
 // TestVoreskyAuthFromCookie verifies that a valid cookie is accepted and the
 // session info is parsed correctly.
 func TestVoreskyAuthFromCookie(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(sessionOKHandler(t))
 	defer srv.Close()
 
@@ -77,6 +78,7 @@ func TestVoreskyAuthFromCookie(t *testing.T) {
 // TestVoreskyAuthInvalidCookie verifies that a 401 from the server causes
 // AuthenticateWithCookie to return an error and not store the cookie.
 func TestVoreskyAuthInvalidCookie(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(session401Handler(t))
 	defer srv.Close()
 
@@ -97,6 +99,7 @@ func TestVoreskyAuthInvalidCookie(t *testing.T) {
 // TestVoreskySessionValidation verifies that ValidateSession returns the
 // correct DID and handle from the server response.
 func TestVoreskySessionValidation(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(sessionOKHandler(t))
 	defer srv.Close()
 
@@ -123,6 +126,7 @@ func TestVoreskySessionValidation(t *testing.T) {
 // TestVoreskySessionExpired verifies that a 401 from the session endpoint
 // returns ErrSessionExpired.
 func TestVoreskySessionExpired(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(session401Handler(t))
 	defer srv.Close()
 
@@ -142,6 +146,7 @@ func TestVoreskySessionExpired(t *testing.T) {
 // TestVoreskyAuthPersistence verifies that a successful authentication
 // persists the session to the TokenStore and can be retrieved.
 func TestVoreskyAuthPersistence(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(sessionOKHandler(t))
 	defer srv.Close()
 
@@ -174,6 +179,7 @@ func TestVoreskyAuthPersistence(t *testing.T) {
 // TestVoreskyLoadStoredSession verifies that LoadStoredSession restores a
 // previously persisted session.
 func TestVoreskyLoadStoredSession(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(sessionOKHandler(t))
 	defer srv.Close()
 

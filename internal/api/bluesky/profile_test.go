@@ -10,6 +10,7 @@ import (
 )
 
 func TestGetProfile(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"did":            "did:plc:alice",
 		"handle":         "alice.bsky.social",
@@ -40,6 +41,7 @@ func TestGetProfile(t *testing.T) {
 }
 
 func TestGetProfileByDID(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"did":    "did:plc:alice",
 		"handle": "alice.bsky.social",
@@ -59,6 +61,7 @@ func TestGetProfileByDID(t *testing.T) {
 }
 
 func TestGetProfileError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 404, map[string]string{"error": "NotFound"})
 	c := newTestClient(srv)
 
@@ -69,6 +72,7 @@ func TestGetProfileError(t *testing.T) {
 }
 
 func TestGetAuthorFeed(t *testing.T) {
+	t.Parallel()
 	nextCursor := "authorcursor"
 	resp := map[string]any{
 		"cursor": nextCursor,
@@ -99,6 +103,7 @@ func TestGetAuthorFeed(t *testing.T) {
 }
 
 func TestFollowActor(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -129,6 +134,7 @@ func TestFollowActor(t *testing.T) {
 }
 
 func TestUnfollowActor(t *testing.T) {
+	t.Parallel()
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -164,6 +170,7 @@ func TestUnfollowActor(t *testing.T) {
 }
 
 func TestUnfollowActorNotFollowing(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

@@ -10,6 +10,7 @@ import (
 )
 
 func TestDPoPJWTStructure(t *testing.T) {
+	t.Parallel()
 	s, err := NewDPoPSigner("")
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
@@ -42,6 +43,7 @@ func TestDPoPJWTStructure(t *testing.T) {
 }
 
 func TestDPoPJWTFields(t *testing.T) {
+	t.Parallel()
 	s, err := NewDPoPSigner("")
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
@@ -81,6 +83,7 @@ func TestDPoPJWTFields(t *testing.T) {
 }
 
 func TestDPoPNonceRotation(t *testing.T) {
+	t.Parallel()
 	s, err := NewDPoPSigner("")
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
@@ -115,6 +118,7 @@ func TestDPoPNonceRotation(t *testing.T) {
 }
 
 func TestDPoPKeyPersistence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "dpop.key")
 

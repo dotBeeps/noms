@@ -6,6 +6,7 @@ import (
 )
 
 func TestSearchPosts(t *testing.T) {
+	t.Parallel()
 	nextCursor := "searchcursor"
 	resp := map[string]any{
 		"cursor": nextCursor,
@@ -41,6 +42,7 @@ func TestSearchPosts(t *testing.T) {
 }
 
 func TestSearchPostsError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 500, map[string]string{"error": "InternalServerError"})
 	c := newTestClient(srv)
 
@@ -51,6 +53,7 @@ func TestSearchPostsError(t *testing.T) {
 }
 
 func TestSearchActors(t *testing.T) {
+	t.Parallel()
 	nextCursor := "actorcursor"
 	resp := map[string]any{
 		"cursor": nextCursor,
@@ -86,6 +89,7 @@ func TestSearchActors(t *testing.T) {
 }
 
 func TestSearchActorsError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 500, map[string]string{"error": "InternalServerError"})
 	c := newTestClient(srv)
 
@@ -96,6 +100,7 @@ func TestSearchActorsError(t *testing.T) {
 }
 
 func TestSearchPostsCursorPagination(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"posts": []any{},
 	}

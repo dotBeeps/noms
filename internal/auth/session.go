@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Session struct {
@@ -28,6 +29,7 @@ func NewSession(did, handle, pds string, tokens *TokenSet, dpop *DPoPSigner) *Se
 func (s *Session) AuthenticatedHTTPClient() *http.Client {
 	base := http.DefaultTransport
 	return &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &dpopTransport{
 			base:    base,
 			session: s,
@@ -82,7 +84,8 @@ func (t *dpopTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		retryReq, err := cloneRequest(req)
 		if err != nil {
-			return resp, nil
+			resp.Body.Close()
+			return nil, fmt.Errorf("cloning request for DPoP nonce retry: %w", err)
 		}
 		resp.Body.Close()
 
@@ -104,7 +107,8 @@ func (t *dpopTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		retryReq, err := cloneRequest(req)
 		if err != nil {
-			return resp, nil
+			resp.Body.Close()
+			return nil, fmt.Errorf("cloning request for token refresh retry: %w", err)
 		}
 		resp.Body.Close()
 

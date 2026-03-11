@@ -8,6 +8,7 @@ import (
 )
 
 func TestPasteCodeFlow(t *testing.T) {
+	t.Parallel()
 	in := bytes.NewBufferString("  my-auth-code  \n")
 	out := &bytes.Buffer{}
 
@@ -47,6 +48,7 @@ func TestPasteCodeFlow(t *testing.T) {
 }
 
 func TestPasteCodeFlow_Empty(t *testing.T) {
+	t.Parallel()
 	in := bytes.NewBufferString("    \n")
 	out := &bytes.Buffer{}
 

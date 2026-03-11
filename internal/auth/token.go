@@ -83,7 +83,7 @@ func (m *TokenManager) Refresh(ctx context.Context) (*TokenSet, error) {
 
 		req, err := http.NewRequestWithContext(ctx, "POST", m.TokenEndpoint, strings.NewReader(form.Encode()))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building token refresh request: %w", err)
 		}
 
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -96,7 +96,7 @@ func (m *TokenManager) Refresh(ctx context.Context) (*TokenSet, error) {
 
 		resp, err := m.HTTPClient.Do(req)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("executing token refresh request: %w", err)
 		}
 
 		// Update nonce if provided

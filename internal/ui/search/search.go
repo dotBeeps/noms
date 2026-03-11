@@ -19,6 +19,13 @@ type SearchMode int
 const (
 	ModePosts SearchMode = iota
 	ModePeople
+
+	// maxVisiblePosts is the maximum number of post results shown before scrolling.
+	maxVisiblePosts = 15
+	// maxVisibleActors is the maximum number of actor results shown before scrolling.
+	maxVisibleActors = 20
+	// scrollMargin is the distance from offset before auto-scrolling kicks in.
+	scrollMargin = 10
 )
 
 type debounceMsg struct {
@@ -173,9 +180,9 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					return m, m.performSearch(m.query, m.cursor, m.mode, true)
 				}
-				// Basic scrolling (rough estimate)
-				if m.selectedIndex > m.offset+10 { // naive, assuming ~10 items fit
-					m.offset = m.selectedIndex - 10
+				// Basic scrolling
+				if m.selectedIndex > m.offset+scrollMargin {
+					m.offset = m.selectedIndex - scrollMargin
 				}
 				return m, nil
 			}
@@ -306,7 +313,7 @@ func (m SearchModel) View() tea.View {
 				postStr := feed.RenderPost(fvp, m.width, i == m.selectedIndex)
 				b.WriteString(postStr)
 				b.WriteString("\n")
-				if i-m.offset > 15 { // naive limit for display
+				if i-m.offset > maxVisiblePosts {
 					break
 				}
 			}
@@ -345,7 +352,7 @@ func (m SearchModel) View() tea.View {
 				b.WriteString(line)
 				b.WriteString("\n")
 
-				if i-m.offset > 20 { // naive limit
+				if i-m.offset > maxVisibleActors {
 					break
 				}
 			}

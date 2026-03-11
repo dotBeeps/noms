@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dotBeeps/noms/internal/config"
 )
@@ -70,7 +71,7 @@ type VoreskyAuth struct {
 func NewVoreskyAuth(baseURL string, tokenStore config.TokenStore) *VoreskyAuth {
 	return &VoreskyAuth{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 		tokenStore: tokenStore,
 	}
 }

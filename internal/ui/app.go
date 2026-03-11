@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -373,19 +374,14 @@ func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
-	// Fetch the post first, then create compose model with it
 	client := m.client
 	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight)
 	return m, func() tea.Msg {
 		post, err := client.GetPost(context.Background(), uri)
 		if err != nil {
-			return compose.ComposeErrorMsg{Err: err}
+			return compose.ComposeErrorMsg{Err: fmt.Errorf("loading parent post: %w", err)}
 		}
-		// We got the post; re-create the compose model will happen via a separate mechanism.
-		// For simplicity, store it as an error-free compose. The parent post context
-		// enriches the reply but isn't strictly required for the compose to function.
-		_ = post
-		return nil
+		return compose.ParentPostLoadedMsg{Post: post}
 	}
 }
 
@@ -646,12 +642,8 @@ func updateHelp(m components.HelpModel, msg tea.Msg) (components.HelpModel, tea.
 
 func handleAuthStart(msg tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		return login.LoginSuccessMsg{
-			Session: &auth.Session{
-				DID:    "did:plc:test123",
-				Handle: "test.bsky.social",
-				PDS:    "https://bsky.social",
-			},
+		return login.LoginErrorMsg{
+			Err: fmt.Errorf("browser-based OAuth not yet integrated; see docs/smoke-test.md"),
 		}
 	}
 }

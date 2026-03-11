@@ -54,12 +54,12 @@ func NewOAuthManager(config OAuthConfig, flow OAuthFlow, dpop *DPoPSigner) *OAut
 	}
 }
 
-func GeneratePKCEVerifier() string {
+func GeneratePKCEVerifier() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+		return "", fmt.Errorf("generating PKCE verifier: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf)
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func GeneratePKCEChallenge(verifier string) string {
@@ -97,9 +97,15 @@ func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Sessio
 		return nil, fmt.Errorf("fetching auth server metadata: %w", err)
 	}
 
-	verifier := GeneratePKCEVerifier()
+	verifier, err := GeneratePKCEVerifier()
+	if err != nil {
+		return nil, err
+	}
 	challenge := GeneratePKCEChallenge(verifier)
-	state := generateState()
+	state, err := generateState()
+	if err != nil {
+		return nil, err
+	}
 
 	var authURL string
 	if meta.PushedAuthorizationRequestEndpoint != "" {
@@ -208,14 +214,14 @@ func (m *OAuthManager) sendPAR(ctx context.Context, meta *AuthServerMetadata, re
 
 		req, err := http.NewRequestWithContext(ctx, "POST", parURL, strings.NewReader(form.Encode()))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("building PAR request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("DPoP", dpopJWT)
 
 		resp, err := m.httpClient().Do(req)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("sending PAR request: %w", err)
 		}
 
 		if nonce := resp.Header.Get("DPoP-Nonce"); nonce != "" {
@@ -273,14 +279,14 @@ func (m *OAuthManager) exchangeCode(ctx context.Context, meta *AuthServerMetadat
 
 		req, err := http.NewRequestWithContext(ctx, "POST", meta.TokenEndpoint, strings.NewReader(form.Encode()))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building token exchange request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("DPoP", dpopJWT)
 
 		resp, err := m.httpClient().Do(req)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("sending token exchange request: %w", err)
 		}
 
 		if nonce := resp.Header.Get("DPoP-Nonce"); nonce != "" {
@@ -337,12 +343,12 @@ func (m *OAuthManager) httpClient() *http.Client {
 	return http.DefaultClient
 }
 
-func generateState() string {
+func generateState() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+		return "", fmt.Errorf("generating state: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf)
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func defaultResolvePDS(ctx context.Context, handle string, client *http.Client) (string, error) {
@@ -391,7 +397,7 @@ func resolvePDSFromDID(ctx context.Context, did string, client *http.Client) (st
 
 	req, err := http.NewRequestWithContext(ctx, "GET", didDocURL, nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("building DID document request for %s: %w", did, err)
 	}
 
 	resp, err := client.Do(req)

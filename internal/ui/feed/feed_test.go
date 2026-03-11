@@ -138,6 +138,7 @@ func createTestPostWithFacets(text, handle string, facets []*bsky.RichtextFacet)
 
 // Test 1: TestFeedRenderSinglePost
 func TestFeedRenderSinglePost(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Hello world!", "alice.bsky.social", "Alice", "at://uri1", "cid1"),
@@ -164,6 +165,7 @@ func TestFeedRenderSinglePost(t *testing.T) {
 
 // Test 2: TestFeedRenderMultiplePosts
 func TestFeedRenderMultiplePosts(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("First post", "alice.bsky.social", "Alice", "at://uri1", "cid1"),
@@ -192,6 +194,7 @@ func TestFeedRenderMultiplePosts(t *testing.T) {
 
 // Test 3: TestPostWidgetAuthorLine
 func TestPostWidgetAuthorLine(t *testing.T) {
+	t.Parallel()
 	post := createTestPost("Test content", "testhandle.bsky.social", "Test Display Name", "at://uri", "cid")
 
 	rendered := RenderPost(post, 80, false)
@@ -206,6 +209,7 @@ func TestPostWidgetAuthorLine(t *testing.T) {
 
 // Test 4: TestPostWidgetTimestamp (FormatRelativeTime)
 func TestPostWidgetTimestamp(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		time     time.Time
@@ -229,6 +233,7 @@ func TestPostWidgetTimestamp(t *testing.T) {
 
 // Test 5: TestFacetMentionHighlight
 func TestFacetMentionHighlight(t *testing.T) {
+	t.Parallel()
 	text := "Hello @alice.bsky.social!"
 	facets := []*bsky.RichtextFacet{
 		{
@@ -256,6 +261,7 @@ func TestFacetMentionHighlight(t *testing.T) {
 
 // Test 6: TestFacetLinkUnderline
 func TestFacetLinkUnderline(t *testing.T) {
+	t.Parallel()
 	text := "Check out https://example.com"
 	facets := []*bsky.RichtextFacet{
 		{
@@ -283,6 +289,7 @@ func TestFacetLinkUnderline(t *testing.T) {
 
 // Test 7: TestFacetWithEmoji (byte offset correctness)
 func TestFacetWithEmoji(t *testing.T) {
+	t.Parallel()
 	text := "Hello 👋 world"
 	// "Hello " = 6 bytes, "👋" = 4 bytes, " " = 1 byte, "world" starts at byte 11
 	facets := []*bsky.RichtextFacet{
@@ -314,6 +321,7 @@ func TestFacetWithEmoji(t *testing.T) {
 
 // Test 8: TestScrollDown
 func TestScrollDown(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Post 1", "a.bsky.social", "A", "at://1", "c1"),
@@ -349,6 +357,7 @@ func TestScrollDown(t *testing.T) {
 
 // Test 9: TestScrollUp
 func TestScrollUp(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Post 1", "a.bsky.social", "A", "at://1", "c1"),
@@ -389,6 +398,7 @@ func TestScrollUp(t *testing.T) {
 
 // Test 10: TestScrollPagination
 func TestScrollPagination(t *testing.T) {
+	t.Parallel()
 	// Create 25 posts
 	posts := make([]*bsky.FeedDefs_FeedViewPost, 25)
 	for i := 0; i < 25; i++ {
@@ -420,6 +430,7 @@ func TestScrollPagination(t *testing.T) {
 
 // Test 11: TestEmptyFeed
 func TestEmptyFeed(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{},
 	}
@@ -438,6 +449,7 @@ func TestEmptyFeed(t *testing.T) {
 
 // Test 12: TestFeedLoading
 func TestFeedLoading(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 
 	m := NewFeedModel(client, 80, 24)
@@ -453,6 +465,7 @@ func TestFeedLoading(t *testing.T) {
 
 // Test 13: TestPostSelection
 func TestPostSelection(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Post 1", "a.bsky.social", "A", "at://1", "c1"),
@@ -490,6 +503,7 @@ func TestPostSelection(t *testing.T) {
 
 // Test 14: TestPostActionKeybinds
 func TestPostActionKeybinds(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Test post", "test.bsky.social", "Test", "at://test/123", "testcid"),
@@ -563,6 +577,7 @@ func TestPostActionKeybinds(t *testing.T) {
 
 // Test 15: TestFeedRefresh
 func TestFeedRefresh(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("New post", "new.bsky.social", "New", "at://new", "newcid"),
@@ -604,6 +619,7 @@ func TestFeedRefresh(t *testing.T) {
 
 // Test 16: TestFeedError
 func TestFeedError(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelineErr: errors.New("network error"),
 	}
@@ -630,6 +646,7 @@ func TestFeedError(t *testing.T) {
 
 // Test 17: TestRepostIndicator
 func TestRepostIndicator(t *testing.T) {
+	t.Parallel()
 	post := createTestPost("Reposted content", "original.bsky.social", "Original", "at://orig", "origcid")
 	post.Reason = &bsky.FeedDefs_FeedViewPost_Reason{
 		FeedDefs_ReasonRepost: &bsky.FeedDefs_ReasonRepost{
@@ -653,6 +670,7 @@ func TestRepostIndicator(t *testing.T) {
 
 // Test 18: TestReplyIndicator
 func TestReplyIndicator(t *testing.T) {
+	t.Parallel()
 	post := createTestPost("This is a reply", "replier.bsky.social", "Replier", "at://reply", "replycid")
 	post.Reply = &bsky.FeedDefs_ReplyRef{
 		Parent: &bsky.FeedDefs_ReplyRef_Parent{
@@ -683,6 +701,7 @@ func TestReplyIndicator(t *testing.T) {
 
 // Test 19: TestFeedModelInit
 func TestFeedModelInit(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{
 			createTestPost("Test", "test.bsky.social", "Test", "at://test", "cid"),
@@ -703,6 +722,7 @@ func TestFeedModelInit(t *testing.T) {
 
 // Test 20: TestWindowSizeMsg
 func TestWindowSizeMsg(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewFeedModel(client, 80, 24)
 
@@ -719,6 +739,7 @@ func TestWindowSizeMsg(t *testing.T) {
 
 // Test 21: TestFeedLoadedMsg
 func TestFeedLoadedMsg(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewFeedModel(client, 80, 24)
 	m.loading = true
@@ -743,6 +764,7 @@ func TestFeedLoadedMsg(t *testing.T) {
 
 // Test 22: TestFeedLoadedMsgAppend
 func TestFeedLoadedMsgAppend(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewFeedModel(client, 80, 24)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
@@ -764,6 +786,7 @@ func TestFeedLoadedMsgAppend(t *testing.T) {
 
 // Test 23: TestEngagementLine
 func TestEngagementLine(t *testing.T) {
+	t.Parallel()
 	post := createTestPost("Test", "test.bsky.social", "Test", "at://test", "cid")
 	post.Post.LikeCount = int64Ptr(42)
 	post.Post.RepostCount = int64Ptr(10)

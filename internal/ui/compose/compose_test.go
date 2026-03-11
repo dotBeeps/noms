@@ -137,6 +137,7 @@ func createTestPostView(uri, cid, handle, text string) *bsky.FeedDefs_PostView {
 
 // Test 1: TestComposeNewPost
 func TestComposeNewPost(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -156,6 +157,7 @@ func TestComposeNewPost(t *testing.T) {
 
 // Test 2: TestComposeReply
 func TestComposeReply(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	parentPost := createTestPostView("at://did:plc:test/app.bsky.feed.post/123", "parentcid", "alice.bsky.social", "Original post content")
 
@@ -177,6 +179,7 @@ func TestComposeReply(t *testing.T) {
 
 // Test 3: TestComposeQuote
 func TestComposeQuote(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	quotedPost := createTestPostView("at://did:plc:test/app.bsky.feed.post/456", "quotecid", "bob.bsky.social", "Post to be quoted")
 
@@ -198,6 +201,7 @@ func TestComposeQuote(t *testing.T) {
 
 // Test 4: TestCharCounter
 func TestCharCounter(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -223,6 +227,7 @@ func TestCharCounter(t *testing.T) {
 
 // Test 5: TestCharCounterLimit
 func TestCharCounterLimit(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -245,6 +250,7 @@ func TestCharCounterLimit(t *testing.T) {
 
 // Test 6: TestMentionAutoDetect
 func TestMentionAutoDetect(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
@@ -308,6 +314,7 @@ func isPostSuccessMsg(msg tea.Msg) bool {
 
 // Test 7: TestLinkAutoDetect
 func TestLinkAutoDetect(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
@@ -352,6 +359,7 @@ func TestLinkAutoDetect(t *testing.T) {
 
 // Test 8: TestSubmitPost
 func TestSubmitPost(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
@@ -387,6 +395,7 @@ func TestSubmitPost(t *testing.T) {
 
 // Test 9: TestSubmitReply
 func TestSubmitReply(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/reply",
 		createPostCID: "replycid",
@@ -428,6 +437,7 @@ func TestSubmitReply(t *testing.T) {
 
 // Test 10: TestCancelCompose
 func TestCancelCompose(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -447,6 +457,7 @@ func TestCancelCompose(t *testing.T) {
 
 // Test 11: TestComposeLoadingState
 func TestComposeLoadingState(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
@@ -473,6 +484,7 @@ func TestComposeLoadingState(t *testing.T) {
 
 // Test 12: TestComposeError
 func TestComposeError(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		createPostErr: errors.New("network error"),
 	}
@@ -509,6 +521,7 @@ func TestComposeError(t *testing.T) {
 
 // Test 13: TestComposeInit
 func TestComposeInit(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -520,6 +533,7 @@ func TestComposeInit(t *testing.T) {
 
 // Test 14: TestCharCounterUnicode
 func TestCharCounterUnicode(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -541,6 +555,7 @@ func TestCharCounterUnicode(t *testing.T) {
 
 // Test 15: TestModeAccessor
 func TestModeAccessor(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 
 	// Test NewPost mode
@@ -565,6 +580,7 @@ func TestModeAccessor(t *testing.T) {
 
 // Test 16: TestTextAccessor
 func TestTextAccessor(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
@@ -582,6 +598,7 @@ func TestTextAccessor(t *testing.T) {
 
 // Test 17: TestWindowSizeResize
 func TestWindowSizeResize(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 

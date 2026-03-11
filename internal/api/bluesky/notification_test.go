@@ -10,6 +10,7 @@ import (
 )
 
 func TestListNotifications(t *testing.T) {
+	t.Parallel()
 	nextCursor := "notifcursor"
 	resp := map[string]any{
 		"cursor": nextCursor,
@@ -50,6 +51,7 @@ func TestListNotifications(t *testing.T) {
 }
 
 func TestListNotificationsPagination(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"notifications": []any{},
 	}
@@ -68,6 +70,7 @@ func TestListNotificationsPagination(t *testing.T) {
 }
 
 func TestGetUnreadCount(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{"count": 42}
 
 	srv, _ := newTestServer(t, 200, resp)
@@ -83,6 +86,7 @@ func TestGetUnreadCount(t *testing.T) {
 }
 
 func TestGetUnreadCountError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 500, map[string]string{"error": "InternalServerError"})
 	c := newTestClient(srv)
 
@@ -93,6 +97,7 @@ func TestGetUnreadCountError(t *testing.T) {
 }
 
 func TestMarkNotificationsRead(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)

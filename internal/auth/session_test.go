@@ -9,6 +9,7 @@ import (
 )
 
 func TestSessionFromOAuth(t *testing.T) {
+	t.Parallel()
 	signer, err := NewDPoPSigner("")
 	if err != nil {
 		t.Fatalf("NewDPoPSigner: %v", err)
@@ -42,6 +43,7 @@ func TestSessionFromOAuth(t *testing.T) {
 }
 
 func TestSessionProvideAuthenticatedClient(t *testing.T) {
+	t.Parallel()
 	var capturedAuth string
 	var capturedDPoP string
 

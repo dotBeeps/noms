@@ -6,6 +6,7 @@ import (
 )
 
 func TestStatusBarInit(t *testing.T) {
+	t.Parallel()
 	sb := NewStatusBar()
 	if cmd := sb.Init(); cmd != nil {
 		t.Errorf("Expected nil cmd, got %v", cmd)
@@ -13,6 +14,7 @@ func TestStatusBarInit(t *testing.T) {
 }
 
 func TestStatusBarRender(t *testing.T) {
+	t.Parallel()
 	sb := NewStatusBar()
 	sb.Width = 100
 	sb.Handle = "alice"
@@ -27,6 +29,7 @@ func TestStatusBarRender(t *testing.T) {
 }
 
 func TestStatusBarUnreadCount(t *testing.T) {
+	t.Parallel()
 	sb := NewStatusBar()
 	sb.Width = 100
 	sb.UnreadCount = 42

@@ -12,6 +12,7 @@ import (
 )
 
 func TestTokenExchange(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("Expected POST, got %s", r.Method)
@@ -76,6 +77,7 @@ func TestTokenExchange(t *testing.T) {
 }
 
 func TestTokenExchangeError(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid_grant","error_description":"Refresh token expired"}`))
@@ -103,6 +105,7 @@ func TestTokenExchangeError(t *testing.T) {
 }
 
 func TestTokenRefreshMutex(t *testing.T) {
+	t.Parallel()
 	var refreshCount atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +153,7 @@ func TestTokenRefreshMutex(t *testing.T) {
 }
 
 func TestTokenRefreshBeforeExpiry(t *testing.T) {
+	t.Parallel()
 	signer, err := NewDPoPSigner("")
 	if err != nil {
 		t.Fatalf("NewDPoPSigner: %v", err)

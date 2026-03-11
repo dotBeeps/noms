@@ -141,6 +141,7 @@ func createTestNotificationWithRecord(reason, handle, did string, isRead bool, i
 }
 
 func TestRenderLikeNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -169,6 +170,7 @@ func TestRenderLikeNotification(t *testing.T) {
 }
 
 func TestRenderRepostNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("repost", "bob.bsky.social", "did:plc:bob", true, time.Now().Add(-1*time.Hour).Format(time.RFC3339)),
@@ -193,6 +195,7 @@ func TestRenderRepostNotification(t *testing.T) {
 }
 
 func TestRenderFollowNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("follow", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-2*time.Hour).Format(time.RFC3339)),
@@ -218,6 +221,7 @@ func TestRenderFollowNotification(t *testing.T) {
 }
 
 func TestRenderMentionNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("mention", "dave.bsky.social", "did:plc:dave", false, time.Now().Add(-30*time.Minute).Format(time.RFC3339)),
@@ -243,6 +247,7 @@ func TestRenderMentionNotification(t *testing.T) {
 }
 
 func TestRenderReplyNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotificationWithRecord("reply", "eve.bsky.social", "did:plc:eve", false, time.Now().Add(-15*time.Minute).Format(time.RFC3339), "This is a reply to your post"),
@@ -268,6 +273,7 @@ func TestRenderReplyNotification(t *testing.T) {
 }
 
 func TestRenderQuoteNotification(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("quote", "frank.bsky.social", "did:plc:frank", true, time.Now().Add(-3*time.Hour).Format(time.RFC3339)),
@@ -292,6 +298,7 @@ func TestRenderQuoteNotification(t *testing.T) {
 }
 
 func TestUnreadIndicator(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -316,6 +323,7 @@ func TestUnreadIndicator(t *testing.T) {
 }
 
 func TestMarkAsRead(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -340,6 +348,7 @@ func TestMarkAsRead(t *testing.T) {
 }
 
 func TestNotificationNavigationToPost(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -363,6 +372,7 @@ func TestNotificationNavigationToPost(t *testing.T) {
 }
 
 func TestNotificationNavigationToProfile(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("follow", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -385,6 +395,7 @@ func TestNotificationNavigationToProfile(t *testing.T) {
 }
 
 func TestEmptyNotifications(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{},
 		unreadCount:   0,
@@ -405,6 +416,7 @@ func TestEmptyNotifications(t *testing.T) {
 }
 
 func TestNotificationPagination(t *testing.T) {
+	t.Parallel()
 	// Create 5 notifications for first page
 	notifs1 := make([]*bsky.NotificationListNotifications_Notification, 5)
 	for i := 0; i < 5; i++ {
@@ -436,6 +448,7 @@ func TestNotificationPagination(t *testing.T) {
 }
 
 func TestNotificationSelection(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
@@ -464,6 +477,7 @@ func TestNotificationSelection(t *testing.T) {
 }
 
 func TestNotificationsLoadedMsg(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotification("like", "test.bsky.social", "did:plc:test", false, time.Now().Format(time.RFC3339)),
@@ -490,6 +504,7 @@ func TestNotificationsLoadedMsg(t *testing.T) {
 }
 
 func TestNotificationsErrorMsg(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		err: errors.New("network error"),
 	}
@@ -514,6 +529,7 @@ func TestNotificationsErrorMsg(t *testing.T) {
 }
 
 func TestUnreadCountMsg(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		unreadCount: 5,
 	}
@@ -537,6 +553,7 @@ func TestUnreadCountMsg(t *testing.T) {
 }
 
 func TestWindowSizeMsg(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{}
 	m := NewNotificationsModel(mockClient, 80, 24)
 
@@ -553,6 +570,7 @@ func TestWindowSizeMsg(t *testing.T) {
 }
 
 func TestContentPreview(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{
 			createTestNotificationWithRecord("reply", "test.bsky.social", "did:plc:test", false, time.Now().Format(time.RFC3339), "This is a very long reply that should be truncated to approximately fifty characters"),
@@ -574,26 +592,8 @@ func TestContentPreview(t *testing.T) {
 	}
 }
 
-func TestRelativeTime(t *testing.T) {
-	testCases := []struct {
-		timestamp string
-		expected  string
-	}{
-		{time.Now().Add(-30 * time.Second).Format(time.RFC3339), "s"},
-		{time.Now().Add(-5 * time.Minute).Format(time.RFC3339), "m"},
-		{time.Now().Add(-2 * time.Hour).Format(time.RFC3339), "h"},
-		{time.Now().Add(-3 * 24 * time.Hour).Format(time.RFC3339), "d"},
-	}
-
-	for _, tc := range testCases {
-		result := formatRelativeTime(tc.timestamp)
-		if !strings.Contains(result, tc.expected) {
-			t.Errorf("Expected relative time to contain %s, got %s", tc.expected, result)
-		}
-	}
-}
-
 func TestTruncateText(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		maxLen   int
@@ -613,6 +613,7 @@ func TestTruncateText(t *testing.T) {
 }
 
 func TestGetNotificationStyle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		reason       string
 		expectedIcon string
@@ -638,6 +639,7 @@ func TestGetNotificationStyle(t *testing.T) {
 }
 
 func TestInitReturnsCommands(t *testing.T) {
+	t.Parallel()
 	mockClient := &mockBlueskyClient{
 		notifications: []*bsky.NotificationListNotifications_Notification{},
 		unreadCount:   0,

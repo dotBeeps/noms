@@ -42,7 +42,7 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("⟲ Reposted by @%s", handle)))
 		b.WriteString("\n")
 	} else if post.Reply != nil && post.Reply.Parent != nil {
-		if parent := post.Reply.Parent.FeedDefs_PostView; parent != nil {
+		if parent := post.Reply.Parent.FeedDefs_PostView; parent != nil && parent.Author != nil {
 			handle := parent.Author.Handle
 			b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("↩ Replying to @%s", handle)))
 			b.WriteString("\n")
@@ -50,6 +50,9 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 	}
 
 	// Author line: DisplayName @handle · 2h ago
+	if post.Post == nil || post.Post.Author == nil {
+		return theme.StyleMuted.Render("[unavailable post]")
+	}
 	displayName := post.Post.Author.Handle
 	if post.Post.Author.DisplayName != nil && *post.Post.Author.DisplayName != "" {
 		displayName = *post.Post.Author.DisplayName

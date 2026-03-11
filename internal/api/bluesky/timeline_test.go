@@ -9,6 +9,7 @@ import (
 )
 
 func TestGetTimeline(t *testing.T) {
+	t.Parallel()
 	nextCursor := "cursor123"
 	resp := map[string]any{
 		"cursor": nextCursor,
@@ -54,6 +55,7 @@ func TestGetTimeline(t *testing.T) {
 }
 
 func TestGetTimelineCursorPagination(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"feed": []map[string]any{},
 	}
@@ -73,6 +75,7 @@ func TestGetTimelineCursorPagination(t *testing.T) {
 }
 
 func TestGetTimelineError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 500, map[string]string{"error": "InternalServerError", "message": "server broke"})
 	c := newTestClient(srv)
 
@@ -83,6 +86,7 @@ func TestGetTimelineError(t *testing.T) {
 }
 
 func TestGetPost(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"posts": []map[string]any{
 			{
@@ -111,6 +115,7 @@ func TestGetPost(t *testing.T) {
 }
 
 func TestGetPostNotFound(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{"posts": []any{}}
 	srv, _ := newTestServer(t, 200, resp)
 	c := newTestClient(srv)
@@ -122,6 +127,7 @@ func TestGetPostNotFound(t *testing.T) {
 }
 
 func TestGetPostThread(t *testing.T) {
+	t.Parallel()
 	resp := map[string]any{
 		"thread": map[string]any{
 			"$type": "app.bsky.feed.defs#threadViewPost",
@@ -157,6 +163,7 @@ func TestGetPostThread(t *testing.T) {
 }
 
 func TestGetPostThreadError(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(404)

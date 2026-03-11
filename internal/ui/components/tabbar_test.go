@@ -8,6 +8,7 @@ import (
 )
 
 func TestTabBarInit(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	if cmd := tb.Init(); cmd != nil {
 		t.Errorf("Expected nil cmd, got %v", cmd)
@@ -15,6 +16,7 @@ func TestTabBarInit(t *testing.T) {
 }
 
 func TestTabNavigationWithNumbers(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	tb.Width = 80
 
@@ -44,6 +46,7 @@ func TestTabNavigationWithNumbers(t *testing.T) {
 }
 
 func TestTabHighlight(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	tb.Width = 80
 	tb.ActiveTab = TabFeed
@@ -65,6 +68,7 @@ func TestTabHighlight(t *testing.T) {
 }
 
 func TestTabBarWidthUpdate(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	tb.Width = 60
 
@@ -77,6 +81,7 @@ func TestTabBarWidthUpdate(t *testing.T) {
 }
 
 func TestTabBarInvalidTab(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	tb.ActiveTab = TabFeed
 
@@ -92,6 +97,7 @@ func TestTabBarInvalidTab(t *testing.T) {
 }
 
 func TestTabBarActiveTabName(t *testing.T) {
+	t.Parallel()
 	tb := NewTabBar()
 	tb.ActiveTab = TabProfile
 

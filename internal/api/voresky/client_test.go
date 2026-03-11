@@ -27,6 +27,7 @@ func newAuthWithCookie(baseURL, cookie, did string) *VoreskyAuth {
 // TestVoreskyAuthenticatedRequest verifies that the client injects the Cookie
 // header on every request.
 func TestVoreskyAuthenticatedRequest(t *testing.T) {
+	t.Parallel()
 	var receivedCookie string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +57,7 @@ func TestVoreskyAuthenticatedRequest(t *testing.T) {
 // TestVoreskyClientRetryOn401 verifies that the client retries once after a
 // 401 response. The mock returns 401 on the first call and 200 on the second.
 func TestVoreskyClientRetryOn401(t *testing.T) {
+	t.Parallel()
 	callCount := 0
 
 	// We need a session endpoint for RefreshOrRevalidate to call.
@@ -106,6 +108,7 @@ func TestVoreskyClientRetryOn401(t *testing.T) {
 // TestVoreskyErrorParsing verifies that ParseError correctly extracts the
 // error message and status code from an API error response.
 func TestVoreskyErrorParsing(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
@@ -139,6 +142,7 @@ func TestVoreskyErrorParsing(t *testing.T) {
 // TestVoreskyClientPost verifies that POST requests serialise the body as JSON
 // and set the Content-Type header.
 func TestVoreskyClientPost(t *testing.T) {
+	t.Parallel()
 	var receivedBody []byte
 	var receivedContentType string
 
@@ -184,6 +188,7 @@ func TestVoreskyClientPost(t *testing.T) {
 
 // TestVoreskyClientDelete verifies that DELETE requests are sent correctly.
 func TestVoreskyClientDelete(t *testing.T) {
+	t.Parallel()
 	var receivedMethod string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +214,7 @@ func TestVoreskyClientDelete(t *testing.T) {
 // TestVoreskyVoreskyErrorInterface verifies that VoreskyError satisfies the
 // error interface and formats correctly.
 func TestVoreskyVoreskyErrorInterface(t *testing.T) {
+	t.Parallel()
 	ve := &VoreskyError{StatusCode: 401, Message: "Not authenticated"}
 	got := ve.Error()
 	if !strings.Contains(got, "401") {

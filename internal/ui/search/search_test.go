@@ -158,6 +158,7 @@ func createTestActor(handle, displayName, did, description string) *bsky.ActorDe
 
 // Test 1: TestSearchInput — renders input field, accepts text
 func TestSearchInput(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 
@@ -196,6 +197,7 @@ func TestSearchInput(t *testing.T) {
 
 // Test 2: TestSearchDebounce — search fires only after 300ms pause
 func TestSearchDebounce(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{
 			createTestPostView("Test post", "test.bsky.social", "Test User", "at://test/1", "cid1"),
@@ -231,6 +233,7 @@ func TestSearchDebounce(t *testing.T) {
 
 // Test 3: TestSearchPostsResults — displays post results correctly
 func TestSearchPostsResults(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{
 			createTestPostView("Hello world", "alice.bsky.social", "Alice", "at://test/1", "cid1"),
@@ -268,6 +271,7 @@ func TestSearchPostsResults(t *testing.T) {
 
 // Test 4: TestSearchPeopleResults — displays actor results correctly
 func TestSearchPeopleResults(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchActors: []*bsky.ActorDefs_ProfileView{
 			createTestActor("alice.bsky.social", "Alice", "did:plc:alice", "Hello I'm Alice"),
@@ -305,6 +309,7 @@ func TestSearchPeopleResults(t *testing.T) {
 
 // Test 5: TestSearchToggleMode — Tab switches Posts/People
 func TestSearchToggleMode(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 
@@ -341,6 +346,7 @@ func TestSearchToggleMode(t *testing.T) {
 
 // Test 6: TestSearchResultNavigation — j/k moves through results
 func TestSearchResultNavigation(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{
 			createTestPostView("Post 1", "a.bsky.social", "A", "at://1", "c1"),
@@ -401,6 +407,7 @@ func TestSearchResultNavigation(t *testing.T) {
 
 // Test 7: TestSearchEmpty — shows placeholder when no query
 func TestSearchEmpty(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 
@@ -419,6 +426,7 @@ func TestSearchEmpty(t *testing.T) {
 
 // Test 8: TestSearchNoResults — shows "No results" message
 func TestSearchNoResults(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{}, // Empty results
 	}
@@ -446,6 +454,7 @@ func TestSearchNoResults(t *testing.T) {
 
 // Test 9: TestSearchPagination — cursor-based load more
 func TestSearchPagination(t *testing.T) {
+	t.Parallel()
 	// First page of results
 	firstPage := []*bsky.FeedDefs_PostView{
 		createTestPostView("Post 1", "a.bsky.social", "A", "at://1", "c1"),
@@ -502,6 +511,7 @@ func TestSearchPagination(t *testing.T) {
 
 // Test 10: TestSearchEnterNavigation — enter navigates to thread/profile
 func TestSearchEnterNavigation(t *testing.T) {
+	t.Parallel()
 	t.Run("Posts mode navigates to thread", func(t *testing.T) {
 		client := &mockBlueskyClient{
 			searchPosts: []*bsky.FeedDefs_PostView{
@@ -559,6 +569,7 @@ func TestSearchEnterNavigation(t *testing.T) {
 
 // Test 11: TestSearchError — handles errors gracefully
 func TestSearchError(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPostsErr: errors.New("network error"),
 	}
@@ -585,6 +596,7 @@ func TestSearchError(t *testing.T) {
 
 // Test 12: TestSearchEscape — clears search on escape when input is blurred
 func TestSearchEscape(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 	m.query = "test"
@@ -607,6 +619,7 @@ func TestSearchEscape(t *testing.T) {
 
 // Test 12b: TestSearchEscapeBlurs — escape blurs input when focused
 func TestSearchEscapeBlurs(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 	m.query = "test"
@@ -630,6 +643,7 @@ func TestSearchEscapeBlurs(t *testing.T) {
 
 // Test 13: TestSearchFocusSlash — slash key focuses input
 func TestSearchFocusSlash(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 	m.input.Blur()
@@ -652,6 +666,7 @@ func TestSearchFocusSlash(t *testing.T) {
 
 // Test 14: TestSearchInit — Init returns blink command
 func TestSearchInit(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 
@@ -663,6 +678,7 @@ func TestSearchInit(t *testing.T) {
 
 // Test 15: TestSearchWindowSizeMsg — handles window resize
 func TestSearchWindowSizeMsg(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewSearchModel(client, 80, 24)
 
@@ -679,6 +695,7 @@ func TestSearchWindowSizeMsg(t *testing.T) {
 
 // Test 16: TestSearchStatusBar — shows correct status
 func TestSearchStatusBar(t *testing.T) {
+	t.Parallel()
 	t.Run("Shows Searching during load", func(t *testing.T) {
 		client := &mockBlueskyClient{}
 		m := NewSearchModel(client, 80, 24)
@@ -709,6 +726,7 @@ func TestSearchStatusBar(t *testing.T) {
 
 // Test 17: TestSearchModeResetsResults — switching mode clears results
 func TestSearchModeResetsResults(t *testing.T) {
+	t.Parallel()
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{
 			createTestPostView("Post", "test.bsky.social", "Test", "at://1", "c1"),

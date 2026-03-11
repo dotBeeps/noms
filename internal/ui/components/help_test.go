@@ -6,6 +6,7 @@ import (
 )
 
 func TestHelpModelInit(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	if cmd := h.Init(); cmd != nil {
 		t.Errorf("Expected nil cmd, got %v", cmd)
@@ -13,6 +14,7 @@ func TestHelpModelInit(t *testing.T) {
 }
 
 func TestHelpOverlayToggle(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	h.Visible = false
 
@@ -28,6 +30,7 @@ func TestHelpOverlayToggle(t *testing.T) {
 }
 
 func TestHelpModelShowHide(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 
 	h.Show()
@@ -42,6 +45,7 @@ func TestHelpModelShowHide(t *testing.T) {
 }
 
 func TestHelpModelContextSwitch(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	h.Context = HelpContextLogin
 
@@ -52,6 +56,7 @@ func TestHelpModelContextSwitch(t *testing.T) {
 }
 
 func TestHelpModelViewWhenHidden(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	h.Visible = false
 
@@ -62,6 +67,7 @@ func TestHelpModelViewWhenHidden(t *testing.T) {
 }
 
 func TestHelpModelViewWhenVisibleLoginContext(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	h.Visible = true
 	h.Context = HelpContextLogin
@@ -79,6 +85,7 @@ func TestHelpModelViewWhenVisibleLoginContext(t *testing.T) {
 }
 
 func TestHelpModelViewWhenVisibleMainContext(t *testing.T) {
+	t.Parallel()
 	h := NewHelpModel()
 	h.Visible = true
 	h.Context = HelpContextMain

@@ -175,6 +175,7 @@ func keyPress(key rune) tea.KeyPressMsg {
 }
 
 func TestLoginFlowToFeed(t *testing.T) {
+	t.Parallel()
 	app := ui.NewApp()
 	if app.Screen() != ui.ScreenLogin {
 		t.Fatalf("expected ScreenLogin, got %d", app.Screen())
@@ -196,6 +197,7 @@ func TestLoginFlowToFeed(t *testing.T) {
 }
 
 func TestLoginAndFeedLoad(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -209,6 +211,7 @@ func TestLoginAndFeedLoad(t *testing.T) {
 }
 
 func TestTabSwitching(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -233,6 +236,7 @@ func TestTabSwitching(t *testing.T) {
 }
 
 func TestFeedToThreadNavigation(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -256,6 +260,7 @@ func TestFeedToThreadNavigation(t *testing.T) {
 }
 
 func TestThreadBackPreservesPrevScreen(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -276,6 +281,7 @@ func TestThreadBackPreservesPrevScreen(t *testing.T) {
 }
 
 func TestComposeNewPost(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -296,6 +302,7 @@ func TestComposeNewPost(t *testing.T) {
 }
 
 func TestComposeCancel(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -310,6 +317,7 @@ func TestComposeCancel(t *testing.T) {
 }
 
 func TestNotificationNavigateToPost(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -324,6 +332,7 @@ func TestNotificationNavigateToPost(t *testing.T) {
 }
 
 func TestNotificationNavigateToProfile(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -338,6 +347,7 @@ func TestNotificationNavigateToProfile(t *testing.T) {
 }
 
 func TestSearchViewThread(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -361,6 +371,7 @@ func TestSearchViewThread(t *testing.T) {
 }
 
 func TestSearchProfileNavigation(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -375,6 +386,7 @@ func TestSearchProfileNavigation(t *testing.T) {
 }
 
 func TestProfileBack(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -389,6 +401,7 @@ func TestProfileBack(t *testing.T) {
 }
 
 func TestProfileViewThread(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -406,6 +419,7 @@ func TestProfileViewThread(t *testing.T) {
 }
 
 func TestUnreadCountUpdatesStatusBar(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -419,6 +433,7 @@ func TestUnreadCountUpdatesStatusBar(t *testing.T) {
 }
 
 func TestThreadComposeReply(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -433,6 +448,7 @@ func TestThreadComposeReply(t *testing.T) {
 }
 
 func TestThreadViewProfile(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -450,6 +466,7 @@ func TestThreadViewProfile(t *testing.T) {
 }
 
 func TestFeedComposeReply(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -461,6 +478,7 @@ func TestFeedComposeReply(t *testing.T) {
 }
 
 func TestHelpToggle(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -482,6 +500,7 @@ func TestHelpToggle(t *testing.T) {
 }
 
 func TestCtrlCQuits(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -496,6 +515,7 @@ func TestCtrlCQuits(t *testing.T) {
 }
 
 func TestFeedActionDelegation(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -518,6 +538,7 @@ func TestFeedActionDelegation(t *testing.T) {
 }
 
 func TestSearchResults(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -532,6 +553,7 @@ func TestSearchResults(t *testing.T) {
 }
 
 func TestWindowResize(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -543,6 +565,7 @@ func TestWindowResize(t *testing.T) {
 }
 
 func TestComposeError(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -557,6 +580,7 @@ func TestComposeError(t *testing.T) {
 }
 
 func TestSelfProfileTab(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -571,12 +595,14 @@ func TestSelfProfileTab(t *testing.T) {
 }
 
 func TestVersionFlag(t *testing.T) {
+	t.Parallel()
 	if Version != "0.1.0-dev" {
 		t.Errorf("expected version 0.1.0-dev, got %s", Version)
 	}
 }
 
 func TestEscFromThread(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -591,6 +617,7 @@ func TestEscFromThread(t *testing.T) {
 }
 
 func TestPostCreatedRefreshesFeed(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 
@@ -608,6 +635,7 @@ func TestPostCreatedRefreshesFeed(t *testing.T) {
 }
 
 func TestProfileLoadAndError(t *testing.T) {
+	t.Parallel()
 	client := newMockClient()
 	app := newTestApp(client)
 

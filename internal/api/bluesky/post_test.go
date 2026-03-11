@@ -10,6 +10,7 @@ import (
 )
 
 func TestCreatePost(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)
@@ -47,6 +48,7 @@ func TestCreatePost(t *testing.T) {
 }
 
 func TestCreatePostError(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 500, map[string]string{"error": "InternalServerError"})
 	c := newTestClient(srv)
 
@@ -57,6 +59,7 @@ func TestCreatePostError(t *testing.T) {
 }
 
 func TestDeletePost(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)
@@ -81,6 +84,7 @@ func TestDeletePost(t *testing.T) {
 }
 
 func TestDeletePostInvalidURI(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 200, nil)
 	c := newTestClient(srv)
 
@@ -91,6 +95,7 @@ func TestDeletePostInvalidURI(t *testing.T) {
 }
 
 func TestDeletePostWrongCollection(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 200, nil)
 	c := newTestClient(srv)
 
@@ -104,6 +109,7 @@ func TestDeletePostWrongCollection(t *testing.T) {
 }
 
 func TestLike(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)
@@ -131,6 +137,7 @@ func TestLike(t *testing.T) {
 }
 
 func TestUnlike(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)
@@ -152,6 +159,7 @@ func TestUnlike(t *testing.T) {
 }
 
 func TestUnlikeWrongCollection(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 200, nil)
 	c := newTestClient(srv)
 
@@ -162,6 +170,7 @@ func TestUnlikeWrongCollection(t *testing.T) {
 }
 
 func TestRepost(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -183,6 +192,7 @@ func TestRepost(t *testing.T) {
 }
 
 func TestUnRepost(t *testing.T) {
+	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&capturedBody)
@@ -204,6 +214,7 @@ func TestUnRepost(t *testing.T) {
 }
 
 func TestUnRepostWrongCollection(t *testing.T) {
+	t.Parallel()
 	srv, _ := newTestServer(t, 200, nil)
 	c := newTestClient(srv)
 

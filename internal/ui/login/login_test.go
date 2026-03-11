@@ -9,6 +9,7 @@ import (
 )
 
 func TestLoginModelInit(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 	if cmd := m.Init(); cmd == nil {
 		t.Errorf("Expected non-nil cmd from Init (textinput.Blink)")
@@ -16,6 +17,7 @@ func TestLoginModelInit(t *testing.T) {
 }
 
 func TestLoginScreenRender(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 
 	v := m.View()
@@ -31,6 +33,7 @@ func TestLoginScreenRender(t *testing.T) {
 }
 
 func TestLoginHandleInput(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 
 	m.SetValue("alice.bsky.social")
@@ -41,6 +44,7 @@ func TestLoginHandleInput(t *testing.T) {
 }
 
 func TestLoginErrorDisplay(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 
 	testErr := errors.New("authentication failed")
@@ -59,6 +63,7 @@ func TestLoginErrorDisplay(t *testing.T) {
 }
 
 func TestLoginStateTransitionToChoosing(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 	m.handleInput.SetValue("alice.bsky.social")
 
@@ -71,6 +76,7 @@ func TestLoginStateTransitionToChoosing(t *testing.T) {
 }
 
 func TestLoginChoosingStateNavigation(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 	m.handleInput.SetValue("alice.bsky.social")
 	m.state = LoginStateChoosing
@@ -84,6 +90,7 @@ func TestLoginChoosingStateNavigation(t *testing.T) {
 }
 
 func TestLoginWindowSizeMsg(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -99,6 +106,7 @@ func TestLoginWindowSizeMsg(t *testing.T) {
 }
 
 func TestLoginErrorMsg(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 
 	testErr := errors.New("test error")
@@ -115,6 +123,7 @@ func TestLoginErrorMsg(t *testing.T) {
 }
 
 func TestLoginLoadingState(t *testing.T) {
+	t.Parallel()
 	m := NewLoginModel()
 	m.state = LoginStateLoading
 

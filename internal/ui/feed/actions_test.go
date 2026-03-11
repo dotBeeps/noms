@@ -59,6 +59,7 @@ func createTestPostWithViewer(text, uri, cid string, likeURI, repostURI *string,
 
 // Test 1: TestLikePost — 'l' on unliked post applies optimistic update and fires API call.
 func TestLikePost(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{likeURI: "at://like/uri/123"}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/1", "cid1")
 	post.Post.LikeCount = int64Ptr(5)
@@ -106,6 +107,7 @@ func TestLikePost(t *testing.T) {
 
 // Test 2: TestUnlikePost — 'l' on liked post applies optimistic unlike and fires API call.
 func TestUnlikePost(t *testing.T) {
+	t.Parallel()
 	likeURI := "at://like/existing/456"
 	client := &actionMockClient{}
 	post := createTestPostWithViewer("Hello", "at://post/uri/2", "cid2", &likeURI, nil, 10, 0)
@@ -150,6 +152,7 @@ func TestUnlikePost(t *testing.T) {
 
 // Test 3: TestRepostFromFeed — 't' on unreposted post applies optimistic repost.
 func TestRepostFromFeed(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{repostURI: "at://repost/uri/789"}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/3", "cid3")
 	post.Post.RepostCount = int64Ptr(2)
@@ -188,6 +191,7 @@ func TestRepostFromFeed(t *testing.T) {
 
 // Test 4: TestUnRepostFromFeed — 't' on reposted post applies optimistic unrepost.
 func TestUnRepostFromFeed(t *testing.T) {
+	t.Parallel()
 	repostURI := "at://repost/existing/999"
 	client := &actionMockClient{}
 	post := createTestPostWithViewer("Hello", "at://post/uri/4", "cid4", nil, &repostURI, 0, 7)
@@ -229,6 +233,7 @@ func TestUnRepostFromFeed(t *testing.T) {
 
 // Test 5: TestReplyOpensCompose — 'r' on selected post emits ComposeReplyMsg with correct URI/CID.
 func TestReplyOpensCompose(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/5", "cid5")
 
@@ -257,6 +262,7 @@ func TestReplyOpensCompose(t *testing.T) {
 
 // Test 6: TestOptimisticUpdate — like count incremented immediately before API response.
 func TestOptimisticUpdate(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{likeURI: "at://like/new"}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/6", "cid6")
 	initialCount := int64(42)
@@ -282,6 +288,7 @@ func TestOptimisticUpdate(t *testing.T) {
 
 // Test 7: TestOptimisticRevertOnError — LikeResultMsg with error triggers rollback.
 func TestOptimisticRevertOnError(t *testing.T) {
+	t.Parallel()
 	apiErr := errors.New("network failure")
 	client := &actionMockClient{likeErr: apiErr}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/7", "cid7")
@@ -317,6 +324,7 @@ func TestOptimisticRevertOnError(t *testing.T) {
 
 // Test 8: TestViewThreadNavigation — enter key emits ViewThreadMsg with correct URI.
 func TestViewThreadNavigation(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{}
 	posts := []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("First", "a.bsky.social", "A", "at://uri/first", "cid1"),
@@ -345,6 +353,7 @@ func TestViewThreadNavigation(t *testing.T) {
 
 // Test 9: TestLikeResultMsgUpdatesRealURI — LikeResultMsg success updates viewer.Like with real URI.
 func TestLikeResultMsgUpdatesRealURI(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{likeURI: "at://like/real/uri"}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/9", "cid9")
 	post.Post.LikeCount = int64Ptr(5)
@@ -372,6 +381,7 @@ func TestLikeResultMsgUpdatesRealURI(t *testing.T) {
 
 // Test 10: TestRepostResultMsgUpdatesRealURI — RepostResultMsg success updates viewer.Repost with real URI.
 func TestRepostResultMsgUpdatesRealURI(t *testing.T) {
+	t.Parallel()
 	client := &actionMockClient{repostURI: "at://repost/real/uri"}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/10", "cid10")
 	post.Post.RepostCount = int64Ptr(3)

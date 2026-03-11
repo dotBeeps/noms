@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // VoreskyError represents an API error returned by the Voresky server.
@@ -58,7 +59,7 @@ func NewVoreskyClient(baseURL string, auth *VoreskyAuth) *VoreskyClient {
 	return &VoreskyClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		auth:    auth,
-		http:    &http.Client{},
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

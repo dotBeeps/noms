@@ -11,6 +11,7 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/feed"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -257,7 +258,7 @@ func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
 	notif := m.notifications[m.selected]
 
 	// For follow notifications, navigate to profile
-	if notif.Reason == ReasonFollow {
+	if notif.Reason == ReasonFollow && notif.Author != nil {
 		return m, func() tea.Msg {
 			return NavigateToProfileMsg{DID: notif.Author.Did}
 		}
@@ -343,6 +344,9 @@ func (m NotificationsModel) renderNotification(notif *bsky.NotificationListNotif
 	icon, action, style := getNotificationStyle(notif.Reason)
 
 	// Author display name
+	if notif.Author == nil {
+		return notificationStyle.Render(indicator + style.Render(icon) + " " + action)
+	}
 	authorName := notif.Author.Handle
 	if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
 		authorName = *notif.Author.DisplayName
@@ -360,7 +364,12 @@ func (m NotificationsModel) renderNotification(notif *bsky.NotificationListNotif
 	}
 
 	// Third line: timestamp
-	timeStr := formatRelativeTime(notif.IndexedAt)
+	var timeStr string
+	if t, err := time.Parse(time.RFC3339, notif.IndexedAt); err == nil {
+		timeStr = feed.FormatRelativeTime(t)
+	} else {
+		timeStr = notif.IndexedAt
+	}
 	b.WriteString(fmt.Sprintf("%s    %s", indicator, timeStyle.Render(timeStr)))
 
 	// Apply selection style
@@ -409,35 +418,14 @@ func getContentPreview(notif *bsky.NotificationListNotifications_Notification) s
 }
 
 func truncateText(text string, maxLen int) string {
-	if len(text) <= maxLen {
+	runes := []rune(text)
+	if len(runes) <= maxLen {
 		return text
 	}
 	// Find a good break point
-	truncated := text[:maxLen]
+	truncated := string(runes[:maxLen])
 	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxLen/2 {
 		truncated = truncated[:lastSpace]
 	}
 	return truncated + "..."
-}
-
-func formatRelativeTime(timestamp string) string {
-	t, err := time.Parse(time.RFC3339, timestamp)
-	if err != nil {
-		return timestamp
-	}
-
-	d := time.Since(t)
-
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	case d < 365*24*time.Hour:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
-	default:
-		return t.Format("Jan 2, 2006")
-	}
 }

@@ -7,6 +7,7 @@ import (
 )
 
 func TestParseFacetsNoFacets(t *testing.T) {
+	t.Parallel()
 	segments := ParseFacets("Hello world", nil)
 	if len(segments) != 1 {
 		t.Fatalf("len(segments) = %d, want 1", len(segments))
@@ -20,6 +21,7 @@ func TestParseFacetsNoFacets(t *testing.T) {
 }
 
 func TestParseFacetsMention(t *testing.T) {
+	t.Parallel()
 	text := "Hello @alice.bsky.social!"
 	textBytes := []byte(text)
 
@@ -65,6 +67,7 @@ func TestParseFacetsMention(t *testing.T) {
 }
 
 func TestParseFacetsLink(t *testing.T) {
+	t.Parallel()
 	text := "Check https://example.com out"
 	textBytes := []byte(text)
 	urlStart := indexOf(textBytes, 'h')
@@ -98,6 +101,7 @@ func TestParseFacetsLink(t *testing.T) {
 }
 
 func TestParseFacetsTag(t *testing.T) {
+	t.Parallel()
 	text := "Hello #test world"
 	textBytes := []byte(text)
 	tagStart := indexOf(textBytes, '#')
@@ -131,6 +135,7 @@ func TestParseFacetsTag(t *testing.T) {
 }
 
 func TestParseFacetsEmojiByteOffsets(t *testing.T) {
+	t.Parallel()
 	// CRITICAL: Emoji text to verify byte offset correctness.
 	// 👋 is 4 bytes in UTF-8.
 	text := "Hello 👋 @user.bsky.social check"
@@ -186,6 +191,7 @@ func TestParseFacetsEmojiByteOffsets(t *testing.T) {
 }
 
 func TestParseFacetsFullEmojiText(t *testing.T) {
+	t.Parallel()
 	// Full test from task: "Hello 👋 @user.bsky.social check https://example.com #test"
 	text := "Hello 👋 @user.bsky.social check https://example.com #test"
 	textBytes := []byte(text)
@@ -247,6 +253,7 @@ func TestParseFacetsFullEmojiText(t *testing.T) {
 }
 
 func TestDetectFacetsMentions(t *testing.T) {
+	t.Parallel()
 	text := "Hello @alice.bsky.social and @bob.test"
 	facets := DetectFacets(text)
 
@@ -268,6 +275,7 @@ func TestDetectFacetsMentions(t *testing.T) {
 }
 
 func TestDetectFacetsURLs(t *testing.T) {
+	t.Parallel()
 	text := "Visit https://example.com and http://test.org/path"
 	facets := DetectFacets(text)
 
@@ -288,6 +296,7 @@ func TestDetectFacetsURLs(t *testing.T) {
 }
 
 func TestDetectFacetsHashtags(t *testing.T) {
+	t.Parallel()
 	text := "Check out #golang and #atproto"
 	facets := DetectFacets(text)
 
@@ -308,6 +317,7 @@ func TestDetectFacetsHashtags(t *testing.T) {
 }
 
 func TestDetectFacetsEmojiByteOffsets(t *testing.T) {
+	t.Parallel()
 	// Verify byte offsets are correct with multi-byte emoji characters.
 	text := "Hello 👋 @user.bsky.social check https://example.com #test"
 	facets := DetectFacets(text)
@@ -335,6 +345,7 @@ func TestDetectFacetsEmojiByteOffsets(t *testing.T) {
 }
 
 func TestDetectFacetsEmptyText(t *testing.T) {
+	t.Parallel()
 	facets := DetectFacets("")
 	if len(facets) != 0 {
 		t.Errorf("expected 0 facets for empty text, got %d", len(facets))
@@ -342,6 +353,7 @@ func TestDetectFacetsEmptyText(t *testing.T) {
 }
 
 func TestParseFacetsOutOfBounds(t *testing.T) {
+	t.Parallel()
 	text := "short"
 	facets := []*bsky.RichtextFacet{
 		{
