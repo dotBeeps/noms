@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
@@ -37,29 +38,39 @@ type ThreadModel struct {
 	loading       bool
 	width, height int
 	client        bluesky.BlueskyClient
+	ownDID        string
 	targetURI     string
 	err           error
 	offset        int
+	spinner       spinner.Model
+	confirmDelete int // -1 = none
 }
 
-func NewThreadModel(client bluesky.BlueskyClient, uri string, width, height int) ThreadModel {
+func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int) ThreadModel {
+	sp := spinner.New(
+		spinner.WithSpinner(spinner.Dot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
+	)
 	return ThreadModel{
-		client:    client,
-		targetURI: uri,
-		width:     width,
-		height:    height,
-		loading:   true,
+		client:        client,
+		targetURI:     uri,
+		ownDID:        ownDID,
+		width:         width,
+		height:        height,
+		loading:       true,
+		spinner:       sp,
+		confirmDelete: -1,
 	}
 }
 
 func (m ThreadModel) Init() tea.Cmd {
-	return func() tea.Msg {
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
 		thread, err := m.client.GetPostThread(context.Background(), m.targetURI, 10)
 		if err != nil {
 			return ThreadErrorMsg{Err: err}
 		}
 		return ThreadLoadedMsg{Thread: thread}
-	}
+	})
 }
 
 func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -87,6 +98,31 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ThreadErrorMsg:
 		m.loading = false
 		m.err = msg.Err
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case feed.DeletePostResultMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			return m, nil
+		}
+		for i, p := range m.threadPosts {
+			if p.Post != nil && p.Post.Uri == msg.URI {
+				m.threadPosts = append(m.threadPosts[:i], m.threadPosts[i+1:]...)
+				if m.selectedIndex >= len(m.threadPosts) && m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+				break
+			}
+		}
+		m.confirmDelete = -1
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -149,7 +185,48 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, func() tea.Msg { return ViewProfileMsg{DID: p.Post.Author.Did} }
 				}
 			}
+		case "d":
+			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
+				p := m.threadPosts[m.selectedIndex]
+				if p.Post != nil && p.Post.Author != nil && p.Post.Author.Did == m.ownDID {
+					if m.confirmDelete == m.selectedIndex {
+						uri := p.Post.Uri
+						m.confirmDelete = -1
+						return m, func() tea.Msg { return feed.DeletePostMsg{URI: uri} }
+					}
+					m.confirmDelete = m.selectedIndex
+					return m, nil
+				}
+			}
 		}
+
+		if msg.String() != "d" {
+			m.confirmDelete = -1
+		}
+
+	case tea.MouseWheelMsg:
+		mouse := msg.Mouse()
+		switch mouse.Button {
+		case tea.MouseWheelDown:
+			for range 3 {
+				if m.selectedIndex < len(m.threadPosts)-1 {
+					m.selectedIndex++
+				}
+			}
+			if m.selectedIndex > m.offset+m.visibleCount()-1 {
+				m.offset = m.selectedIndex - m.visibleCount() + 1
+			}
+		case tea.MouseWheelUp:
+			for range 3 {
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+			}
+			if m.selectedIndex < m.offset {
+				m.offset = m.selectedIndex
+			}
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -159,17 +236,23 @@ func (m ThreadModel) visibleCount() int {
 }
 
 func (m ThreadModel) View() tea.View {
+	mouseView := func(s string) tea.View {
+		v := tea.NewView(s)
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
 	if m.err != nil {
 		s := theme.StyleError.Render("Error: "+m.err.Error()) + "\n\nPress 'esc' to go back"
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s))
+		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s))
 	}
 
 	if m.loading {
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "Loading thread..."))
+		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.spinner.View()+" Loading thread..."))
 	}
 
 	if len(m.threadPosts) == 0 {
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts found"))
+		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts found"))
 	}
 
 	var rendered strings.Builder
@@ -252,7 +335,7 @@ func (m ThreadModel) View() tea.View {
 		rendered.WriteString("\n")
 	}
 
-	return tea.NewView(rendered.String())
+	return mouseView(rendered.String())
 }
 
 func flattenThread(root *bsky.FeedGetPostThread_Output_Thread) []ThreadPost {

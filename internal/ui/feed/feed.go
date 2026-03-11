@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
@@ -23,6 +24,7 @@ type FeedRefreshMsg struct{}
 
 type FeedModel struct {
 	client        bluesky.BlueskyClient
+	ownDID        string
 	posts         []*bsky.FeedDefs_FeedViewPost
 	selectedIndex int
 	cursor        string
@@ -30,19 +32,28 @@ type FeedModel struct {
 	width, height int
 	err           error
 	offset        int
+	spinner       spinner.Model
+	confirmDelete int // index of post pending delete confirmation, -1 = none
 }
 
-func NewFeedModel(client bluesky.BlueskyClient, width, height int) FeedModel {
+func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int) FeedModel {
+	sp := spinner.New(
+		spinner.WithSpinner(spinner.Dot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
+	)
 	return FeedModel{
-		client:  client,
-		width:   width,
-		height:  height,
-		loading: true,
+		client:        client,
+		ownDID:        ownDID,
+		width:         width,
+		height:        height,
+		loading:       true,
+		spinner:       sp,
+		confirmDelete: -1,
 	}
 }
 
 func (m FeedModel) Init() tea.Cmd {
-	return m.fetchTimeline("")
+	return tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 }
 
 func (m FeedModel) fetchTimeline(cursor string) tea.Cmd {
@@ -77,6 +88,14 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.Err
 		return m, nil
 
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case FeedRefreshMsg:
 		m.loading = true
 		m.posts = nil
@@ -84,7 +103,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selectedIndex = 0
 		m.offset = 0
 		m.err = nil
-		return m, m.fetchTimeline("")
+		return m, tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 
 	case LikePostMsg:
 		if post := findPostByURI(m.posts, msg.URI); post != nil {
@@ -154,6 +173,54 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case DeletePostResultMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			return m, nil
+		}
+		for i, p := range m.posts {
+			if p.Post != nil && p.Post.Uri == msg.URI {
+				m.posts = append(m.posts[:i], m.posts[i+1:]...)
+				if m.selectedIndex >= len(m.posts) && m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+				if m.offset > 0 && m.offset >= len(m.posts) {
+					m.offset = max(0, len(m.posts)-1)
+				}
+				break
+			}
+		}
+		m.confirmDelete = -1
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		mouse := msg.Mouse()
+		switch mouse.Button {
+		case tea.MouseWheelDown:
+			for range 3 {
+				if m.selectedIndex < len(m.posts)-1 {
+					m.selectedIndex++
+				}
+			}
+			if m.selectedIndex > m.offset+m.visibleCount()-1 {
+				m.offset = m.selectedIndex - m.visibleCount() + 1
+			}
+			if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
+				m.loading = true
+				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
+			}
+		case tea.MouseWheelUp:
+			for range 3 {
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+			}
+			if m.selectedIndex < m.offset {
+				m.offset = m.selectedIndex
+			}
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		if m.err != nil && msg.String() == "r" {
 			return m, func() tea.Msg { return FeedRefreshMsg{} }
@@ -168,7 +235,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
 					m.loading = true
-					return m, m.fetchTimeline(m.cursor)
+					return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
 				}
 			}
 		case "k", "up":
@@ -200,6 +267,26 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			return m, func() tea.Msg { return ComposeMsg{} }
+		case "d":
+			if m.selectedIndex < len(m.posts) {
+				post := m.posts[m.selectedIndex]
+				if post.Post != nil && post.Post.Author != nil && post.Post.Author.Did == m.ownDID {
+					if m.confirmDelete == m.selectedIndex {
+						// Second press — confirm delete
+						uri := post.Post.Uri
+						m.confirmDelete = -1
+						return m, func() tea.Msg { return DeletePostMsg{URI: uri} }
+					}
+					// First press — enter confirmation
+					m.confirmDelete = m.selectedIndex
+					return m, nil
+				}
+			}
+		}
+
+		// Any non-d key cancels pending delete confirmation
+		if msg.String() != "d" {
+			m.confirmDelete = -1
 		}
 	}
 	return m, nil
@@ -211,26 +298,29 @@ func (m FeedModel) visibleCount() int {
 }
 
 func (m FeedModel) View() tea.View {
+	var content string
+
 	if m.err != nil {
 		s := theme.StyleError.Render("Error: "+m.err.Error()) + "\n\nPress 'r' to retry"
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s))
-	}
-
-	if len(m.posts) == 0 {
+		content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
+	} else if len(m.posts) == 0 {
 		if m.loading {
-			return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "Loading..."))
+			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.spinner.View()+" Loading feed...")
+		} else {
+			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts yet")
 		}
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts yet"))
+	} else {
+		var rendered string
+		for i := m.offset; i < len(m.posts) && i < m.offset+m.visibleCount()+1; i++ {
+			rendered += RenderPost(m.posts[i], m.width, i == m.selectedIndex)
+		}
+		if m.loading {
+			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading more...")
+		}
+		content = rendered
 	}
 
-	var rendered string
-	for i := m.offset; i < len(m.posts) && i < m.offset+m.visibleCount()+1; i++ {
-		rendered += RenderPost(m.posts[i], m.width, i == m.selectedIndex)
-	}
-
-	if m.loading {
-		rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, "Loading more...")
-	}
-
-	return tea.NewView(rendered)
+	v := tea.NewView(content)
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }

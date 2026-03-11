@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -65,6 +66,8 @@ type App struct {
 	help      components.HelpModel
 	showHelp  bool
 	err       error
+
+	ownDID string
 }
 
 func NewApp() App {
@@ -142,7 +145,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if contentHeight < 1 {
 			contentHeight = 1
 		}
-		m.feedModel = feed.NewFeedModel(m.client, m.width, contentHeight)
+		m.feedModel = feed.NewFeedModel(m.client, msg.Session.DID, m.width, contentHeight)
 		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight)
 		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight)
 
@@ -153,7 +156,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.Handle = msg.Session.Handle
 		m.statusBar.DID = msg.Session.DID
 		m.statusBar.Connected = true
-		m.help.SetContext(components.HelpContextMain)
+		m.ownDID = msg.Session.DID
+		m.help.SetContext(components.HelpContextFeed)
+
+		cmds = append(cmds, scheduleAutoRefresh())
 
 		return m, tea.Batch(cmds...)
 
@@ -173,6 +179,35 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case feed.ComposeReplyMsg:
 		return m.navigateToComposeReply(msg.URI)
+
+	case feed.DeletePostMsg:
+		if m.client != nil {
+			client := m.client
+			uri := msg.URI
+			return m, func() tea.Msg {
+				err := client.DeletePost(context.Background(), uri)
+				return feed.DeletePostResultMsg{URI: uri, Err: err}
+			}
+		}
+		return m, nil
+
+	case feed.DeletePostResultMsg:
+		if m.client != nil {
+			updated, cmd := m.feedModel.Update(msg)
+			m.feedModel = updated.(feed.FeedModel)
+			cmds = append(cmds, cmd)
+			switch m.screen {
+			case ScreenThread:
+				updated, cmd := m.threadModel.Update(msg)
+				m.threadModel = updated.(thread.ThreadModel)
+				cmds = append(cmds, cmd)
+			case ScreenProfile:
+				updated, cmd := m.profileModel.Update(msg)
+				m.profileModel = updated.(profile.ProfileModel)
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case feed.FeedLoadedMsg, feed.FeedErrorMsg, feed.FeedRefreshMsg,
 		feed.LikeResultMsg, feed.UnlikeResultMsg,
@@ -283,6 +318,20 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 		return m, tea.Batch(cmds...)
+
+	case autoRefreshMsg:
+		if m.client != nil {
+			client := m.client
+			cmds = append(cmds, func() tea.Msg {
+				count, err := client.GetUnreadCount(context.Background())
+				if err != nil {
+					return nil
+				}
+				return notifications.UnreadCountMsg{Count: count}
+			})
+			cmds = append(cmds, scheduleAutoRefresh())
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	// Delegate remaining messages to login screen if active
@@ -336,7 +385,12 @@ func (m App) navigateToThread(uri string) (App, tea.Cmd) {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
-	m.threadModel = thread.NewThreadModel(m.client, uri, m.width, contentHeight)
+	ownDID := ""
+	if m.session != nil {
+		ownDID = m.session.DID
+	}
+	m.threadModel = thread.NewThreadModel(m.client, uri, ownDID, m.width, contentHeight)
+	m.help.SetContext(components.HelpContextThread)
 	return m, m.threadModel.Init()
 }
 
@@ -352,6 +406,7 @@ func (m App) navigateToProfile(did string) (App, tea.Cmd) {
 		ownDID = m.session.DID
 	}
 	m.profileModel = profile.NewProfileModel(m.client, did, ownDID, m.width, contentHeight)
+	m.help.SetContext(components.HelpContextProfile)
 	return m, m.profileModel.Init()
 }
 
@@ -364,6 +419,7 @@ func (m App) navigateToCompose(mode compose.ComposeMode, parentPost interface{})
 	}
 	// parentPost is nil for new posts
 	m.composeModel = compose.NewComposeModel(m.client, mode, nil, m.width, contentHeight)
+	m.help.SetContext(components.HelpContextCompose)
 	return m, m.composeModel.Init()
 }
 
@@ -376,6 +432,7 @@ func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
 	}
 	client := m.client
 	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight)
+	m.help.SetContext(components.HelpContextCompose)
 	return m, func() tea.Msg {
 		post, err := client.GetPost(context.Background(), uri)
 		if err != nil {
@@ -389,12 +446,16 @@ func (m *App) updateTabBarForScreen() {
 	switch m.screen {
 	case ScreenFeed:
 		m.tabBar.SetActiveTab(components.TabFeed)
+		m.help.SetContext(components.HelpContextFeed)
 	case ScreenNotifications:
 		m.tabBar.SetActiveTab(components.TabNotifications)
+		m.help.SetContext(components.HelpContextNotifications)
 	case ScreenProfile:
 		m.tabBar.SetActiveTab(components.TabProfile)
+		m.help.SetContext(components.HelpContextProfile)
 	case ScreenSearch:
 		m.tabBar.SetActiveTab(components.TabSearch)
+		m.help.SetContext(components.HelpContextSearch)
 	}
 }
 
@@ -440,10 +501,12 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "1":
 			m.screen = ScreenFeed
 			m.tabBar.SetActiveTab(components.TabFeed)
+			m.help.SetContext(components.HelpContextFeed)
 			return m, nil
 		case "2":
 			m.screen = ScreenNotifications
 			m.tabBar.SetActiveTab(components.TabNotifications)
+			m.help.SetContext(components.HelpContextNotifications)
 			if m.client != nil && !m.notifInitialized {
 				m.notifInitialized = true
 				cmds = append(cmds, m.notifModel.Init())
@@ -452,6 +515,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "3":
 			m.screen = ScreenProfile
 			m.tabBar.SetActiveTab(components.TabProfile)
+			m.help.SetContext(components.HelpContextProfile)
 			if m.client != nil && !m.selfProfileCreated {
 				m.selfProfileCreated = true
 				contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
@@ -465,6 +529,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "4":
 			m.screen = ScreenSearch
 			m.tabBar.SetActiveTab(components.TabSearch)
+			m.help.SetContext(components.HelpContextSearch)
 			return m, nil
 		}
 	}
@@ -703,3 +768,12 @@ func (m *App) SetSearchModel(sm search.SearchModel) {
 
 // LoginSuccessMsg re-exports login.LoginSuccessMsg for external package access.
 type LoginSuccessMsg = login.LoginSuccessMsg
+
+type autoRefreshMsg struct{}
+
+func scheduleAutoRefresh() tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(30 * time.Second)
+		return autoRefreshMsg{}
+	}
+}

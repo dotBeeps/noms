@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/feed"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -25,15 +27,22 @@ type ProfileModel struct {
 	cursor     string
 
 	selectedIndex int
+	offset        int
 	loading       bool
 	loadingFeed   bool
 	err           error
 	width         int
 	height        int
+	spinner       spinner.Model
+	confirmDelete int // -1 = none
 }
 
 // NewProfileModel creates a new profile model.
 func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width, height int) ProfileModel {
+	sp := spinner.New(
+		spinner.WithSpinner(spinner.Dot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
+	)
 	return ProfileModel{
 		client:        client,
 		viewDID:       viewDID,
@@ -43,6 +52,8 @@ func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width
 		height:        height,
 		loading:       true,
 		selectedIndex: 0,
+		spinner:       sp,
+		confirmDelete: -1,
 	}
 }
 
@@ -82,6 +93,7 @@ func (m ProfileModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.fetchProfile(),
 		m.fetchAuthorFeed(""),
+		m.spinner.Tick,
 	)
 }
 
@@ -175,6 +187,63 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case spinner.TickMsg:
+		if m.loading || m.loadingFeed {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case feed.DeletePostResultMsg:
+		if msg.Err != nil {
+			m.err = msg.Err
+			return m, nil
+		}
+		for i, p := range m.authorFeed {
+			if p.Post != nil && p.Post.Uri == msg.URI {
+				m.authorFeed = append(m.authorFeed[:i], m.authorFeed[i+1:]...)
+				if m.selectedIndex >= len(m.authorFeed) && m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+				if m.offset > 0 && m.offset >= len(m.authorFeed) {
+					m.offset = max(0, len(m.authorFeed)-1)
+				}
+				break
+			}
+		}
+		m.confirmDelete = -1
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		mouse := msg.Mouse()
+		switch mouse.Button {
+		case tea.MouseWheelDown:
+			for range 3 {
+				if m.selectedIndex < len(m.authorFeed)-1 {
+					m.selectedIndex++
+				}
+			}
+			vc := max(1, m.height/6)
+			if m.selectedIndex > m.offset+vc-1 {
+				m.offset = m.selectedIndex - vc + 1
+			}
+			if m.selectedIndex >= len(m.authorFeed)-3 && m.cursor != "" && !m.loadingFeed {
+				m.loadingFeed = true
+				return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
+			}
+		case tea.MouseWheelUp:
+			for range 3 {
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+			}
+			if m.selectedIndex < m.offset {
+				m.offset = m.selectedIndex
+			}
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 	}
@@ -189,17 +258,22 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.selectedIndex < len(m.authorFeed)-1 {
 			m.selectedIndex++
+			vc := max(1, m.height/6)
+			if m.selectedIndex > m.offset+vc-1 {
+				m.offset++
+			}
 		} else if m.cursor != "" && !m.loadingFeed {
-			// Fetch more posts
 			m.loadingFeed = true
-			return m, m.fetchAuthorFeed(m.cursor)
+			return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
 		}
 
 	case "k", "up":
 		if m.selectedIndex > 0 {
 			m.selectedIndex--
+			if m.selectedIndex < m.offset {
+				m.offset = m.selectedIndex
+			}
 		}
-		// Note: selectedIndex 0 is the first post; header is always visible above
 
 	case "f":
 		if !m.isOwnProfile && m.profile != nil {
@@ -211,8 +285,9 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.loadingFeed = true
 		m.cursor = ""
 		m.selectedIndex = 0
+		m.offset = 0
 		m.authorFeed = nil
-		return m, tea.Batch(m.fetchProfile(), m.fetchAuthorFeed(""))
+		return m, tea.Batch(m.fetchProfile(), m.fetchAuthorFeed(""), m.spinner.Tick)
 
 	case "enter":
 		if m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
@@ -224,10 +299,28 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case "d":
+		if m.isOwnProfile && m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
+			post := m.authorFeed[m.selectedIndex]
+			if post.Post != nil {
+				if m.confirmDelete == m.selectedIndex {
+					uri := post.Post.Uri
+					m.confirmDelete = -1
+					return m, func() tea.Msg { return feed.DeletePostMsg{URI: uri} }
+				}
+				m.confirmDelete = m.selectedIndex
+				return m, nil
+			}
+		}
+
 	case "esc", "backspace":
 		return m, func() tea.Msg {
 			return BackMsg{}
 		}
+	}
+
+	if key != "d" {
+		m.confirmDelete = -1
 	}
 
 	return m, nil
@@ -235,18 +328,24 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // View renders the profile screen.
 func (m ProfileModel) View() tea.View {
+	mouseView := func(s string) tea.View {
+		v := tea.NewView(s)
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
 	if m.err != nil {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(theme.ColorError).
 			Padding(1, 2)
-		return tea.NewView(errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry or 'esc' to go back", m.err)))
+		return mouseView(errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry or 'esc' to go back", m.err)))
 	}
 
 	if m.loading && m.profile == nil {
 		loadingStyle := lipgloss.NewStyle().
 			Foreground(theme.ColorAccent).
 			Padding(1, 2)
-		return tea.NewView(loadingStyle.Render("Loading profile..."))
+		return mouseView(loadingStyle.Render(m.spinner.View() + " Loading profile..."))
 	}
 
 	var b strings.Builder
@@ -276,10 +375,10 @@ func (m ProfileModel) View() tea.View {
 		loadingStyle := lipgloss.NewStyle().
 			Foreground(theme.ColorMuted).
 			Padding(0, 2)
-		b.WriteString(loadingStyle.Render("Loading more posts..."))
+		b.WriteString(loadingStyle.Render(m.spinner.View() + " Loading more posts..."))
 	}
 
-	return tea.NewView(b.String())
+	return mouseView(b.String())
 }
 
 func (m ProfileModel) renderHeader(b *strings.Builder) {
@@ -407,7 +506,9 @@ func (m ProfileModel) renderFeed(b *strings.Builder) {
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(theme.ColorMuted)
 
-	for i, post := range m.authorFeed {
+	vc := max(1, m.height/6)
+	for i := m.offset; i < len(m.authorFeed) && i < m.offset+vc+1; i++ {
+		post := m.authorFeed[i]
 		if post.Post == nil {
 			continue
 		}

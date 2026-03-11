@@ -192,8 +192,8 @@ func TestHelpContextChange(t *testing.T) {
 	updated, _ := app.Update(login.LoginSuccessMsg{Session: session})
 	app = updated.(App)
 
-	if app.help.Context != components.HelpContextMain {
-		t.Errorf("Expected help context to change to Main after login, got %v", app.help.Context)
+	if app.help.Context != components.HelpContextFeed {
+		t.Errorf("Expected help context to be Feed after login, got %v", app.help.Context)
 	}
 }
 

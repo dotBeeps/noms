@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
@@ -68,6 +70,7 @@ type SearchModel struct {
 	query         string
 	err           error
 	offset        int // For scrolling
+	spinner       spinner.Model
 }
 
 func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel {
@@ -75,6 +78,11 @@ func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel
 	ti.Placeholder = "Type to search..."
 	ti.Focus()
 	ti.Prompt = "🔍 "
+
+	sp := spinner.New(
+		spinner.WithSpinner(spinner.Dot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
+	)
 
 	return SearchModel{
 		client:        client,
@@ -86,6 +94,7 @@ func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel
 		loading:       false,
 		width:         width,
 		height:        height,
+		spinner:       sp,
 	}
 }
 
@@ -137,7 +146,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.actorResults = nil
 			if m.query != "" {
 				m.loading = true
-				return m, m.performSearch(m.query, "", m.mode, false)
+				return m, tea.Batch(m.performSearch(m.query, "", m.mode, false), m.spinner.Tick)
 			}
 			return m, nil
 
@@ -176,16 +185,56 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.selectedIndex < limit-1 {
 					m.selectedIndex++
 				} else if m.cursor != "" && !m.loading {
-					// Load more
 					m.loading = true
-					return m, m.performSearch(m.query, m.cursor, m.mode, true)
+					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
 				}
-				// Basic scrolling
 				if m.selectedIndex > m.offset+scrollMargin {
 					m.offset = m.selectedIndex - scrollMargin
 				}
 				return m, nil
 			}
+		}
+
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		if !m.input.Focused() {
+			mouse := msg.Mouse()
+			limit := len(m.postResults)
+			if m.mode == ModePeople {
+				limit = len(m.actorResults)
+			}
+			switch mouse.Button {
+			case tea.MouseWheelDown:
+				for range 3 {
+					if m.selectedIndex < limit-1 {
+						m.selectedIndex++
+					}
+				}
+				if m.selectedIndex > m.offset+scrollMargin {
+					m.offset = m.selectedIndex - scrollMargin
+				}
+				if m.selectedIndex >= limit-3 && m.cursor != "" && !m.loading {
+					m.loading = true
+					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
+				}
+			case tea.MouseWheelUp:
+				for range 3 {
+					if m.selectedIndex > 0 {
+						m.selectedIndex--
+					}
+				}
+				if m.selectedIndex < m.offset {
+					m.offset = m.selectedIndex
+				}
+			}
+			return m, nil
 		}
 
 	case debounceMsg:
@@ -199,7 +248,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.actorResults = nil
 				if q != "" {
 					m.loading = true
-					return m, m.performSearch(q, "", m.mode, false)
+					return m, tea.Batch(m.performSearch(q, "", m.mode, false), m.spinner.Tick)
 				}
 			}
 		}
@@ -294,7 +343,7 @@ func (m SearchModel) View() tea.View {
 	} else if m.query == "" {
 		b.WriteString(theme.StyleMuted.Render("Type to search..."))
 	} else if m.loading && len(m.postResults) == 0 && len(m.actorResults) == 0 {
-		b.WriteString("Searching...")
+		b.WriteString(m.spinner.View() + " Searching...")
 	} else if m.mode == ModePosts && len(m.postResults) == 0 {
 		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query)))
 	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
@@ -364,7 +413,7 @@ func (m SearchModel) View() tea.View {
 	// Status bar
 	status := ""
 	if m.loading {
-		status = "Searching..."
+		status = m.spinner.View() + " Searching..."
 	} else if m.mode == ModePosts {
 		status = fmt.Sprintf("%d results", len(m.postResults))
 	} else {
@@ -372,5 +421,7 @@ func (m SearchModel) View() tea.View {
 	}
 	b.WriteString(theme.StyleMuted.Render(status))
 
-	return tea.NewView(b.String())
+	v := tea.NewView(b.String())
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }

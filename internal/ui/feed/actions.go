@@ -42,6 +42,17 @@ type ComposeReplyMsg struct {
 	CID string
 }
 
+// DeletePostMsg is emitted when the user confirms deletion of their own post.
+type DeletePostMsg struct {
+	URI string
+}
+
+// DeletePostResultMsg is returned after a delete API call completes.
+type DeletePostResultMsg struct {
+	URI string
+	Err error
+}
+
 // performLike fires an async API call to like a post and returns a LikeResultMsg.
 func performLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
 	return func() tea.Msg {

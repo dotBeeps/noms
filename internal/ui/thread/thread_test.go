@@ -75,6 +75,17 @@ func makePost(uri, handle, text string) *bsky.FeedDefs_PostView {
 }
 
 func doUpdate(m ThreadModel, msg tea.Msg) ThreadModel {
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, cmd := range batch {
+			if cmd != nil {
+				subMsg := cmd()
+				if subMsg != nil {
+					m = doUpdate(m, subMsg)
+				}
+			}
+		}
+		return m
+	}
 	mModel, _ := m.Update(msg)
 	return mModel.(ThreadModel)
 }
@@ -91,7 +102,7 @@ func TestThreadRenderSinglePost(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://uri1", 80, 24)
+	m := NewThreadModel(client, "at://uri1", "", 80, 24)
 
 	cmd := m.Init()
 	msg := cmd()
@@ -120,7 +131,7 @@ func TestThreadRenderWithParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	view := m.View().Content
@@ -154,7 +165,7 @@ func TestThreadRenderDeepParentChain(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 3 {
@@ -184,7 +195,7 @@ func TestThreadRenderReplies(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -221,7 +232,7 @@ func TestThreadRenderNestedReplies(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 3 {
@@ -244,7 +255,7 @@ func TestThreadTargetPostHighlighted(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if !m.threadPosts[0].IsTarget {
@@ -271,7 +282,7 @@ func TestThreadScrollNavigation(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	// Currently at index 0
@@ -291,7 +302,7 @@ func TestThreadScrollNavigation(t *testing.T) {
 // 8. TestThreadBackNavigation
 func TestThreadBackNavigation(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "esc"})
 	if cmd == nil {
@@ -318,7 +329,7 @@ func TestThreadMissingParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -346,7 +357,7 @@ func TestThreadActionKeybinds(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	// Test Like (l)
@@ -377,7 +388,7 @@ func TestThreadActionKeybinds(t *testing.T) {
 // 11. TestThreadLoadingState
 func TestThreadLoadingState(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
 	if !m.loading {
 		t.Errorf("Expected loading state initially")
 	}
@@ -391,7 +402,7 @@ func TestThreadLoadingState(t *testing.T) {
 // 12. TestThreadErrorState
 func TestThreadErrorState(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
 	m = doUpdate(m, ThreadErrorMsg{Err: errors.New("network error")})
 
 	view := m.View().Content
@@ -415,7 +426,7 @@ func TestThreadBlockedParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -446,7 +457,7 @@ func TestThreadEnterOnReply(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	// Move to the reply (index 1)
@@ -473,7 +484,7 @@ func TestThreadEnterOnReply(t *testing.T) {
 // 15. TestThreadWindowSizeMsg
 func TestThreadWindowSizeMsg(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = updated.(ThreadModel)
@@ -496,7 +507,7 @@ func TestThreadNotFoundRoot(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://notfound", 80, 24)
+	m := NewThreadModel(client, "at://notfound", "", 80, 24)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 1 {

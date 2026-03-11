@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
@@ -102,7 +103,16 @@ var (
 			Padding(1, 2)
 )
 
-// NotificationsModel is the Bubble Tea model for the notifications screen
+type notifGroup struct {
+	reason  string
+	subject string
+	authors []string
+	count   int
+	allRead bool
+	notif   *bsky.NotificationListNotifications_Notification
+	preview string
+}
+
 type NotificationsModel struct {
 	notifications []*bsky.NotificationListNotifications_Notification
 	selected      int
@@ -111,17 +121,26 @@ type NotificationsModel struct {
 	unreadCount   int
 	width         int
 	height        int
+	offset        int
 	client        bluesky.BlueskyClient
 	err           error
+	spinner       spinner.Model
+	groups        []notifGroup
 }
 
 // NewNotificationsModel creates a new notifications model
 func NewNotificationsModel(client bluesky.BlueskyClient, width, height int) NotificationsModel {
+	sp := spinner.New(
+		spinner.WithSpinner(spinner.Dot),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
+	)
 	return NotificationsModel{
 		client:        client,
 		width:         width,
 		height:        height,
 		notifications: make([]*bsky.NotificationListNotifications_Notification, 0),
+		loading:       true,
+		spinner:       sp,
 	}
 }
 
@@ -130,6 +149,7 @@ func (m NotificationsModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.fetchNotificationsCmd,
 		m.fetchUnreadCountCmd,
+		m.spinner.Tick,
 	)
 }
 
@@ -195,6 +215,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.notifications = append(m.notifications, msg.Notifications...)
 		}
+		m.buildGroups()
 		return m, nil
 
 	case NotificationsErrorMsg:
@@ -206,6 +227,42 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.unreadCount = msg.Count
 		return m, nil
 
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		mouse := msg.Mouse()
+		switch mouse.Button {
+		case tea.MouseWheelDown:
+			for range 3 {
+				if m.selected < len(m.groups)-1 {
+					m.selected++
+				}
+			}
+			if m.selected > m.offset+m.visibleCount()-1 {
+				m.offset = m.selected - m.visibleCount() + 1
+			}
+			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
+				m.loading = true
+				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
+			}
+		case tea.MouseWheelUp:
+			for range 3 {
+				if m.selected > 0 {
+					m.selected--
+				}
+			}
+			if m.selected < m.offset {
+				m.offset = m.selected
+			}
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 	}
@@ -213,15 +270,22 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m NotificationsModel) visibleCount() int {
+	// Each notification is ~3-4 lines, estimate visible count
+	return max(1, m.height/4)
+}
+
 func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
-		if m.selected < len(m.notifications)-1 {
+		if m.selected < len(m.groups)-1 {
 			m.selected++
-			// Load more when near bottom
-			if m.selected >= len(m.notifications)-3 && m.cursor != "" && !m.loading {
+			if m.selected > m.offset+m.visibleCount()-1 {
+				m.offset++
+			}
+			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, m.fetchNotificationsCmd
+				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
 			}
 		}
 		return m, nil
@@ -229,6 +293,9 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	case "k", "up":
 		if m.selected > 0 {
 			m.selected--
+			if m.selected < m.offset {
+				m.offset = m.selected
+			}
 		}
 		return m, nil
 
@@ -236,14 +303,16 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 		return m.handleNavigation()
 
 	case "r":
-		// Refresh notifications and mark as read
 		m.loading = true
 		m.cursor = ""
 		m.notifications = nil
+		m.groups = nil
 		m.selected = 0
+		m.offset = 0
 		return m, tea.Batch(
 			m.fetchNotificationsCmd,
 			m.markAsReadCmd(),
+			m.spinner.Tick,
 		)
 	}
 
@@ -251,28 +320,26 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 }
 
 func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
-	if len(m.notifications) == 0 || m.selected >= len(m.notifications) {
+	if len(m.groups) == 0 || m.selected >= len(m.groups) {
 		return m, nil
 	}
 
-	notif := m.notifications[m.selected]
+	g := m.groups[m.selected]
 
-	// For follow notifications, navigate to profile
-	if notif.Reason == ReasonFollow && notif.Author != nil {
+	if g.reason == ReasonFollow && g.notif != nil && g.notif.Author != nil {
 		return m, func() tea.Msg {
-			return NavigateToProfileMsg{DID: notif.Author.Did}
+			return NavigateToProfileMsg{DID: g.notif.Author.Did}
 		}
 	}
 
-	// For other notification types, navigate to the referenced post
-	var uri string
-	if notif.ReasonSubject != nil && *notif.ReasonSubject != "" {
-		uri = *notif.ReasonSubject
-	} else if notif.Uri != "" {
-		uri = notif.Uri
+	if g.subject != "" {
+		return m, func() tea.Msg {
+			return NavigateToPostMsg{URI: g.subject}
+		}
 	}
 
-	if uri != "" {
+	if g.notif != nil && g.notif.Uri != "" {
+		uri := g.notif.Uri
 		return m, func() tea.Msg {
 			return NavigateToPostMsg{URI: uri}
 		}
@@ -281,11 +348,9 @@ func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View implements tea.Model
 func (m NotificationsModel) View() tea.View {
 	var content strings.Builder
 
-	// Header with unread count
 	header := "Notifications"
 	if m.unreadCount > 0 {
 		header = fmt.Sprintf("Notifications (%d unread)", m.unreadCount)
@@ -293,86 +358,135 @@ func (m NotificationsModel) View() tea.View {
 	content.WriteString(theme.StyleHeader.Render(header))
 	content.WriteString("\n\n")
 
-	// Handle loading state
-	if m.loading && len(m.notifications) == 0 {
-		content.WriteString(loadingStyle.Render("Loading notifications..."))
-		return tea.NewView(content.String())
+	mouseView := func(s string) tea.View {
+		v := tea.NewView(s)
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
-	// Handle error state
+	if m.loading && len(m.notifications) == 0 {
+		content.WriteString(loadingStyle.Render(m.spinner.View() + " Loading notifications..."))
+		return mouseView(content.String())
+	}
+
 	if m.err != nil {
 		content.WriteString(errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
-		return tea.NewView(content.String())
+		return mouseView(content.String())
 	}
 
-	// Handle empty state
-	if len(m.notifications) == 0 {
+	if len(m.groups) == 0 {
 		content.WriteString(emptyStyle.Render("No notifications yet"))
-		return tea.NewView(content.String())
+		return mouseView(content.String())
 	}
 
-	// Render notifications
-	for i, notif := range m.notifications {
-		content.WriteString(m.renderNotification(notif, i == m.selected))
+	for i := m.offset; i < len(m.groups) && i < m.offset+m.visibleCount()+1; i++ {
+		content.WriteString(m.renderGroup(m.groups[i], i == m.selected))
 		content.WriteString("\n")
 	}
 
-	// Show loading indicator at bottom if loading more
 	if m.loading {
-		content.WriteString(loadingStyle.Render("Loading more..."))
+		content.WriteString(loadingStyle.Render(m.spinner.View() + " Loading more..."))
 	}
 
-	return tea.NewView(content.String())
+	return mouseView(content.String())
 }
 
-func (m NotificationsModel) renderNotification(notif *bsky.NotificationListNotifications_Notification, selected bool) string {
+func (m *NotificationsModel) buildGroups() {
+	m.groups = nil
+	seen := make(map[string]int)
+
+	for _, notif := range m.notifications {
+		if (notif.Reason == ReasonLike || notif.Reason == ReasonRepost) && notif.ReasonSubject != nil && *notif.ReasonSubject != "" {
+			key := notif.Reason + ":" + *notif.ReasonSubject
+			if idx, ok := seen[key]; ok {
+				g := &m.groups[idx]
+				g.count++
+				if notif.Author != nil {
+					name := notif.Author.Handle
+					if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
+						name = *notif.Author.DisplayName
+					}
+					g.authors = append(g.authors, name)
+				}
+				if !notif.IsRead {
+					g.allRead = false
+				}
+				continue
+			}
+		}
+
+		authorName := ""
+		if notif.Author != nil {
+			authorName = notif.Author.Handle
+			if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
+				authorName = *notif.Author.DisplayName
+			}
+		}
+
+		subject := ""
+		if notif.ReasonSubject != nil {
+			subject = *notif.ReasonSubject
+		}
+
+		g := notifGroup{
+			reason:  notif.Reason,
+			subject: subject,
+			authors: []string{authorName},
+			count:   1,
+			allRead: notif.IsRead,
+			notif:   notif,
+			preview: getContentPreview(notif),
+		}
+
+		if (notif.Reason == ReasonLike || notif.Reason == ReasonRepost) && subject != "" {
+			seen[notif.Reason+":"+subject] = len(m.groups)
+		}
+
+		m.groups = append(m.groups, g)
+	}
+}
+
+func (m NotificationsModel) renderGroup(g notifGroup, selected bool) string {
 	var b strings.Builder
 
-	// Selection indicator
 	indicator := "  "
 	if selected {
 		indicator = "▶ "
 	}
 
-	// Unread indicator
 	unreadDot := ""
-	if !notif.IsRead {
+	if !g.allRead {
 		unreadDot = unreadDotStyle.Render("●") + " "
 	}
 
-	// Icon and action based on notification type
-	icon, action, style := getNotificationStyle(notif.Reason)
+	icon, action, style := getNotificationStyle(g.reason)
 
-	// Author display name
-	if notif.Author == nil {
-		return notificationStyle.Render(indicator + style.Render(icon) + " " + action)
+	authorDisplay := ""
+	if len(g.authors) > 0 {
+		authorDisplay = g.authors[0]
 	}
-	authorName := notif.Author.Handle
-	if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
-		authorName = *notif.Author.DisplayName
+	if g.count > 1 {
+		authorDisplay = fmt.Sprintf("%s and %d others", authorDisplay, g.count-1)
 	}
 
-	// First line: icon + author + action
-	authorStyled := authorStyle.Render(authorName)
+	authorStyled := authorStyle.Render(authorDisplay)
 	actionLine := fmt.Sprintf("%s%s %s", unreadDot, style.Render(icon), action)
 	b.WriteString(fmt.Sprintf("%s%s %s\n", indicator, authorStyled, actionLine))
 
-	// Second line: content preview (if applicable)
-	preview := getContentPreview(notif)
-	if preview != "" {
-		b.WriteString(fmt.Sprintf("%s    %s\n", indicator, contentPreviewStyle.Render(preview)))
+	if g.preview != "" {
+		b.WriteString(fmt.Sprintf("%s    %s\n", indicator, contentPreviewStyle.Render(g.preview)))
 	}
 
-	// Third line: timestamp
 	var timeStr string
-	if t, err := time.Parse(time.RFC3339, notif.IndexedAt); err == nil {
-		timeStr = feed.FormatRelativeTime(t)
-	} else {
-		timeStr = notif.IndexedAt
+	if g.notif != nil {
+		if t, err := time.Parse(time.RFC3339, g.notif.IndexedAt); err == nil {
+			timeStr = feed.FormatRelativeTime(t)
+		} else {
+			timeStr = g.notif.IndexedAt
+		}
 	}
 	b.WriteString(fmt.Sprintf("%s    %s", indicator, timeStyle.Render(timeStr)))
 
-	// Apply selection style
 	result := b.String()
 	if selected {
 		result = selectedStyle.Render(result)

@@ -145,7 +145,7 @@ func TestFeedRenderSinglePost(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -174,7 +174,7 @@ func TestFeedRenderMultiplePosts(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -330,7 +330,7 @@ func TestScrollDown(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -366,7 +366,7 @@ func TestScrollUp(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.selectedIndex = 2
 	m.loading = false
@@ -410,7 +410,7 @@ func TestScrollPagination(t *testing.T) {
 		timelineCursor: "next-page-cursor",
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = posts[:20]
 	m.cursor = "next-page-cursor"
 	m.loading = false
@@ -435,7 +435,7 @@ func TestEmptyFeed(t *testing.T) {
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = nil
 	m.loading = false
 
@@ -452,7 +452,7 @@ func TestFeedLoading(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	// loading is set to true in NewFeedModel
 
 	v := m.View()
@@ -473,7 +473,7 @@ func TestPostSelection(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -510,7 +510,7 @@ func TestPostActionKeybinds(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -584,7 +584,7 @@ func TestFeedRefresh(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("Old post", "old.bsky.social", "Old", "at://old", "oldcid"),
 	}
@@ -624,7 +624,7 @@ func TestFeedError(t *testing.T) {
 		timelineErr: errors.New("network error"),
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 
 	// Simulate receiving an error message
 	updated, _ := m.Update(FeedErrorMsg{Err: errors.New("network error")})
@@ -708,7 +708,7 @@ func TestFeedModelInit(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 
 	if !m.loading {
 		t.Error("Expected initial loading state to be true")
@@ -724,7 +724,7 @@ func TestFeedModelInit(t *testing.T) {
 func TestWindowSizeMsg(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = updated.(FeedModel)
@@ -741,7 +741,7 @@ func TestWindowSizeMsg(t *testing.T) {
 func TestFeedLoadedMsg(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.loading = true
 
 	posts := []*bsky.FeedDefs_FeedViewPost{
@@ -766,7 +766,7 @@ func TestFeedLoadedMsg(t *testing.T) {
 func TestFeedLoadedMsgAppend(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, 80, 24)
+	m := NewFeedModel(client, "", 80, 24)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("First", "a.bsky.social", "A", "at://1", "c1"),
 	}

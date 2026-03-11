@@ -22,6 +22,10 @@ var (
 
 	helpDescStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("246"))
+
+	helpSectionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("246")).
+				Italic(true)
 )
 
 type KeyBinding struct {
@@ -34,6 +38,12 @@ type HelpContext int
 const (
 	HelpContextLogin HelpContext = iota
 	HelpContextMain
+	HelpContextFeed
+	HelpContextThread
+	HelpContextProfile
+	HelpContextNotifications
+	HelpContextSearch
+	HelpContextCompose
 )
 
 var loginKeyBindings = []KeyBinding{
@@ -42,15 +52,59 @@ var loginKeyBindings = []KeyBinding{
 	{Key: "Ctrl+C", Description: "Quit"},
 }
 
-var mainKeyBindings = []KeyBinding{
+var globalKeyBindings = []KeyBinding{
 	{Key: "1-4", Description: "Switch tabs"},
+	{Key: "j/k", Description: "Navigate up/down"},
 	{Key: "?", Description: "Toggle help"},
 	{Key: "q", Description: "Quit"},
 	{Key: "Ctrl+C", Description: "Force quit"},
-	{Key: "j/k", Description: "Navigate up/down"},
-	{Key: "Enter", Description: "Select/Open"},
-	{Key: "Esc", Description: "Back/Close modal"},
 }
+
+var feedKeyBindings = []KeyBinding{
+	{Key: "Enter", Description: "Open thread"},
+	{Key: "l", Description: "Like/unlike post"},
+	{Key: "t", Description: "Repost/un-repost"},
+	{Key: "r", Description: "Reply to post"},
+	{Key: "c", Description: "Compose new post"},
+	{Key: "d d", Description: "Delete your post"},
+}
+
+var threadKeyBindings = []KeyBinding{
+	{Key: "Enter", Description: "Open thread"},
+	{Key: "l", Description: "Like/unlike post"},
+	{Key: "t", Description: "Repost/un-repost"},
+	{Key: "r", Description: "Reply to post"},
+	{Key: "p", Description: "View profile"},
+	{Key: "d d", Description: "Delete your post"},
+	{Key: "Esc", Description: "Back"},
+}
+
+var profileKeyBindings = []KeyBinding{
+	{Key: "Enter", Description: "Open thread"},
+	{Key: "f", Description: "Follow/unfollow"},
+	{Key: "d d", Description: "Delete your post"},
+	{Key: "r", Description: "Refresh"},
+	{Key: "Esc", Description: "Back"},
+}
+
+var notificationsKeyBindings = []KeyBinding{
+	{Key: "Enter", Description: "Open notification"},
+	{Key: "r", Description: "Refresh & mark read"},
+}
+
+var searchKeyBindings = []KeyBinding{
+	{Key: "/", Description: "Focus search input"},
+	{Key: "Tab", Description: "Toggle posts/people"},
+	{Key: "Enter", Description: "Select result"},
+}
+
+var composeKeyBindings = []KeyBinding{
+	{Key: "Ctrl+D", Description: "Submit post"},
+	{Key: "Esc", Description: "Cancel"},
+}
+
+// mainKeyBindings kept for backward compatibility with tests
+var mainKeyBindings = globalKeyBindings
 
 type HelpModel struct {
 	Visible bool
@@ -83,36 +137,72 @@ func (m HelpModel) View() tea.View {
 		return tea.NewView("")
 	}
 
-	var bindings []KeyBinding
+	var viewBindings []KeyBinding
+	var globals []KeyBinding
 	var title string
 
 	switch m.Context {
 	case HelpContextLogin:
-		bindings = loginKeyBindings
+		viewBindings = loginKeyBindings
 		title = "Login Help"
-	case HelpContextMain:
-		bindings = mainKeyBindings
-		title = "Keyboard Shortcuts"
+	case HelpContextFeed:
+		viewBindings = feedKeyBindings
+		globals = globalKeyBindings
+		title = "Feed"
+	case HelpContextThread:
+		viewBindings = threadKeyBindings
+		globals = globalKeyBindings
+		title = "Thread"
+	case HelpContextProfile:
+		viewBindings = profileKeyBindings
+		globals = globalKeyBindings
+		title = "Profile"
+	case HelpContextNotifications:
+		viewBindings = notificationsKeyBindings
+		globals = globalKeyBindings
+		title = "Notifications"
+	case HelpContextSearch:
+		viewBindings = searchKeyBindings
+		globals = globalKeyBindings
+		title = "Search"
+	case HelpContextCompose:
+		viewBindings = composeKeyBindings
+		title = "Compose"
 	default:
-		bindings = mainKeyBindings
-		title = "Help"
+		viewBindings = globalKeyBindings
+		title = "Keyboard Shortcuts"
+	}
+
+	allBindings := make([]KeyBinding, 0, len(viewBindings)+len(globals))
+	allBindings = append(allBindings, viewBindings...)
+	allBindings = append(allBindings, globals...)
+
+	maxKeyLen := 0
+	for _, kb := range allBindings {
+		if len(kb.Key) > maxKeyLen {
+			maxKeyLen = len(kb.Key)
+		}
 	}
 
 	var lines []string
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62")).Render(title))
 	lines = append(lines, "")
 
-	maxKeyLen := 0
-	for _, kb := range bindings {
-		if len(kb.Key) > maxKeyLen {
-			maxKeyLen = len(kb.Key)
-		}
-	}
-
-	for _, kb := range bindings {
+	for _, kb := range viewBindings {
 		key := helpKeyStyle.Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
 		desc := helpDescStyle.Render(kb.Description)
 		lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
+	}
+
+	if len(globals) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, helpSectionStyle.Render("  ── Global ──"))
+		lines = append(lines, "")
+		for _, kb := range globals {
+			key := helpKeyStyle.Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
+			desc := helpDescStyle.Render(kb.Description)
+			lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
+		}
 	}
 
 	content := strings.Join(lines, "\n")

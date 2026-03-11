@@ -91,6 +91,13 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 		}
 	}
 
+	if post.Post.Embed != nil {
+		if embedStr := renderEmbed(post.Post.Embed, width); embedStr != "" {
+			b.WriteString(embedStr)
+			b.WriteString("\n")
+		}
+	}
+
 	likeCount, repostCount, replyCount := int64(0), int64(0), int64(0)
 	if post.Post.LikeCount != nil {
 		likeCount = *post.Post.LikeCount
@@ -138,4 +145,107 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 	// Separator line
 	sep := theme.StyleMuted.Render(strings.Repeat("─", max(1, width-4)))
 	return res + "\n" + sep
+}
+
+func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
+	if embed == nil {
+		return ""
+	}
+
+	embedBoxStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("246")).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Width(max(10, width-8))
+
+	switch {
+	case embed.EmbedImages_View != nil:
+		imgs := embed.EmbedImages_View.Images
+		if len(imgs) == 1 {
+			alt := ""
+			if imgs[0].Alt != "" {
+				alt = ": " + truncateStr(imgs[0].Alt, 60)
+			}
+			return embedBoxStyle.Render(fmt.Sprintf("🖼 image%s", alt))
+		}
+		return embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(imgs)))
+
+	case embed.EmbedExternal_View != nil:
+		ext := embed.EmbedExternal_View.External
+		if ext == nil {
+			return ""
+		}
+		title := truncateStr(ext.Title, 50)
+		desc := ""
+		if ext.Description != "" {
+			desc = "\n" + truncateStr(ext.Description, 80)
+		}
+		return embedBoxStyle.Render(fmt.Sprintf("🔗 %s%s", title, desc))
+
+	case embed.EmbedRecord_View != nil:
+		rec := embed.EmbedRecord_View.Record
+		if rec == nil || rec.EmbedRecord_ViewRecord == nil {
+			return ""
+		}
+		vr := rec.EmbedRecord_ViewRecord
+		author := ""
+		if vr.Author != nil {
+			author = "@" + vr.Author.Handle
+		}
+		text := ""
+		if vr.Value != nil {
+			if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
+				text = truncateStr(fp.Text, 80)
+			}
+		}
+		return embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text))
+
+	case embed.EmbedVideo_View != nil:
+		vid := embed.EmbedVideo_View
+		alt := ""
+		if vid.Alt != nil && *vid.Alt != "" {
+			alt = ": " + truncateStr(*vid.Alt, 60)
+		}
+		return embedBoxStyle.Render(fmt.Sprintf("🎥 video%s", alt))
+
+	case embed.EmbedRecordWithMedia_View != nil:
+		rwm := embed.EmbedRecordWithMedia_View
+		var parts []string
+		if rwm.Media != nil {
+			switch {
+			case rwm.Media.EmbedImages_View != nil:
+				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(rwm.Media.EmbedImages_View.Images))))
+			case rwm.Media.EmbedExternal_View != nil && rwm.Media.EmbedExternal_View.External != nil:
+				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(rwm.Media.EmbedExternal_View.External.Title, 50))))
+			case rwm.Media.EmbedVideo_View != nil:
+				parts = append(parts, embedBoxStyle.Render("🎥 video"))
+			}
+		}
+		if rwm.Record != nil && rwm.Record.Record != nil && rwm.Record.Record.EmbedRecord_ViewRecord != nil {
+			vr := rwm.Record.Record.EmbedRecord_ViewRecord
+			author := ""
+			if vr.Author != nil {
+				author = "@" + vr.Author.Handle
+			}
+			text := ""
+			if vr.Value != nil {
+				if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
+					text = truncateStr(fp.Text, 80)
+				}
+			}
+			parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text)))
+		}
+		return strings.Join(parts, "\n")
+	}
+
+	return ""
+}
+
+func truncateStr(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "…"
 }
