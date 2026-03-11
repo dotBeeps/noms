@@ -1,0 +1,369 @@
+package search
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	bsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/theme"
+)
+
+type SearchMode int
+
+const (
+	ModePosts SearchMode = iota
+	ModePeople
+)
+
+type debounceMsg struct {
+	ts time.Time
+}
+
+type SearchResultsMsg struct {
+	Posts  []*bsky.FeedDefs_PostView
+	Actors []*bsky.ActorDefs_ProfileView
+	Cursor string
+	Mode   SearchMode
+	Append bool
+}
+
+type SearchErrorMsg struct {
+	Err error
+}
+
+type SearchNextPageMsg struct{}
+
+// Reuse feed.ViewThreadMsg for posts navigation
+// type feed.ViewThreadMsg struct{ URI string }
+
+type ViewProfileMsg struct {
+	DID string
+}
+
+type SearchModel struct {
+	client        bluesky.BlueskyClient
+	input         textinput.Model
+	mode          SearchMode
+	postResults   []*bsky.FeedDefs_PostView
+	actorResults  []*bsky.ActorDefs_ProfileView
+	selectedIndex int
+	cursor        string
+	loading       bool
+	lastKeystroke time.Time
+	width         int
+	height        int
+	query         string
+	err           error
+	offset        int // For scrolling
+}
+
+func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel {
+	ti := textinput.New()
+	ti.Placeholder = "Type to search..."
+	ti.Focus()
+	ti.Prompt = "🔍 "
+
+	return SearchModel{
+		client:        client,
+		input:         ti,
+		mode:          ModePosts,
+		postResults:   []*bsky.FeedDefs_PostView{},
+		actorResults:  []*bsky.ActorDefs_ProfileView{},
+		selectedIndex: 0,
+		loading:       false,
+		width:         width,
+		height:        height,
+	}
+}
+
+func (m SearchModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.input.SetWidth(m.width - 4)
+
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "esc":
+			if m.input.Focused() {
+				m.input.Blur()
+			} else {
+				// Clear search
+				m.input.SetValue("")
+				m.query = ""
+				m.postResults = nil
+				m.actorResults = nil
+				m.cursor = ""
+				m.selectedIndex = 0
+				m.err = nil
+			}
+			return m, nil
+
+		case "/":
+			if !m.input.Focused() {
+				m.input.Focus()
+				return m, textinput.Blink
+			}
+
+		case "tab":
+			if m.mode == ModePosts {
+				m.mode = ModePeople
+			} else {
+				m.mode = ModePosts
+			}
+			m.selectedIndex = 0
+			m.cursor = ""
+			m.postResults = nil
+			m.actorResults = nil
+			if m.query != "" {
+				m.loading = true
+				return m, m.performSearch(m.query, "", m.mode, false)
+			}
+			return m, nil
+
+		case "enter":
+			if m.input.Focused() {
+				m.input.Blur()
+				return m, nil
+			}
+			// Navigate to selected
+			if m.mode == ModePosts && len(m.postResults) > 0 && m.selectedIndex < len(m.postResults) {
+				post := m.postResults[m.selectedIndex]
+				return m, func() tea.Msg { return feed.ViewThreadMsg{URI: post.Uri} }
+			} else if m.mode == ModePeople && len(m.actorResults) > 0 && m.selectedIndex < len(m.actorResults) {
+				actor := m.actorResults[m.selectedIndex]
+				return m, func() tea.Msg { return ViewProfileMsg{DID: actor.Did} }
+			}
+
+		case "up", "k":
+			if !m.input.Focused() {
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
+				// Adjust offset
+				if m.selectedIndex < m.offset {
+					m.offset = m.selectedIndex
+				}
+				return m, nil
+			}
+
+		case "down", "j":
+			if !m.input.Focused() {
+				limit := len(m.postResults)
+				if m.mode == ModePeople {
+					limit = len(m.actorResults)
+				}
+				if m.selectedIndex < limit-1 {
+					m.selectedIndex++
+				} else if m.cursor != "" && !m.loading {
+					// Load more
+					m.loading = true
+					return m, m.performSearch(m.query, m.cursor, m.mode, true)
+				}
+				// Basic scrolling (rough estimate)
+				if m.selectedIndex > m.offset+10 { // naive, assuming ~10 items fit
+					m.offset = m.selectedIndex - 10
+				}
+				return m, nil
+			}
+		}
+
+	case debounceMsg:
+		if msg.ts == m.lastKeystroke {
+			q := m.input.Value()
+			if q != m.query {
+				m.query = q
+				m.cursor = ""
+				m.selectedIndex = 0
+				m.postResults = nil
+				m.actorResults = nil
+				if q != "" {
+					m.loading = true
+					return m, m.performSearch(q, "", m.mode, false)
+				}
+			}
+		}
+
+	case SearchResultsMsg:
+		m.loading = false
+		if msg.Mode != m.mode {
+			return m, nil // Stale response
+		}
+		if msg.Append {
+			if m.mode == ModePosts {
+				m.postResults = append(m.postResults, msg.Posts...)
+			} else {
+				m.actorResults = append(m.actorResults, msg.Actors...)
+			}
+		} else {
+			if m.mode == ModePosts {
+				m.postResults = msg.Posts
+			} else {
+				m.actorResults = msg.Actors
+			}
+		}
+		m.cursor = msg.Cursor
+		m.err = nil
+
+	case SearchErrorMsg:
+		m.loading = false
+		m.err = msg.Err
+	}
+
+	// Handle input updates
+	if m.input.Focused() {
+		prevVal := m.input.Value()
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		cmds = append(cmds, cmd)
+
+		if m.input.Value() != prevVal {
+			m.lastKeystroke = time.Now()
+			cmds = append(cmds, tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
+				return debounceMsg{ts: m.lastKeystroke}
+			}))
+		}
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m SearchModel) performSearch(query, cursor string, mode SearchMode, append bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if mode == ModePosts {
+			posts, nextCursor, err := m.client.SearchPosts(ctx, query, cursor, 25)
+			if err != nil {
+				return SearchErrorMsg{Err: err}
+			}
+			return SearchResultsMsg{Posts: posts, Cursor: nextCursor, Mode: ModePosts, Append: append}
+		} else {
+			actors, nextCursor, err := m.client.SearchActors(ctx, query, cursor, 25)
+			if err != nil {
+				return SearchErrorMsg{Err: err}
+			}
+			return SearchResultsMsg{Actors: actors, Cursor: nextCursor, Mode: ModePeople, Append: append}
+		}
+	}
+}
+
+func (m SearchModel) View() tea.View {
+	var b strings.Builder
+
+	// Top bar: Input
+	b.WriteString(m.input.View())
+	b.WriteString("\n\n")
+
+	// Mode tabs
+	postsTab := "[Posts]"
+	peopleTab := "[People]"
+	if m.mode == ModePosts {
+		postsTab = theme.StyleTabActive.Render(postsTab)
+		peopleTab = theme.StyleTabInactive.Render(peopleTab)
+	} else {
+		postsTab = theme.StyleTabInactive.Render(postsTab)
+		peopleTab = theme.StyleTabActive.Render(peopleTab)
+	}
+	b.WriteString(fmt.Sprintf("%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab))
+
+	// Content area
+	if m.err != nil {
+		b.WriteString(theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err)))
+	} else if m.query == "" {
+		b.WriteString(theme.StyleMuted.Render("Type to search..."))
+	} else if m.loading && len(m.postResults) == 0 && len(m.actorResults) == 0 {
+		b.WriteString("Searching...")
+	} else if m.mode == ModePosts && len(m.postResults) == 0 {
+		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query)))
+	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
+		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query)))
+	} else {
+		// List results
+		if m.mode == ModePosts {
+			for i, pv := range m.postResults {
+				if i < m.offset {
+					continue
+				}
+				// Wrap PostView in FeedViewPost for rendering compatibility
+				fvp := &bsky.FeedDefs_FeedViewPost{
+					Post: pv,
+				}
+				postStr := feed.RenderPost(fvp, m.width, i == m.selectedIndex)
+				b.WriteString(postStr)
+				b.WriteString("\n")
+				if i-m.offset > 15 { // naive limit for display
+					break
+				}
+			}
+		} else {
+			for i, actor := range m.actorResults {
+				if i < m.offset {
+					continue
+				}
+
+				displayName := actor.Handle
+				if actor.DisplayName != nil && *actor.DisplayName != "" {
+					displayName = *actor.DisplayName
+				}
+
+				bio := ""
+				if actor.Description != nil {
+					bio = strings.ReplaceAll(*actor.Description, "\n", " ")
+					if len(bio) > 80 {
+						bio = bio[:77] + "..."
+					}
+				}
+
+				nameStr := theme.StyleHeader.Render(displayName)
+				handleStr := theme.StyleMuted.Render("@" + actor.Handle)
+				bioStr := theme.StyleMuted.Render(bio)
+
+				line := fmt.Sprintf("%s %s — %s", handleStr, nameStr, bioStr)
+
+				if i == m.selectedIndex {
+					line = "▶ " + line
+					line = theme.StyleSelected.Render(line)
+				} else {
+					line = "  " + line
+				}
+
+				b.WriteString(line)
+				b.WriteString("\n")
+
+				if i-m.offset > 20 { // naive limit
+					break
+				}
+			}
+		}
+	}
+
+	b.WriteString("\n")
+
+	// Status bar
+	status := ""
+	if m.loading {
+		status = "Searching..."
+	} else if m.mode == ModePosts {
+		status = fmt.Sprintf("%d results", len(m.postResults))
+	} else {
+		status = fmt.Sprintf("%d results", len(m.actorResults))
+	}
+	b.WriteString(theme.StyleMuted.Render(status))
+
+	return tea.NewView(b.String())
+}
