@@ -209,10 +209,39 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case feed.FeedLoadedMsg, feed.FeedErrorMsg, feed.FeedRefreshMsg,
-		feed.LikeResultMsg, feed.UnlikeResultMsg,
-		feed.RepostResultMsg, feed.UnRepostResultMsg,
-		feed.LikePostMsg, feed.RepostMsg:
+	case feed.LikePostMsg, feed.RepostMsg:
+		switch m.screen {
+		case ScreenFeed:
+			updated, cmd := m.feedModel.Update(msg)
+			m.feedModel = updated.(feed.FeedModel)
+			cmds = append(cmds, cmd)
+		case ScreenThread:
+			updated, cmd := m.threadModel.Update(msg)
+			m.threadModel = updated.(thread.ThreadModel)
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case feed.LikeResultMsg, feed.UnlikeResultMsg,
+		feed.RepostResultMsg, feed.UnRepostResultMsg:
+		if m.client != nil {
+			updated, cmd := m.feedModel.Update(msg)
+			m.feedModel = updated.(feed.FeedModel)
+			cmds = append(cmds, cmd)
+			{
+				updated, cmd := m.threadModel.Update(msg)
+				m.threadModel = updated.(thread.ThreadModel)
+				cmds = append(cmds, cmd)
+			}
+			if m.selfProfileCreated {
+				updated, cmd := m.profileModel.Update(msg)
+				m.profileModel = updated.(profile.ProfileModel)
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
+
+	case feed.FeedLoadedMsg, feed.FeedErrorMsg, feed.FeedRefreshMsg:
 		if m.client != nil {
 			updated, cmd := m.feedModel.Update(msg)
 			m.feedModel = updated.(feed.FeedModel)
@@ -489,7 +518,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	if key == "ctrl+c" {
+	if key == "ctrl+c" || key == "q" {
 		return m, tea.Quit
 	}
 

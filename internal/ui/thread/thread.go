@@ -108,6 +108,88 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case feed.LikePostMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.URI {
+				if tp.Post.Viewer == nil || tp.Post.Viewer.Like == nil || *tp.Post.Viewer.Like == "" {
+					feed.OptimisticLike(tp.Post)
+					return m, feed.PerformLike(m.client, msg.URI, msg.CID)
+				}
+				likeURI := *tp.Post.Viewer.Like
+				feed.OptimisticUnlike(tp.Post)
+				return m, feed.PerformUnlike(m.client, msg.URI, likeURI)
+			}
+		}
+		return m, nil
+
+	case feed.RepostMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.URI {
+				if tp.Post.Viewer == nil || tp.Post.Viewer.Repost == nil || *tp.Post.Viewer.Repost == "" {
+					feed.OptimisticRepost(tp.Post)
+					return m, feed.PerformRepost(m.client, msg.URI, msg.CID)
+				}
+				repostURI := *tp.Post.Viewer.Repost
+				feed.OptimisticUnRepost(tp.Post)
+				return m, feed.PerformUnRepost(m.client, msg.URI, repostURI)
+			}
+		}
+		return m, nil
+
+	case feed.LikeResultMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.PostURI {
+				if msg.Err != nil {
+					feed.RollbackLike(tp.Post)
+				} else {
+					if tp.Post.Viewer == nil {
+						tp.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+					}
+					tp.Post.Viewer.Like = &msg.LikeURI
+				}
+				break
+			}
+		}
+		return m, nil
+
+	case feed.UnlikeResultMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.PostURI {
+				if msg.Err != nil {
+					feed.OptimisticLike(tp.Post)
+				}
+				break
+			}
+		}
+		return m, nil
+
+	case feed.RepostResultMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.PostURI {
+				if msg.Err != nil {
+					feed.RollbackRepost(tp.Post)
+				} else {
+					if tp.Post.Viewer == nil {
+						tp.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+					}
+					tp.Post.Viewer.Repost = &msg.RepostURI
+				}
+				break
+			}
+		}
+		return m, nil
+
+	case feed.UnRepostResultMsg:
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Uri == msg.PostURI {
+				if msg.Err != nil {
+					feed.OptimisticRepost(tp.Post)
+				}
+				break
+			}
+		}
+		return m, nil
+
 	case feed.DeletePostResultMsg:
 		if msg.Err != nil {
 			m.err = msg.Err

@@ -53,8 +53,8 @@ type DeletePostResultMsg struct {
 	Err error
 }
 
-// performLike fires an async API call to like a post and returns a LikeResultMsg.
-func performLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
+// PerformLike fires an async API call to like a post and returns a LikeResultMsg.
+func PerformLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
 	return func() tea.Msg {
 		likeURI, err := client.Like(context.Background(), postURI, postCID)
 		return LikeResultMsg{
@@ -65,8 +65,8 @@ func performLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd 
 	}
 }
 
-// performUnlike fires an async API call to unlike a post and returns an UnlikeResultMsg.
-func performUnlike(client bluesky.BlueskyClient, postURI, likeURI string) tea.Cmd {
+// PerformUnlike fires an async API call to unlike a post and returns an UnlikeResultMsg.
+func PerformUnlike(client bluesky.BlueskyClient, postURI, likeURI string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.Unlike(context.Background(), likeURI)
 		return UnlikeResultMsg{
@@ -76,8 +76,8 @@ func performUnlike(client bluesky.BlueskyClient, postURI, likeURI string) tea.Cm
 	}
 }
 
-// performRepost fires an async API call to repost a post and returns a RepostResultMsg.
-func performRepost(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
+// PerformRepost fires an async API call to repost a post and returns a RepostResultMsg.
+func PerformRepost(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
 	return func() tea.Msg {
 		repostURI, err := client.Repost(context.Background(), postURI, postCID)
 		return RepostResultMsg{
@@ -88,8 +88,8 @@ func performRepost(client bluesky.BlueskyClient, postURI, postCID string) tea.Cm
 	}
 }
 
-// performUnRepost fires an async API call to unrepost a post and returns an UnRepostResultMsg.
-func performUnRepost(client bluesky.BlueskyClient, postURI, repostURI string) tea.Cmd {
+// PerformUnRepost fires an async API call to unrepost a post and returns an UnRepostResultMsg.
+func PerformUnRepost(client bluesky.BlueskyClient, postURI, repostURI string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.UnRepost(context.Background(), repostURI)
 		return UnRepostResultMsg{
@@ -99,103 +99,103 @@ func performUnRepost(client bluesky.BlueskyClient, postURI, repostURI string) te
 	}
 }
 
-// optimisticLike applies an optimistic like to a post before the API call completes.
-func optimisticLike(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.Viewer == nil {
-		post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+// OptimisticLike applies an optimistic like to a post before the API call completes.
+func OptimisticLike(pv *bsky.FeedDefs_PostView) {
+	if pv.Viewer == nil {
+		pv.Viewer = &bsky.FeedDefs_ViewerState{}
 	}
-	if post.Post.LikeCount == nil {
+	if pv.LikeCount == nil {
 		zero := int64(0)
-		post.Post.LikeCount = &zero
+		pv.LikeCount = &zero
 	}
-	*post.Post.LikeCount++
-	post.Post.Viewer.Like = new(string)
-	*post.Post.Viewer.Like = "pending"
+	*pv.LikeCount++
+	pv.Viewer.Like = new(string)
+	*pv.Viewer.Like = "pending"
 }
 
-// rollbackLike reverts an optimistic like on failure.
-func rollbackLike(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.LikeCount != nil && *post.Post.LikeCount > 0 {
-		*post.Post.LikeCount--
+// RollbackLike reverts an optimistic like on failure.
+func RollbackLike(pv *bsky.FeedDefs_PostView) {
+	if pv.LikeCount != nil && *pv.LikeCount > 0 {
+		*pv.LikeCount--
 	}
-	if post.Post.Viewer != nil {
-		post.Post.Viewer.Like = nil
-	}
-}
-
-// optimisticUnlike applies an optimistic unlike to a post before the API call completes.
-func optimisticUnlike(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.LikeCount != nil && *post.Post.LikeCount > 0 {
-		*post.Post.LikeCount--
-	}
-	if post.Post.Viewer != nil {
-		post.Post.Viewer.Like = nil
+	if pv.Viewer != nil {
+		pv.Viewer.Like = nil
 	}
 }
 
-// rollbackUnlike reverts an optimistic unlike on failure.
-func rollbackUnlike(post *bsky.FeedDefs_FeedViewPost, likeURI string) {
-	if post.Post.Viewer == nil {
-		post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+// OptimisticUnlike applies an optimistic unlike to a post before the API call completes.
+func OptimisticUnlike(pv *bsky.FeedDefs_PostView) {
+	if pv.LikeCount != nil && *pv.LikeCount > 0 {
+		*pv.LikeCount--
 	}
-	if post.Post.LikeCount == nil {
+	if pv.Viewer != nil {
+		pv.Viewer.Like = nil
+	}
+}
+
+// RollbackUnlike reverts an optimistic unlike on failure.
+func RollbackUnlike(pv *bsky.FeedDefs_PostView, likeURI string) {
+	if pv.Viewer == nil {
+		pv.Viewer = &bsky.FeedDefs_ViewerState{}
+	}
+	if pv.LikeCount == nil {
 		zero := int64(0)
-		post.Post.LikeCount = &zero
+		pv.LikeCount = &zero
 	}
-	*post.Post.LikeCount++
-	post.Post.Viewer.Like = &likeURI
+	*pv.LikeCount++
+	pv.Viewer.Like = &likeURI
 }
 
-// optimisticRepost applies an optimistic repost to a post before the API call completes.
-func optimisticRepost(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.Viewer == nil {
-		post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+// OptimisticRepost applies an optimistic repost to a post before the API call completes.
+func OptimisticRepost(pv *bsky.FeedDefs_PostView) {
+	if pv.Viewer == nil {
+		pv.Viewer = &bsky.FeedDefs_ViewerState{}
 	}
-	if post.Post.RepostCount == nil {
+	if pv.RepostCount == nil {
 		zero := int64(0)
-		post.Post.RepostCount = &zero
+		pv.RepostCount = &zero
 	}
-	*post.Post.RepostCount++
-	post.Post.Viewer.Repost = new(string)
-	*post.Post.Viewer.Repost = "pending"
+	*pv.RepostCount++
+	pv.Viewer.Repost = new(string)
+	*pv.Viewer.Repost = "pending"
 }
 
-// rollbackRepost reverts an optimistic repost on failure.
-func rollbackRepost(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.RepostCount != nil && *post.Post.RepostCount > 0 {
-		*post.Post.RepostCount--
+// RollbackRepost reverts an optimistic repost on failure.
+func RollbackRepost(pv *bsky.FeedDefs_PostView) {
+	if pv.RepostCount != nil && *pv.RepostCount > 0 {
+		*pv.RepostCount--
 	}
-	if post.Post.Viewer != nil {
-		post.Post.Viewer.Repost = nil
-	}
-}
-
-// optimisticUnRepost applies an optimistic unrepost to a post before the API call completes.
-func optimisticUnRepost(post *bsky.FeedDefs_FeedViewPost) {
-	if post.Post.RepostCount != nil && *post.Post.RepostCount > 0 {
-		*post.Post.RepostCount--
-	}
-	if post.Post.Viewer != nil {
-		post.Post.Viewer.Repost = nil
+	if pv.Viewer != nil {
+		pv.Viewer.Repost = nil
 	}
 }
 
-// rollbackUnRepost reverts an optimistic unrepost on failure.
-func rollbackUnRepost(post *bsky.FeedDefs_FeedViewPost, repostURI string) {
-	if post.Post.Viewer == nil {
-		post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+// OptimisticUnRepost applies an optimistic unrepost to a post before the API call completes.
+func OptimisticUnRepost(pv *bsky.FeedDefs_PostView) {
+	if pv.RepostCount != nil && *pv.RepostCount > 0 {
+		*pv.RepostCount--
 	}
-	if post.Post.RepostCount == nil {
+	if pv.Viewer != nil {
+		pv.Viewer.Repost = nil
+	}
+}
+
+// RollbackUnRepost reverts an optimistic unrepost on failure.
+func RollbackUnRepost(pv *bsky.FeedDefs_PostView, repostURI string) {
+	if pv.Viewer == nil {
+		pv.Viewer = &bsky.FeedDefs_ViewerState{}
+	}
+	if pv.RepostCount == nil {
 		zero := int64(0)
-		post.Post.RepostCount = &zero
+		pv.RepostCount = &zero
 	}
-	*post.Post.RepostCount++
-	post.Post.Viewer.Repost = &repostURI
+	*pv.RepostCount++
+	pv.Viewer.Repost = &repostURI
 }
 
-// findPostByURI finds a post in the feed by its URI and returns a pointer to it.
+// FindPostByURI finds a post in a feed slice by its URI and returns a pointer to it.
 // Returns nil if not found.
-func findPostByURI(posts []*bsky.FeedDefs_FeedViewPost, uri string) *bsky.FeedDefs_FeedViewPost {
+func FindPostByURI(posts []*bsky.FeedDefs_FeedViewPost, uri string) *bsky.FeedDefs_FeedViewPost {
 	for _, p := range posts {
 		if p.Post != nil && p.Post.Uri == uri {
 			return p

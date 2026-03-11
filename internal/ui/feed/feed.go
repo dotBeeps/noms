@@ -107,35 +107,33 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 
 	case LikePostMsg:
-		if post := findPostByURI(m.posts, msg.URI); post != nil {
+		if post := FindPostByURI(m.posts, msg.URI); post != nil {
 			if post.Post.Viewer == nil || post.Post.Viewer.Like == nil || *post.Post.Viewer.Like == "" {
-				optimisticLike(post)
-				uri, cid := msg.URI, msg.CID
-				return m, performLike(m.client, uri, cid)
+				OptimisticLike(post.Post)
+				return m, PerformLike(m.client, msg.URI, msg.CID)
 			}
 			likeURI := *post.Post.Viewer.Like
-			optimisticUnlike(post)
-			return m, performUnlike(m.client, msg.URI, likeURI)
+			OptimisticUnlike(post.Post)
+			return m, PerformUnlike(m.client, msg.URI, likeURI)
 		}
 		return m, nil
 
 	case RepostMsg:
-		if post := findPostByURI(m.posts, msg.URI); post != nil {
+		if post := FindPostByURI(m.posts, msg.URI); post != nil {
 			if post.Post.Viewer == nil || post.Post.Viewer.Repost == nil || *post.Post.Viewer.Repost == "" {
-				optimisticRepost(post)
-				uri, cid := msg.URI, msg.CID
-				return m, performRepost(m.client, uri, cid)
+				OptimisticRepost(post.Post)
+				return m, PerformRepost(m.client, msg.URI, msg.CID)
 			}
 			repostURI := *post.Post.Viewer.Repost
-			optimisticUnRepost(post)
-			return m, performUnRepost(m.client, msg.URI, repostURI)
+			OptimisticUnRepost(post.Post)
+			return m, PerformUnRepost(m.client, msg.URI, repostURI)
 		}
 		return m, nil
 
 	case LikeResultMsg:
-		if post := findPostByURI(m.posts, msg.PostURI); post != nil {
+		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
 			if msg.Err != nil {
-				rollbackLike(post)
+				RollbackLike(post.Post)
 			} else {
 				if post.Post.Viewer == nil {
 					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
@@ -146,17 +144,17 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case UnlikeResultMsg:
-		if post := findPostByURI(m.posts, msg.PostURI); post != nil {
+		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
 			if msg.Err != nil {
-				optimisticLike(post)
+				OptimisticLike(post.Post)
 			}
 		}
 		return m, nil
 
 	case RepostResultMsg:
-		if post := findPostByURI(m.posts, msg.PostURI); post != nil {
+		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
 			if msg.Err != nil {
-				rollbackRepost(post)
+				RollbackRepost(post.Post)
 			} else {
 				if post.Post.Viewer == nil {
 					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
@@ -167,9 +165,9 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case UnRepostResultMsg:
-		if post := findPostByURI(m.posts, msg.PostURI); post != nil {
+		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
 			if msg.Err != nil {
-				optimisticRepost(post)
+				OptimisticRepost(post.Post)
 			}
 		}
 		return m, nil

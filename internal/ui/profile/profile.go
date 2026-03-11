@@ -196,6 +196,48 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case feed.LikeResultMsg:
+		if post := feed.FindPostByURI(m.authorFeed, msg.PostURI); post != nil {
+			if msg.Err != nil {
+				feed.RollbackLike(post.Post)
+			} else {
+				if post.Post.Viewer == nil {
+					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+				}
+				post.Post.Viewer.Like = &msg.LikeURI
+			}
+		}
+		return m, nil
+
+	case feed.UnlikeResultMsg:
+		if post := feed.FindPostByURI(m.authorFeed, msg.PostURI); post != nil {
+			if msg.Err != nil {
+				feed.OptimisticLike(post.Post)
+			}
+		}
+		return m, nil
+
+	case feed.RepostResultMsg:
+		if post := feed.FindPostByURI(m.authorFeed, msg.PostURI); post != nil {
+			if msg.Err != nil {
+				feed.RollbackRepost(post.Post)
+			} else {
+				if post.Post.Viewer == nil {
+					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
+				}
+				post.Post.Viewer.Repost = &msg.RepostURI
+			}
+		}
+		return m, nil
+
+	case feed.UnRepostResultMsg:
+		if post := feed.FindPostByURI(m.authorFeed, msg.PostURI); post != nil {
+			if msg.Err != nil {
+				feed.OptimisticRepost(post.Post)
+			}
+		}
+		return m, nil
+
 	case feed.DeletePostResultMsg:
 		if msg.Err != nil {
 			m.err = msg.Err

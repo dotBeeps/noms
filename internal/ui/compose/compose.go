@@ -118,6 +118,7 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.loading {
 				return m, nil
 			}
+			m.loading = true
 			return m, m.submitPost()
 
 		case "esc":
