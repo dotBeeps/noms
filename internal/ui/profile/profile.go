@@ -51,6 +51,7 @@ func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width
 		width:         width,
 		height:        height,
 		loading:       true,
+		loadingFeed:   true,
 		selectedIndex: 0,
 		spinner:       sp,
 		confirmDelete: -1,
@@ -254,6 +255,10 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
+	if key != "d" {
+		m.confirmDelete = -1
+	}
+
 	switch key {
 	case "j", "down":
 		if m.selectedIndex < len(m.authorFeed)-1 {
@@ -300,9 +305,9 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "d":
-		if m.isOwnProfile && m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
+		if m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
 			post := m.authorFeed[m.selectedIndex]
-			if post.Post != nil {
+			if post.Post != nil && post.Post.Author != nil && post.Post.Author.Did == m.ownDID {
 				if m.confirmDelete == m.selectedIndex {
 					uri := post.Post.Uri
 					m.confirmDelete = -1
@@ -317,10 +322,6 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			return BackMsg{}
 		}
-	}
-
-	if key != "d" {
-		m.confirmDelete = -1
 	}
 
 	return m, nil
@@ -376,6 +377,14 @@ func (m ProfileModel) View() tea.View {
 			Foreground(theme.ColorMuted).
 			Padding(0, 2)
 		b.WriteString(loadingStyle.Render(m.spinner.View() + " Loading more posts..."))
+	}
+
+	if m.confirmDelete >= 0 {
+		confirmStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203")).
+			Bold(true)
+		b.WriteString("\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
+			confirmStyle.Render("Press d to confirm delete, any other key to cancel")))
 	}
 
 	return mouseView(b.String())

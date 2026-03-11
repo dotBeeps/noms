@@ -133,6 +133,10 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if msg.String() != "d" {
+			m.confirmDelete = -1
+		}
+
 		switch msg.String() {
 		case "esc", "backspace":
 			return m, func() tea.Msg { return BackMsg{} }
@@ -198,10 +202,6 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-		}
-
-		if msg.String() != "d" {
-			m.confirmDelete = -1
 		}
 
 	case tea.MouseWheelMsg:
@@ -333,6 +333,14 @@ func (m ThreadModel) View() tea.View {
 
 		rendered.WriteString(finalStr)
 		rendered.WriteString("\n")
+	}
+
+	if m.confirmDelete >= 0 {
+		confirmStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203")).
+			Bold(true)
+		rendered.WriteString("\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
+			confirmStyle.Render("Press d to confirm delete, any other key to cancel")))
 	}
 
 	return mouseView(rendered.String())

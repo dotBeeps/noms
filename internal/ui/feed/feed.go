@@ -103,6 +103,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selectedIndex = 0
 		m.offset = 0
 		m.err = nil
+		m.confirmDelete = -1
 		return m, tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 
 	case LikePostMsg:
@@ -222,6 +223,10 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if msg.String() != "d" {
+			m.confirmDelete = -1
+		}
+
 		if m.err != nil && msg.String() == "r" {
 			return m, func() tea.Msg { return FeedRefreshMsg{} }
 		}
@@ -283,11 +288,6 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-
-		// Any non-d key cancels pending delete confirmation
-		if msg.String() != "d" {
-			m.confirmDelete = -1
-		}
 	}
 	return m, nil
 }
@@ -316,6 +316,13 @@ func (m FeedModel) View() tea.View {
 		}
 		if m.loading {
 			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading more...")
+		}
+		if m.confirmDelete >= 0 {
+			confirmStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("203")).
+				Bold(true)
+			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
+				confirmStyle.Render("Press d to confirm delete, any other key to cancel"))
 		}
 		content = rendered
 	}

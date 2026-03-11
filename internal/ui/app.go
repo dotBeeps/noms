@@ -196,12 +196,12 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated, cmd := m.feedModel.Update(msg)
 			m.feedModel = updated.(feed.FeedModel)
 			cmds = append(cmds, cmd)
-			switch m.screen {
-			case ScreenThread:
+			{
 				updated, cmd := m.threadModel.Update(msg)
 				m.threadModel = updated.(thread.ThreadModel)
 				cmds = append(cmds, cmd)
-			case ScreenProfile:
+			}
+			if m.selfProfileCreated {
 				updated, cmd := m.profileModel.Update(msg)
 				m.profileModel = updated.(profile.ProfileModel)
 				cmds = append(cmds, cmd)
@@ -323,7 +323,9 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.client != nil {
 			client := m.client
 			cmds = append(cmds, func() tea.Msg {
-				count, err := client.GetUnreadCount(context.Background())
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				count, err := client.GetUnreadCount(ctx)
 				if err != nil {
 					return nil
 				}
@@ -456,6 +458,10 @@ func (m *App) updateTabBarForScreen() {
 	case ScreenSearch:
 		m.tabBar.SetActiveTab(components.TabSearch)
 		m.help.SetContext(components.HelpContextSearch)
+	case ScreenThread:
+		m.help.SetContext(components.HelpContextThread)
+	case ScreenCompose:
+		m.help.SetContext(components.HelpContextCompose)
 	}
 }
 
@@ -600,6 +606,7 @@ func (m App) View() tea.View {
 
 	v := tea.NewView(content.String())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 
 	if m.showHelp {
 		v = m.renderHelpOverlay(v)

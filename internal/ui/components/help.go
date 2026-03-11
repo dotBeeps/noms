@@ -145,7 +145,7 @@ func (m HelpModel) View() tea.View {
 	case HelpContextLogin:
 		viewBindings = loginKeyBindings
 		title = "Login Help"
-	case HelpContextFeed:
+	case HelpContextMain, HelpContextFeed:
 		viewBindings = feedKeyBindings
 		globals = globalKeyBindings
 		title = "Feed"

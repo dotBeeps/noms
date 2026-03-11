@@ -93,8 +93,8 @@ func TestHelpModelViewWhenVisibleMainContext(t *testing.T) {
 	v := h.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Keyboard Shortcuts") {
-		t.Errorf("Expected help to contain 'Keyboard Shortcuts' title, got %q", content)
+	if !strings.Contains(content, "Feed") {
+		t.Errorf("Expected help to contain 'Feed' title, got %q", content)
 	}
 
 	if !strings.Contains(content, "1-4") {
