@@ -762,9 +762,9 @@ func oauthSetup() (string, *auth.DPoPSigner, error) {
 		return "", nil, fmt.Errorf("initializing DPoP signer: %w", err)
 	}
 
-	clientID := "http://localhost?redirect_uri=" +
+	clientID := "http://localhost/?redirect_uri=" +
 		url.QueryEscape("http://127.0.0.1/callback") +
-		"&scope=" + url.QueryEscape("transition:generic")
+		"&scope=" + url.QueryEscape("atproto transition:generic")
 
 	return clientID, dpop, nil
 }
@@ -779,7 +779,7 @@ func handleBrowserAuth(handle string) tea.Cmd {
 		flow := auth.NewLoopbackFlow()
 		oauthCfg := auth.OAuthConfig{
 			ClientID: clientID,
-			Scopes:   []string{"transition:generic"},
+			Scopes:   []string{"atproto", "transition:generic"},
 		}
 
 		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
@@ -806,7 +806,7 @@ func handleManualAuth(handle string) tea.Cmd {
 		flow := auth.NewManualFlow()
 		oauthCfg := auth.OAuthConfig{
 			ClientID: clientID,
-			Scopes:   []string{"transition:generic"},
+			Scopes:   []string{"atproto", "transition:generic"},
 		}
 
 		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
