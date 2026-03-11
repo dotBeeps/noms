@@ -11,6 +11,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/identity"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/auth"
 	"github.com/dotBeeps/noms/internal/config"
@@ -166,6 +170,32 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(cmds...)
 
+	case login.AppPasswordLoginSuccessMsg:
+		m.loggedIn = true
+		m.screen = ScreenFeed
+
+		m.client = bluesky.NewClientFromAPI(msg.Client, msg.DID)
+
+		contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+		m.feedModel = feed.NewFeedModel(m.client, msg.DID, m.width, contentHeight)
+		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight)
+		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight)
+
+		cmds = append(cmds, m.feedModel.Init())
+
+		m.statusBar.Handle = msg.Handle
+		m.statusBar.DID = msg.DID
+		m.statusBar.Connected = true
+		m.ownDID = msg.DID
+		m.help.SetContext(components.HelpContextFeed)
+
+		cmds = append(cmds, scheduleAutoRefresh())
+
+		return m, tea.Batch(cmds...)
+
 	case login.LoginErrorMsg:
 		m.login, _ = updateLogin(m.login, msg)
 		return m, nil
@@ -173,12 +203,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case login.StartBrowserAuthMsg:
 		return m, handleBrowserAuth(msg.Handle)
 
-	case login.StartPasteCodeAuthMsg:
-		return m, handleManualAuth(msg.Handle)
-
-	case login.AuthURLMsg:
-		m.login, _ = updateLogin(m.login, msg)
-		return m, func() tea.Msg { return <-msg.DoneCh }
+	case login.StartAppPasswordAuthMsg:
+		return m, handleAppPasswordAuth(msg.Handle, msg.Password)
 
 	// --- Feed messages ---
 	case feed.ViewThreadMsg:
@@ -796,40 +822,33 @@ func handleBrowserAuth(handle string) tea.Cmd {
 	}
 }
 
-func handleManualAuth(handle string) tea.Cmd {
+func handleAppPasswordAuth(handle, password string) tea.Cmd {
 	return func() tea.Msg {
-		clientID, dpop, err := oauthSetup()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		dir := identity.DefaultDirectory()
+		username, err := syntax.ParseAtIdentifier(handle)
 		if err != nil {
-			return login.LoginErrorMsg{Err: err}
+			return login.LoginErrorMsg{Err: fmt.Errorf("invalid handle %q: %w", handle, err)}
 		}
 
-		flow := auth.NewManualFlow()
-		oauthCfg := auth.OAuthConfig{
-			ClientID: clientID,
-			Scopes:   []string{"atproto", "transition:generic"},
-		}
-
-		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
-
-		doneCh := make(chan tea.Msg, 1)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-
-			session, err := manager.Authenticate(ctx, handle)
-			if err != nil {
-				flow.SignalError(err) // unblock AuthURL if Start was never reached
-				doneCh <- login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
-			} else {
-				doneCh <- login.LoginSuccessMsg{Session: session}
-			}
-		}()
-
-		authURL, err := flow.AuthURL()
+		apiClient, err := atclient.LoginWithPassword(ctx, dir, username, password, "", nil)
 		if err != nil {
-			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+			return login.LoginErrorMsg{Err: fmt.Errorf("app password login failed: %w", err)}
 		}
-		return login.AuthURLMsg{URL: authURL, DoneCh: doneCh}
+
+		did := ""
+		if apiClient.AccountDID != nil {
+			did = apiClient.AccountDID.String()
+		}
+
+		return login.AppPasswordLoginSuccessMsg{
+			Client: apiClient,
+			DID:    did,
+			Handle: handle,
+			PDS:    apiClient.Host,
+		}
 	}
 }
 

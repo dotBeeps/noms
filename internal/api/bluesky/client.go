@@ -61,6 +61,12 @@ func NewClient(httpClient *http.Client, pdsURL, did string) *Client {
 	return &Client{api: api, did: did}
 }
 
+// NewClientFromAPI creates a new Bluesky API client from a pre-authenticated atclient.APIClient.
+// Use this when authenticating via app password (atclient.LoginWithPassword returns *APIClient directly).
+func NewClientFromAPI(api *atclient.APIClient, did string) *Client {
+	return &Client{api: api, did: did}
+}
+
 // DID returns the authenticated user's DID.
 func (c *Client) DID() string {
 	return c.did
