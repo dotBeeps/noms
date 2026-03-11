@@ -47,6 +47,7 @@ const (
 	LoginStateInput LoginState = iota
 	LoginStateChoosing
 	LoginStateLoading
+	LoginStateShowURL
 	LoginStateError
 )
 
@@ -66,11 +67,19 @@ type StartPasteCodeAuthMsg struct {
 	Handle string
 }
 
+// AuthURLMsg carries the auth URL for manual copy and a channel that delivers
+// the final LoginSuccessMsg or LoginErrorMsg once the user completes the flow.
+type AuthURLMsg struct {
+	URL    string
+	DoneCh <-chan tea.Msg
+}
+
 type LoginModel struct {
 	handleInput    textinput.Model
 	state          LoginState
 	selectedOption int
 	err            error
+	authURL        string
 	width          int
 	height         int
 }
@@ -111,6 +120,11 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.Err
 		m.state = LoginStateError
 		return m, nil
+
+	case AuthURLMsg:
+		m.authURL = msg.URL
+		m.state = LoginStateShowURL
+		return m, nil
 	}
 
 	if m.state == LoginStateInput {
@@ -132,6 +146,8 @@ func (m LoginModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleChoosingState(msg)
 	case LoginStateError:
 		return m.handleErrorState(msg)
+	case LoginStateShowURL:
+		return m, nil
 	}
 	return m, nil
 }
@@ -211,7 +227,7 @@ func (m LoginModel) View() tea.View {
 			content.WriteString(optionStyle.Render("Choose authentication method:"))
 			content.WriteString("\n")
 
-			options := []string{"Login with Browser", "Paste Authorization Code"}
+			options := []string{"Login with Browser", "Show Auth URL (headless)"}
 			for i, opt := range options {
 				style := optionStyle
 				if i == m.selectedOption {
@@ -230,6 +246,17 @@ func (m LoginModel) View() tea.View {
 		content.WriteString(loadingStyle.Render("Authenticating..."))
 		content.WriteString("\n")
 		content.WriteString(optionStyle.Render("Please complete the OAuth flow in your browser."))
+
+	case LoginStateShowURL:
+		content.WriteString(loadingStyle.Render("Open this URL in a browser to authenticate:"))
+		content.WriteString("\n\n")
+		urlStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("81")).
+			Bold(true).
+			Padding(0, 2)
+		content.WriteString(urlStyle.Render(m.authURL))
+		content.WriteString("\n\n")
+		content.WriteString(optionStyle.Render("Waiting for authorization..."))
 
 	case LoginStateError:
 		errMsg := "An error occurred"
@@ -255,11 +282,4 @@ func (m LoginModel) Value() string {
 func (m *LoginModel) SetError(err error) {
 	m.err = err
 	m.state = LoginStateError
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

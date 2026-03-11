@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/auth"
+	"github.com/dotBeeps/noms/internal/config"
 	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/compose"
 	"github.com/dotBeeps/noms/internal/ui/feed"
@@ -167,8 +170,15 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.login, _ = updateLogin(m.login, msg)
 		return m, nil
 
-	case login.StartBrowserAuthMsg, login.StartPasteCodeAuthMsg:
-		return m, handleAuthStart(msg)
+	case login.StartBrowserAuthMsg:
+		return m, handleBrowserAuth(msg.Handle)
+
+	case login.StartPasteCodeAuthMsg:
+		return m, handleManualAuth(msg.Handle)
+
+	case login.AuthURLMsg:
+		m.login, _ = updateLogin(m.login, msg)
+		return m, func() tea.Msg { return <-msg.DoneCh }
 
 	// --- Feed messages ---
 	case feed.ViewThreadMsg:
@@ -741,11 +751,81 @@ func updateHelp(m components.HelpModel, msg tea.Msg) (components.HelpModel, tea.
 	return updated.(components.HelpModel), cmd
 }
 
-func handleAuthStart(msg tea.Msg) tea.Cmd {
+func oauthSetup() (string, *auth.DPoPSigner, error) {
+	if err := config.EnsureDirs(); err != nil {
+		return "", nil, fmt.Errorf("creating data directories: %w", err)
+	}
+
+	dpopKeyPath := filepath.Join(config.DataDir(), "dpop.key")
+	dpop, err := auth.NewDPoPSigner(dpopKeyPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("initializing DPoP signer: %w", err)
+	}
+
+	clientID := "http://localhost?redirect_uri=" +
+		url.QueryEscape("http://127.0.0.1/callback") +
+		"&scope=" + url.QueryEscape("transition:generic")
+
+	return clientID, dpop, nil
+}
+
+func handleBrowserAuth(handle string) tea.Cmd {
 	return func() tea.Msg {
-		return login.LoginErrorMsg{
-			Err: fmt.Errorf("browser-based OAuth not yet integrated; see docs/smoke-test.md"),
+		clientID, dpop, err := oauthSetup()
+		if err != nil {
+			return login.LoginErrorMsg{Err: err}
 		}
+
+		flow := auth.NewLoopbackFlow()
+		oauthCfg := auth.OAuthConfig{
+			ClientID: clientID,
+			Scopes:   []string{"transition:generic"},
+		}
+
+		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		session, err := manager.Authenticate(ctx, handle)
+		if err != nil {
+			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
+
+		return login.LoginSuccessMsg{Session: session}
+	}
+}
+
+func handleManualAuth(handle string) tea.Cmd {
+	return func() tea.Msg {
+		clientID, dpop, err := oauthSetup()
+		if err != nil {
+			return login.LoginErrorMsg{Err: err}
+		}
+
+		flow := auth.NewManualFlow()
+		oauthCfg := auth.OAuthConfig{
+			ClientID: clientID,
+			Scopes:   []string{"transition:generic"},
+		}
+
+		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
+
+		doneCh := make(chan tea.Msg, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+
+			session, err := manager.Authenticate(ctx, handle)
+			if err != nil {
+				doneCh <- login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+			} else {
+				doneCh <- login.LoginSuccessMsg{Session: session}
+			}
+		}()
+
+		authURL := flow.AuthURL()
+		return login.AuthURLMsg{URL: authURL, DoneCh: doneCh}
 	}
 }
 
