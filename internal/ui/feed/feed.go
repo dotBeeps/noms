@@ -318,7 +318,7 @@ func (m FeedModel) View() tea.View {
 		}
 	} else {
 		var rendered string
-		for i := m.offset; i < len(m.posts) && i < m.offset+m.visibleCount()+1; i++ {
+		for i := m.offset; i < len(m.posts) && i < m.offset+m.visibleCount(); i++ {
 			rendered += RenderPost(m.posts[i], m.width, i == m.selectedIndex)
 		}
 		if m.loading {

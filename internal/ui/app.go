@@ -104,31 +104,36 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar, _ = updateStatusBar(m.statusBar, msg)
 		m.help, _ = updateHelp(m.help, msg)
 
-		// Propagate resize to the active model
+		contentHeight := msg.Height - theme.TabBarHeight - theme.StatusBarHeight
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+		contentMsg := tea.WindowSizeMsg{Width: msg.Width, Height: contentHeight}
+
 		if m.client != nil {
 			switch m.screen {
 			case ScreenFeed:
-				updated, cmd := m.feedModel.Update(msg)
+				updated, cmd := m.feedModel.Update(contentMsg)
 				m.feedModel = updated.(feed.FeedModel)
 				cmds = append(cmds, cmd)
 			case ScreenNotifications:
-				updated, cmd := m.notifModel.Update(msg)
+				updated, cmd := m.notifModel.Update(contentMsg)
 				m.notifModel = updated.(notifications.NotificationsModel)
 				cmds = append(cmds, cmd)
 			case ScreenSearch:
-				updated, cmd := m.searchModel.Update(msg)
+				updated, cmd := m.searchModel.Update(contentMsg)
 				m.searchModel = updated.(search.SearchModel)
 				cmds = append(cmds, cmd)
 			case ScreenProfile:
-				updated, cmd := m.profileModel.Update(msg)
+				updated, cmd := m.profileModel.Update(contentMsg)
 				m.profileModel = updated.(profile.ProfileModel)
 				cmds = append(cmds, cmd)
 			case ScreenThread:
-				updated, cmd := m.threadModel.Update(msg)
+				updated, cmd := m.threadModel.Update(contentMsg)
 				m.threadModel = updated.(thread.ThreadModel)
 				cmds = append(cmds, cmd)
 			case ScreenCompose:
-				updated, cmd := m.composeModel.Update(msg)
+				updated, cmd := m.composeModel.Update(contentMsg)
 				m.composeModel = updated.(compose.ComposeModel)
 				cmds = append(cmds, cmd)
 			}
@@ -663,6 +668,11 @@ func (m App) View() tea.View {
 	}
 
 	mainContent := m.renderMainContent(mainHeight)
+	mainContent = lipgloss.NewStyle().
+		Width(m.width).
+		Height(mainHeight).
+		MaxHeight(mainHeight).
+		Render(mainContent)
 	content.WriteString(mainContent)
 	content.WriteString("\n")
 

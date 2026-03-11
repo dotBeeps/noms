@@ -133,18 +133,19 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 
 	res := b.String()
 
-	// Apply styles based on selection
 	if selected {
-		res = "▶ " + res
-		res = theme.StyleSelected.Render(res)
+		indicator := lipgloss.NewStyle().
+			Foreground(theme.ColorAccent).
+			Bold(true).
+			Render("▶ ")
+		res = indicator + res
 	} else {
 		res = "  " + res
-		res = theme.StylePost.Render(res)
 	}
 
 	// Separator line
 	sep := theme.StyleMuted.Render(strings.Repeat("─", max(1, width-4)))
-	return res + "\n" + sep
+	return res + "\n" + sep + "\n"
 }
 
 func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {

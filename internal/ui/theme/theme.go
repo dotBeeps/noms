@@ -24,9 +24,7 @@ const (
 // Reusable styles
 var (
 	StylePost = lipgloss.NewStyle().
-			Padding(1, 2).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorSecondary)
+			Foreground(lipgloss.Color("252"))
 
 	StyleHeader = lipgloss.NewStyle().
 			Foreground(ColorPrimary).
