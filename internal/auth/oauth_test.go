@@ -99,6 +99,14 @@ func TestFullOAuthFlow(t *testing.T) {
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"resource":              serverURL,
+			"authorization_servers": []string{serverURL},
+		})
+	})
+
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(AuthServerMetadata{

@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bluesky-social/indigo/atproto/identity"
+	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
 type OAuthConfig struct {
@@ -92,7 +94,12 @@ func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Sessio
 		return nil, fmt.Errorf("resolving PDS for %s: %w", handle, err)
 	}
 
-	meta, err := m.fetchAuthServerMetadata(ctx, pdsURL)
+	authServerURL, err := m.fetchAuthServerURL(ctx, pdsURL)
+	if err != nil {
+		return nil, fmt.Errorf("discovering auth server for %s: %w", pdsURL, err)
+	}
+
+	meta, err := m.fetchAuthServerMetadata(ctx, authServerURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching auth server metadata: %w", err)
 	}
@@ -164,8 +171,40 @@ func (m *OAuthManager) resolvePDS(ctx context.Context, handle string) (string, e
 	return defaultResolvePDS(ctx, handle, m.httpClient())
 }
 
-func (m *OAuthManager) fetchAuthServerMetadata(ctx context.Context, pdsURL string) (*AuthServerMetadata, error) {
-	metaURL := strings.TrimRight(pdsURL, "/") + "/.well-known/oauth-authorization-server"
+func (m *OAuthManager) fetchAuthServerURL(ctx context.Context, pdsURL string) (string, error) {
+	metaURL := strings.TrimRight(pdsURL, "/") + "/.well-known/oauth-protected-resource"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", metaURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := m.httpClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("protected resource metadata request failed (HTTP %d)", resp.StatusCode)
+	}
+
+	var prm struct {
+		AuthorizationServers []string `json:"authorization_servers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&prm); err != nil {
+		return "", fmt.Errorf("decoding protected resource metadata: %w", err)
+	}
+
+	if len(prm.AuthorizationServers) == 0 {
+		return "", fmt.Errorf("no authorization servers listed for %s", pdsURL)
+	}
+
+	return prm.AuthorizationServers[0], nil
+}
+
+func (m *OAuthManager) fetchAuthServerMetadata(ctx context.Context, authServerURL string) (*AuthServerMetadata, error) {
+	metaURL := strings.TrimRight(authServerURL, "/") + "/.well-known/oauth-authorization-server"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", metaURL, nil)
 	if err != nil {
@@ -351,77 +390,22 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func defaultResolvePDS(ctx context.Context, handle string, client *http.Client) (string, error) {
-	records, err := net.DefaultResolver.LookupTXT(ctx, "_atproto-did."+handle)
-	if err == nil {
-		for _, rec := range records {
-			if strings.HasPrefix(rec, "did:") {
-				return resolvePDSFromDID(ctx, rec, client)
-			}
-		}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://"+handle+"/.well-known/atproto-did", nil)
+func defaultResolvePDS(ctx context.Context, handle string, _ *http.Client) (string, error) {
+	h, err := syntax.ParseHandle(handle)
 	if err != nil {
-		return "", fmt.Errorf("resolving handle %s: %w", handle, err)
+		return "", fmt.Errorf("invalid handle %q: %w", handle, err)
 	}
-	resp, err := client.Do(req)
+
+	dir := identity.DefaultDirectory()
+	ident, err := dir.LookupHandle(ctx, h)
 	if err != nil {
-		return "", fmt.Errorf("resolving handle %s: %w", handle, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("reading DID for %s: %w", handle, err)
-	}
-	did := strings.TrimSpace(string(body))
-	if !strings.HasPrefix(did, "did:") {
-		return "", fmt.Errorf("invalid DID response for %s: %q", handle, did)
+		return "", fmt.Errorf("resolving identity for %s: %w", handle, err)
 	}
 
-	return resolvePDSFromDID(ctx, did, client)
-}
-
-func resolvePDSFromDID(ctx context.Context, did string, client *http.Client) (string, error) {
-	var didDocURL string
-	switch {
-	case strings.HasPrefix(did, "did:plc:"):
-		didDocURL = "https://plc.directory/" + did
-	case strings.HasPrefix(did, "did:web:"):
-		domain := strings.TrimPrefix(did, "did:web:")
-		didDocURL = "https://" + domain + "/.well-known/did.json"
-	default:
-		return "", fmt.Errorf("unsupported DID method: %s", did)
+	pds := ident.PDSEndpoint()
+	if pds == "" {
+		return "", fmt.Errorf("no PDS endpoint found for %s", handle)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", didDocURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("building DID document request for %s: %w", did, err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("fetching DID document for %s: %w", did, err)
-	}
-	defer resp.Body.Close()
-
-	var doc struct {
-		Service []struct {
-			ID              string `json:"id"`
-			Type            string `json:"type"`
-			ServiceEndpoint string `json:"serviceEndpoint"`
-		} `json:"service"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return "", fmt.Errorf("decoding DID document for %s: %w", did, err)
-	}
-
-	for _, svc := range doc.Service {
-		if svc.ID == "#atproto_pds" || svc.Type == "AtprotoPersonalDataServer" {
-			return svc.ServiceEndpoint, nil
-		}
-	}
-
-	return "", fmt.Errorf("no PDS service found in DID document for %s", did)
+	return pds, nil
 }

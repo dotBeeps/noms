@@ -7,13 +7,18 @@ import "context"
 // the OAuth redirect.
 type ManualFlow struct {
 	*LoopbackFlow
-	authURL chan string
+	result chan manualFlowResult
+}
+
+type manualFlowResult struct {
+	URL string
+	Err error
 }
 
 func NewManualFlow() *ManualFlow {
 	return &ManualFlow{
 		LoopbackFlow: NewLoopbackFlow(),
-		authURL:      make(chan string, 1),
+		result:       make(chan manualFlowResult, 1),
 	}
 }
 
@@ -26,11 +31,20 @@ func (f *ManualFlow) Start(ctx context.Context, authURL string) error {
 			return err
 		}
 	}
-	f.authURL <- authURL
+	f.result <- manualFlowResult{URL: authURL}
 	return nil
 }
 
-// AuthURL blocks until the auth URL is ready, then returns it.
-func (f *ManualFlow) AuthURL() string {
-	return <-f.authURL
+// SignalError unblocks AuthURL when Authenticate fails before Start is called.
+func (f *ManualFlow) SignalError(err error) {
+	select {
+	case f.result <- manualFlowResult{Err: err}:
+	default:
+	}
+}
+
+// AuthURL blocks until the auth URL is ready or an error occurs.
+func (f *ManualFlow) AuthURL() (string, error) {
+	r := <-f.result
+	return r.URL, r.Err
 }

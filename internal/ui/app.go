@@ -818,13 +818,17 @@ func handleManualAuth(handle string) tea.Cmd {
 
 			session, err := manager.Authenticate(ctx, handle)
 			if err != nil {
+				flow.SignalError(err) // unblock AuthURL if Start was never reached
 				doneCh <- login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
 			} else {
 				doneCh <- login.LoginSuccessMsg{Session: session}
 			}
 		}()
 
-		authURL := flow.AuthURL()
+		authURL, err := flow.AuthURL()
+		if err != nil {
+			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
 		return login.AuthURLMsg{URL: authURL, DoneCh: doneCh}
 	}
 }
