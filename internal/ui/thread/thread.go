@@ -420,6 +420,9 @@ func (m ThreadModel) View() tea.View {
 		// Apply indent line by line
 		lines := strings.Split(postStr, "\n")
 		for j, line := range lines {
+			if line == "" {
+				continue
+			}
 			if tp.IsParent {
 				lines[j] = theme.StyleMuted.Render(indent) + line
 			} else {

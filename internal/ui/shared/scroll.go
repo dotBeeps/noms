@@ -35,26 +35,30 @@ func EnsureSelectedVisible(itemCount, selectedIndex, offset, height int, renderI
 	return offset
 }
 
-// RenderItemWithBorder wraps content with a left border and separator line.
 func RenderItemWithBorder(content string, selected bool, width int) string {
 	borderColor := lipgloss.Color("238")
+	panelBg := lipgloss.Color("236")
 	if selected {
 		borderColor = theme.ColorAccent
+		panelBg = lipgloss.Color("237")
 	}
-	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎ ")
+	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
+	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
+	lineStyle := lipgloss.NewStyle().Background(panelBg).Padding(0, 1).Width(max(1, width-2))
 
-	sep := theme.StyleMuted.Render(strings.Repeat("─", max(1, width-4)))
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
 
-	allContent := strings.TrimRight(content, "\n") + "\n" + sep
-	lines := strings.Split(allContent, "\n")
 	var result strings.Builder
 	for i, line := range lines {
 		if i > 0 {
 			result.WriteString("\n")
 		}
-		result.WriteString(styledBorder + line)
+		result.WriteString(styledBorder + gap + lineStyle.Render(line))
 	}
-	result.WriteString("\n")
+	result.WriteString("\n\n")
 
 	return result.String()
 }

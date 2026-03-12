@@ -9,6 +9,7 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/images"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -206,29 +207,7 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	b.WriteString(engLine)
 	b.WriteString("\n")
 
-	res := b.String()
-
-	borderColor := lipgloss.Color("238")
-	if selected {
-		borderColor = theme.ColorAccent
-	}
-	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎ ")
-
-	// Separator line
-	sep := theme.StyleMuted.Render(strings.Repeat("─", max(1, width-4)))
-
-	allContent := strings.TrimRight(res, "\n") + "\n" + sep
-	lines := strings.Split(allContent, "\n")
-	var result strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		result.WriteString(styledBorder + line)
-	}
-	result.WriteString("\n")
-
-	return result.String()
+	return shared.RenderItemWithBorder(b.String(), selected, width)
 }
 
 func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.Cache) string {
