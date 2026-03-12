@@ -17,6 +17,8 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
+const maxOAuthResponseBytes = 1 << 20
+
 type OAuthConfig struct {
 	ClientID    string
 	RedirectURI string
@@ -136,7 +138,7 @@ func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Sessio
 		return nil, fmt.Errorf("waiting for callback: %w", err)
 	}
 
-	if receivedState != "" && receivedState != state {
+	if receivedState != state {
 		return nil, fmt.Errorf("state mismatch: expected %s, got %s", state, receivedState)
 	}
 
@@ -172,7 +174,9 @@ func (m *OAuthManager) fetchAuthServerURL(ctx context.Context, pdsURL string) (s
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("protected resource metadata request failed (HTTP %d)", resp.StatusCode)
@@ -204,7 +208,9 @@ func (m *OAuthManager) fetchAuthServerMetadata(ctx context.Context, authServerUR
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("auth server metadata request failed (HTTP %d)", resp.StatusCode)
@@ -256,17 +262,20 @@ func (m *OAuthManager) sendPAR(ctx context.Context, meta *AuthServerMetadata, re
 			m.DPoP.UpdateNonce(extractHost(parURL), nonce)
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxOAuthResponseBytes+1))
+		_ = resp.Body.Close()
 		if err != nil {
 			return "", fmt.Errorf("reading PAR response: %w", err)
+		}
+		if len(body) > maxOAuthResponseBytes {
+			return "", fmt.Errorf("PAR response exceeds %d bytes", maxOAuthResponseBytes)
 		}
 
 		if resp.StatusCode == http.StatusBadRequest {
 			var errResp struct {
 				Error string `json:"error"`
 			}
-			if json.Unmarshal(body, &errResp) == nil && errResp.Error == "use_dpop_nonce" {
+			if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error == "use_dpop_nonce" {
 				continue
 			}
 			return "", fmt.Errorf("PAR failed: %s", string(body))
@@ -321,17 +330,20 @@ func (m *OAuthManager) exchangeCode(ctx context.Context, meta *AuthServerMetadat
 			m.DPoP.UpdateNonce(extractHost(meta.TokenEndpoint), nonce)
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxOAuthResponseBytes+1))
+		_ = resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("reading token response: %w", err)
+		}
+		if len(body) > maxOAuthResponseBytes {
+			return nil, fmt.Errorf("token response exceeds %d bytes", maxOAuthResponseBytes)
 		}
 
 		if resp.StatusCode == http.StatusBadRequest {
 			var errResp struct {
 				Error string `json:"error"`
 			}
-			if json.Unmarshal(body, &errResp) == nil && errResp.Error == "use_dpop_nonce" {
+			if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error == "use_dpop_nonce" {
 				continue
 			}
 			return nil, fmt.Errorf("token exchange failed: %s", string(body))

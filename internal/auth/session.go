@@ -84,10 +84,10 @@ func (t *dpopTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		retryReq, err := cloneRequest(req)
 		if err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("cloning request for DPoP nonce retry: %w", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		dpopJWT2, err := t.session.DPoP.Sign(retryReq.Method, stripQueryFragment(retryReq.URL.String()), accessToken)
 		if err != nil {
@@ -107,10 +107,10 @@ func (t *dpopTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		retryReq, err := cloneRequest(req)
 		if err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("cloning request for token refresh retry: %w", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		dpopJWT2, err := t.session.DPoP.Sign(retryReq.Method, stripQueryFragment(retryReq.URL.String()), newTokens.AccessToken)
 		if err != nil {

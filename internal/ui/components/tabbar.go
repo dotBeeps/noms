@@ -19,10 +19,6 @@ var (
 				Foreground(lipgloss.Color("246")).
 				Background(lipgloss.Color("238")).
 				Padding(0, 2)
-
-	tabKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
-			Bold(true)
 )
 
 type Tab int

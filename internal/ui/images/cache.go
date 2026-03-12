@@ -147,7 +147,9 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 			c.setError(fmt.Errorf("fetch %s: %w", truncateURL(url), err))
 			return nil
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			debugLog.Printf("Fetch: HTTP status %d url=%s", resp.StatusCode, truncateURL(url))
@@ -179,10 +181,12 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 			c.setError(fmt.Errorf("create %s: %w", path, err))
 			return nil
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 
 		if err := png.Encode(f, img); err != nil {
-			os.Remove(path)
+			_ = os.Remove(path)
 			debugLog.Printf("Fetch: encode error path=%s err=%v", path, err)
 			c.setError(fmt.Errorf("encode %s: %w", path, err))
 			return nil
@@ -316,9 +320,9 @@ func (c *Cache) DebugInfo() string {
 			status += "(fallback)"
 		}
 		if d.Error != nil {
-			detLog.WriteString(fmt.Sprintf(" %s:%s(%v)", d.Protocol, status, d.Error))
+			_, _ = fmt.Fprintf(&detLog, " %s:%s(%v)", d.Protocol, status, d.Error)
 		} else {
-			detLog.WriteString(fmt.Sprintf(" %s:%s", d.Protocol, status))
+			_, _ = fmt.Fprintf(&detLog, " %s:%s", d.Protocol, status)
 		}
 	}
 
@@ -352,10 +356,10 @@ func (c *Cache) transmitImageData(path string) (uint32, error) {
 		}
 
 		if first {
-			buf.WriteString(fmt.Sprintf("\x1b_Gf=100,t=d,i=%d,q=2,m=%d;%s\x1b\\", imageNum, more, chunk))
+			_, _ = fmt.Fprintf(&buf, "\x1b_Gf=100,t=d,i=%d,q=2,m=%d;%s\x1b\\", imageNum, more, chunk)
 			first = false
 		} else {
-			buf.WriteString(fmt.Sprintf("\x1b_Gm=%d,q=2;%s\x1b\\", more, chunk))
+			_, _ = fmt.Fprintf(&buf, "\x1b_Gm=%d,q=2;%s\x1b\\", more, chunk)
 		}
 	}
 
@@ -383,7 +387,7 @@ func (c *Cache) Close() {
 	}
 	if c.tty != nil {
 		c.tty.WriteString("\x1b_Ga=d,d=A,q=2\x1b\\") //nolint:errcheck
-		c.tty.Close()
+		_ = c.tty.Close()
 		c.tty = nil
 	}
 }

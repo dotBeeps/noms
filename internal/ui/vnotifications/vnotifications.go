@@ -380,11 +380,11 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 	b.WriteString(line + "\n")
 
 	if n.Universe != "" {
-		b.WriteString(fmt.Sprintf("  %s\n", universeStyle.Render(n.Universe)))
+		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle.Render(n.Universe))
 	}
 
 	ts := n.CreatedAt.Format("Jan 2, 2006 15:04")
-	b.WriteString(fmt.Sprintf("  %s", timeStyle.Render(ts)))
+	_, _ = fmt.Fprintf(&b, "  %s", timeStyle.Render(ts))
 
 	result := b.String()
 	return shared.RenderItemWithBorder(result, selected, m.width)

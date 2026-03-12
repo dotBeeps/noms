@@ -167,7 +167,9 @@ func TestGetPostThreadError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(404)
-		json.NewEncoder(w).Encode(map[string]string{"error": "NotFound", "message": "post not found"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "NotFound", "message": "post not found"}); err != nil {
+			t.Fatalf("encode error response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

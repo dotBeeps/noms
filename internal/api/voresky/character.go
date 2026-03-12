@@ -89,7 +89,9 @@ func (c *VoreskyClient) GetCharacter(ctx context.Context, id string) (*Character
 	if err != nil {
 		return nil, fmt.Errorf("get character: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, ParseError(resp)
@@ -109,7 +111,9 @@ func (c *VoreskyClient) GetMyCharacters(ctx context.Context) (*ListCharactersRes
 	if err != nil {
 		return nil, fmt.Errorf("list characters: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, ParseError(resp)

@@ -194,7 +194,9 @@ func TestDPoPHeaderPresent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedReq = r
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"feed": []any{}, "cursor": nil})
+		if err := json.NewEncoder(w).Encode(map[string]any{"feed": []any{}, "cursor": nil}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -239,11 +241,15 @@ func TestRateLimitRetry(t *testing.T) {
 			w.Header().Set("RateLimit-Reset", "9999999999")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(429)
-			json.NewEncoder(w).Encode(map[string]string{"error": "RateLimitExceeded", "message": "too many requests"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"error": "RateLimitExceeded", "message": "too many requests"}); err != nil {
+				t.Fatalf("encode ratelimit response: %v", err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"count": 5})
+		if err := json.NewEncoder(w).Encode(map[string]any{"count": 5}); err != nil {
+			t.Fatalf("encode count response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

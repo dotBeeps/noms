@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const maxErrorBodyBytes = 1 << 20
+
 // VoreskyError represents an API error returned by the Voresky server.
 // It implements the error interface.
 type VoreskyError struct {
@@ -34,14 +36,37 @@ func ParseError(resp *http.Response) error {
 	if resp == nil {
 		return fmt.Errorf("nil response")
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
 	if err != nil {
 		return fmt.Errorf("read error body: %w", err)
 	}
+	truncated := len(body) > maxErrorBodyBytes
+	if truncated {
+		body = body[:maxErrorBodyBytes]
+	}
 
 	ve := &VoreskyError{StatusCode: resp.StatusCode}
-	// Best-effort JSON decode; ignore parse errors and use empty message.
-	_ = json.Unmarshal(body, ve)
+	if err := json.Unmarshal(body, ve); err != nil {
+		if truncated {
+			ve.Message = fmt.Sprintf("response body exceeds %d bytes", maxErrorBodyBytes)
+			return ve
+		}
+
+		fallback := strings.TrimSpace(string(body))
+		if fallback == "" {
+			fallback = http.StatusText(resp.StatusCode)
+		}
+		ve.Message = fallback
+	}
+
+	if ve.Message == "" {
+		if truncated {
+			ve.Message = fmt.Sprintf("response body exceeds %d bytes", maxErrorBodyBytes)
+		} else {
+			ve.Message = http.StatusText(resp.StatusCode)
+		}
+	}
+
 	return ve
 }
 
@@ -81,7 +106,7 @@ func (c *VoreskyClient) Do(ctx context.Context, method, path string, body interf
 	if resp.StatusCode == http.StatusUnauthorized {
 		// Drain and close the first response before retrying.
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Attempt to revalidate; if it fails, surface the auth error.
 		if revalErr := c.auth.RefreshOrRevalidate(ctx); revalErr != nil {

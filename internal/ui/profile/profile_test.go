@@ -249,8 +249,7 @@ func TestFollowAction(t *testing.T) {
 	model = updated.(ProfileModel)
 
 	// Press 'f' to follow
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
-	model = updated.(ProfileModel)
+	_, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
 
 	// Simulate the command execution (it should call FollowActor)
 	if cmd != nil {
@@ -289,8 +288,7 @@ func TestUnfollowAction(t *testing.T) {
 	}
 
 	// Press 'f' to unfollow
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
-	model = updated.(ProfileModel)
+	_, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
 
 	// Simulate the command execution
 	if cmd != nil {
@@ -333,8 +331,7 @@ func TestOwnProfileNoFollowButton(t *testing.T) {
 	}
 
 	// Press 'f' - should be ignored
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
-	model = updated.(ProfileModel)
+	_, cmd := model.Update(tea.KeyPressMsg{Text: "f"})
 
 	if cmd != nil {
 		t.Error("Expected no command when pressing 'f' on own profile")
@@ -452,8 +449,7 @@ func TestBackNavigation(t *testing.T) {
 	}
 
 	// Test 'backspace' as well
-	updated, cmd = model.Update(tea.KeyPressMsg{Text: "backspace"})
-	model = updated.(ProfileModel)
+	_, cmd = model.Update(tea.KeyPressMsg{Text: "backspace"})
 
 	if cmd == nil {
 		t.Error("Expected command from 'backspace' key press")
@@ -481,8 +477,7 @@ func TestViewThreadNavigation(t *testing.T) {
 	model = updated.(ProfileModel)
 
 	// Press 'enter' on selected post
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "enter"})
-	model = updated.(ProfileModel)
+	_, cmd := model.Update(tea.KeyPressMsg{Text: "enter"})
 
 	if cmd == nil {
 		t.Error("Expected command from 'enter' key press")
@@ -654,8 +649,7 @@ func TestProfileDeleteSecondDPress(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "d"})
 	model = updated.(ProfileModel)
 
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
-	model = updated.(ProfileModel)
+	_, cmd := model.Update(tea.KeyPressMsg{Text: "d"})
 
 	if cmd == nil {
 		t.Fatal("Expected command on second 'd' press")

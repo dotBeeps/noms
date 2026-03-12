@@ -3,7 +3,6 @@ package compose
 import (
 	"context"
 	"errors"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -12,12 +11,6 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/lex/util"
 )
-
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func stripAnsi(s string) string {
-	return ansiRe.ReplaceAllString(s, "")
-}
 
 // mockBlueskyClient implements bluesky.BlueskyClient for testing
 type mockBlueskyClient struct {
@@ -113,7 +106,6 @@ func (m *mockBlueskyClient) SearchActors(ctx context.Context, query string, curs
 
 // Helper functions
 func strPtr(s string) *string { return &s }
-func int64Ptr(i int64) *int64 { return &i }
 
 func createTestPostView(uri, cid, handle, text string) *bsky.FeedDefs_PostView {
 	return &bsky.FeedDefs_PostView{
@@ -268,17 +260,13 @@ func TestMentionAutoDetect(t *testing.T) {
 
 	// Execute the command
 	msg := cmd()
-	if _, ok := msg.(postSuccessMsg); !ok && !isPostSuccessMsg(msg) {
-		// It might be a batch command, execute again
-		if batchMsg, ok := msg.(tea.BatchMsg); ok {
-			for _, c := range batchMsg {
-				if c != nil {
-					innerMsg := c()
-					if successMsg, ok := innerMsg.(postSuccessMsg); ok {
-						msg = successMsg
-						break
-					}
-				}
+	if batchMsg, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batchMsg {
+			if c == nil {
+				continue
+			}
+			if _, ok := c().(postSuccessMsg); ok {
+				break
 			}
 		}
 	}
@@ -304,12 +292,6 @@ func TestMentionAutoDetect(t *testing.T) {
 	if !foundMention {
 		t.Error("Expected mention facet to be detected")
 	}
-}
-
-// Helper to check if msg is a postSuccessMsg
-func isPostSuccessMsg(msg tea.Msg) bool {
-	_, ok := msg.(postSuccessMsg)
-	return ok
 }
 
 // Test 7: TestLinkAutoDetect

@@ -132,8 +132,14 @@ func TestDPoPKeyPersistence(t *testing.T) {
 		t.Fatalf("Failed to create signer 2: %v", err)
 	}
 
-	jwk1 := s1.GetPublicJWK()
-	jwk2 := s2.GetPublicJWK()
+	jwk1, err := s1.GetPublicJWK()
+	if err != nil {
+		t.Fatalf("GetPublicJWK signer 1: %v", err)
+	}
+	jwk2, err := s2.GetPublicJWK()
+	if err != nil {
+		t.Fatalf("GetPublicJWK signer 2: %v", err)
+	}
 
 	if jwk1["x"] != jwk2["x"] || jwk1["y"] != jwk2["y"] {
 		t.Errorf("Keys did not persist correctly, x or y mismatch")

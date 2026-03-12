@@ -1080,15 +1080,6 @@ func (m App) renderHelpOverlay(baseView tea.View) tea.View {
 	helpWidth := lipgloss.Width(helpContent)
 	helpHeight := lipgloss.Height(helpContent)
 
-	x := (m.width - helpWidth) / 2
-	if x < 0 {
-		x = 0
-	}
-	y := (m.height - helpHeight) / 2
-	if y < 0 {
-		y = 0
-	}
-
 	overlayStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252")).
 		Background(lipgloss.Color("236"))

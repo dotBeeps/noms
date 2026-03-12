@@ -98,7 +98,9 @@ func (c *VoreskyClient) Enrich(ctx context.Context, dids []string, knownStates m
 	if err != nil {
 		return nil, fmt.Errorf("enrich: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, ParseError(resp)
@@ -122,7 +124,9 @@ func (c *VoreskyClient) GetSnapshot(ctx context.Context, hash string) (*Snapshot
 	if err != nil {
 		return nil, fmt.Errorf("get snapshot: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, ParseError(resp)

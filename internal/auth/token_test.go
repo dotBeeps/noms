@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -32,13 +34,15 @@ func TestTokenExchange(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token":  "new-access",
 			"refresh_token": "new-refresh",
 			"expires_in":    3600,
 			"token_type":    "DPoP",
 			"sub":           "did:plc:test",
-		})
+		}); err != nil {
+			t.Fatalf("encode token response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -80,7 +84,9 @@ func TestTokenExchangeError(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"invalid_grant","error_description":"Refresh token expired"}`))
+		if _, err := w.Write([]byte(`{"error":"invalid_grant","error_description":"Refresh token expired"}`)); err != nil {
+			t.Fatalf("write error response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -113,12 +119,14 @@ func TestTokenRefreshMutex(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token":  "refreshed",
 			"refresh_token": "new-refresh",
 			"expires_in":    3600,
 			"token_type":    "DPoP",
-		})
+		}); err != nil {
+			t.Fatalf("encode refresh response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -179,5 +187,37 @@ func TestTokenRefreshBeforeExpiry(t *testing.T) {
 	tm.Tokens = nil
 	if !tm.IsExpired() {
 		t.Error("Nil tokens should be considered expired")
+	}
+}
+
+func TestTokenRefreshRejectsOversizedResponse(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{" + strings.Repeat("x", maxTokenResponseBytes+2) + "}"))
+	}))
+	defer server.Close()
+
+	signer, err := NewDPoPSigner("")
+	if err != nil {
+		t.Fatalf("NewDPoPSigner: %v", err)
+	}
+
+	tokens := &TokenSet{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    time.Now().Add(-time.Hour),
+	}
+
+	tm := NewTokenManager(server.URL, "test-client", tokens, signer)
+	tm.HTTPClient = server.Client()
+
+	_, err = tm.Refresh(context.Background())
+	if err == nil {
+		t.Fatal("expected oversized response error")
+	}
+	want := fmt.Sprintf("token response exceeds %d bytes", maxTokenResponseBytes)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected error to contain %q, got %v", want, err)
 	}
 }

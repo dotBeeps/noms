@@ -452,10 +452,10 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 
 	authorStyled := authorStyle.Render(authorDisplay)
 	actionLine := fmt.Sprintf("%s%s %s", unreadDot, style.Render(icon), action)
-	b.WriteString(fmt.Sprintf("%s %s\n", authorStyled, actionLine))
+	_, _ = fmt.Fprintf(&b, "%s %s\n", authorStyled, actionLine)
 
 	if g.preview != "" {
-		b.WriteString(fmt.Sprintf("  %s\n", contentPreviewStyle.Render(g.preview)))
+		_, _ = fmt.Fprintf(&b, "  %s\n", contentPreviewStyle.Render(g.preview))
 	}
 
 	var timeStr string
@@ -466,7 +466,7 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 			timeStr = g.notif.IndexedAt
 		}
 	}
-	b.WriteString(fmt.Sprintf("  %s", timeStyle.Render(timeStr)))
+	_, _ = fmt.Fprintf(&b, "  %s", timeStyle.Render(timeStr))
 
 	return shared.RenderItemWithBorder(b.String(), selected, m.width)
 }

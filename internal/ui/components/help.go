@@ -106,9 +106,6 @@ var composeKeyBindings = []KeyBinding{
 	{Key: "Esc", Description: "Cancel"},
 }
 
-// mainKeyBindings kept for backward compatibility with tests
-var mainKeyBindings = globalKeyBindings
-
 type HelpModel struct {
 	Visible bool
 	Width   int

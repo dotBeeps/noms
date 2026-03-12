@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"runtime"
 	"time"
@@ -68,7 +69,7 @@ func (l *LoopbackFlow) Start(ctx context.Context, authURL string) error {
 			return err
 		}
 	}
-	return openBrowser(authURL)
+	return openBrowser(ctx, authURL)
 }
 
 func (l *LoopbackFlow) WaitForCallback(ctx context.Context) (string, string, error) {
@@ -103,14 +104,12 @@ func (l *LoopbackFlow) handleCallback(w http.ResponseWriter, r *http.Request) {
 		case l.errCh <- fmt.Errorf("oauth error: %s - %s", errStr, errDesc):
 		default:
 		}
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Authentication failed: %s", errStr)))
+		l.writeCallbackResponse(w, http.StatusBadRequest, fmt.Sprintf("Authentication failed: %s", errStr))
 		return
 	}
 
 	if code == "" || state == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing code or state parameter"))
+		l.writeCallbackResponse(w, http.StatusBadRequest, "Missing code or state parameter")
 		return
 	}
 
@@ -120,24 +119,99 @@ func (l *LoopbackFlow) handleCallback(w http.ResponseWriter, r *http.Request) {
 	default:
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`<html><body><h1>Authentication successful!</h1><p>You may now close this window and return to noms.</p></body></html>`))
+	l.writeCallbackResponse(w, http.StatusOK, `<html><body><h1>Authentication successful!</h1><p>You may now close this window and return to noms.</p></body></html>`)
+}
+
+func (l *LoopbackFlow) writeCallbackResponse(w http.ResponseWriter, status int, body string) {
+	w.WriteHeader(status)
+	if _, err := w.Write([]byte(body)); err != nil {
+		select {
+		case l.errCh <- fmt.Errorf("writing callback response: %w", err):
+		default:
+		}
+	}
 }
 
 // overrideable for testing
-var openBrowser = func(url string) error {
-	var cmd string
-	var args []string
+var openBrowser = func(ctx context.Context, rawURL string) error {
+	if err := validateBrowserURL(rawURL); err != nil {
+		return err
+	}
 
+	launchCtx := ctx
+	if launchCtx == nil {
+		launchCtx = context.Background()
+	}
+	cmdCtx, cancel := context.WithTimeout(launchCtx, 10*time.Second)
+	defer cancel()
+
+	type browserCommand struct {
+		name string
+		args []string
+	}
+
+	var candidates []browserCommand
 	switch runtime.GOOS {
 	case "windows":
-		cmd = "cmd"
-		args = []string{"/c", "start"}
+		candidates = []browserCommand{{name: "cmd", args: []string{"/c", "start", "", rawURL}}}
 	case "darwin":
-		cmd = "open"
-	default: // "linux", "freebsd", "openbsd", "netbsd"
-		cmd = "xdg-open"
+		candidates = []browserCommand{{name: "open", args: []string{rawURL}}}
+	default:
+		candidates = []browserCommand{
+			{name: "xdg-open", args: []string{rawURL}},
+			{name: "gio", args: []string{"open", rawURL}},
+			{name: "sensible-browser", args: []string{rawURL}},
+		}
 	}
-	args = append(args, url)
-	return exec.Command(cmd, args...).Start()
+
+	var lastErr error
+	for _, candidate := range candidates {
+		if err := startAndCheckBrowserCommand(cmdCtx, candidate.name, candidate.args...); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no browser launch command candidates configured")
+	}
+
+	return fmt.Errorf("opening browser: %w", lastErr)
+
+}
+
+func startAndCheckBrowserCommand(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return err
+	case <-time.After(1500 * time.Millisecond):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func validateBrowserURL(rawURL string) error {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid browser URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("invalid browser URL scheme: %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid browser URL host")
+	}
+	return nil
 }

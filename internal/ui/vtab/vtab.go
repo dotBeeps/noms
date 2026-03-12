@@ -275,15 +275,15 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 		statusStr = statusInactiveStyle.Render("○ " + c.Status)
 	}
 
-	b.WriteString(fmt.Sprintf("%s%s  %s\n", nameStr, mainIndicator, statusStr))
+	_, _ = fmt.Fprintf(&b, "%s%s  %s\n", nameStr, mainIndicator, statusStr)
 
 	if c.FeaturedUniverse != "" {
-		b.WriteString(fmt.Sprintf("  %s\n", universeStyle.Render(c.FeaturedUniverse)))
+		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle.Render(c.FeaturedUniverse))
 	}
 
 	if c.Description != "" {
 		desc := truncateText(c.Description, 60)
-		b.WriteString(fmt.Sprintf("  %s\n", descriptionStyle.Render(desc)))
+		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle.Render(desc))
 	}
 
 	return shared.RenderItemWithBorder(b.String(), selected, m.width)

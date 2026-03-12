@@ -109,6 +109,7 @@ type fileStoreData struct {
 type FileStore struct {
 	path string
 	key  []byte // 32-byte AES-256 key
+	mu   sync.Mutex
 }
 
 // NewFileStore creates a FileStore, deriving the encryption key from the
@@ -182,12 +183,12 @@ func (f *FileStore) save(d *fileStoreData) error {
 	tmpName := tmp.Name()
 
 	if _, err := tmp.Write(ciphertext); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 
@@ -228,6 +229,9 @@ func (f *FileStore) decrypt(ciphertext []byte) ([]byte, error) {
 }
 
 func (f *FileStore) Store(did string, data []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	d, err := f.load()
 	if err != nil {
 		return err
@@ -239,6 +243,9 @@ func (f *FileStore) Store(did string, data []byte) error {
 }
 
 func (f *FileStore) Retrieve(did string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	d, err := f.load()
 	if err != nil {
 		return nil, err
@@ -253,6 +260,9 @@ func (f *FileStore) Retrieve(did string) ([]byte, error) {
 }
 
 func (f *FileStore) Delete(did string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	d, err := f.load()
 	if err != nil {
 		return err
@@ -265,6 +275,9 @@ func (f *FileStore) Delete(did string) error {
 }
 
 func (f *FileStore) ListAccounts() ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	d, err := f.load()
 	if err != nil {
 		return nil, err

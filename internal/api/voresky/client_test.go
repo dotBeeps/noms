@@ -3,6 +3,7 @@ package voresky
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,9 @@ func TestVoreskyAuthenticatedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want 200", resp.StatusCode)
@@ -95,7 +98,9 @@ func TestVoreskyClientRetryOn401(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status after retry: got %d, want 200", resp.StatusCode)
@@ -120,7 +125,9 @@ func TestVoreskyErrorParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("http.Get: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	apiErr := ParseError(resp)
 	if apiErr == nil {
@@ -136,6 +143,60 @@ func TestVoreskyErrorParsing(t *testing.T) {
 	}
 	if ve.Message != "Account not in session" {
 		t.Errorf("Message: got %q, want %q", ve.Message, "Account not in session")
+	}
+}
+
+func TestVoreskyErrorParsingNonJSON(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("upstream temporarily unavailable"))
+	}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("http.Get: %v", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	apiErr := ParseError(resp)
+	ve, ok := apiErr.(*VoreskyError)
+	if !ok {
+		t.Fatalf("expected *VoreskyError, got %T", apiErr)
+	}
+	if ve.Message != "upstream temporarily unavailable" {
+		t.Fatalf("Message: got %q", ve.Message)
+	}
+}
+
+func TestVoreskyErrorParsingLargeBody(t *testing.T) {
+	t.Parallel()
+	large := strings.Repeat("x", maxErrorBodyBytes+10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(large))
+	}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("http.Get: %v", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	apiErr := ParseError(resp)
+	ve, ok := apiErr.(*VoreskyError)
+	if !ok {
+		t.Fatalf("expected *VoreskyError, got %T", apiErr)
+	}
+	want := fmt.Sprintf("response body exceeds %d bytes", maxErrorBodyBytes)
+	if ve.Message != want {
+		t.Fatalf("Message: got %q, want %q", ve.Message, want)
 	}
 }
 
@@ -167,7 +228,9 @@ func TestVoreskyClientPost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Post: unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want 200", resp.StatusCode)
@@ -204,7 +267,9 @@ func TestVoreskyClientDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete: unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if receivedMethod != http.MethodDelete {
 		t.Errorf("method: got %q, want DELETE", receivedMethod)

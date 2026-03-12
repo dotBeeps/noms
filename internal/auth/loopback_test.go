@@ -4,9 +4,19 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"testing"
 	"time"
 )
+
+func stubOpenBrowser(t *testing.T, fn func(context.Context, string) error) {
+	t.Helper()
+	original := openBrowser
+	openBrowser = fn
+	t.Cleanup(func() {
+		openBrowser = original
+	})
+}
 
 func TestLoopbackServerStartStop(t *testing.T) {
 	flow := NewLoopbackFlow()
@@ -20,8 +30,7 @@ func TestLoopbackServerStartStop(t *testing.T) {
 	}
 
 	// Fake start to not really open a browser
-	openBrowser = func(url string) error { return nil }
-	defer func() { openBrowser = nil }()
+	stubOpenBrowser(t, func(_ context.Context, _ string) error { return nil })
 
 	err = flow.Start(context.Background(), "http://example.com/auth")
 	if err != nil {
@@ -45,7 +54,7 @@ func TestLoopbackCapturesCode(t *testing.T) {
 		t.Fatalf("RedirectURI failed: %v", err)
 	}
 
-	openBrowser = func(url string) error { return nil }
+	stubOpenBrowser(t, func(_ context.Context, _ string) error { return nil })
 
 	err = flow.Start(context.Background(), "http://example.com/auth")
 	if err != nil {
@@ -55,7 +64,10 @@ func TestLoopbackCapturesCode(t *testing.T) {
 	// simulate callback
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		http.Get(fmt.Sprintf("%s?code=12345&state=abcde", uri))
+		resp, err := http.Get(fmt.Sprintf("%s?code=12345&state=abcde", uri))
+		if err == nil {
+			_ = resp.Body.Close()
+		}
 	}()
 
 	code, state, err := flow.WaitForCallback(context.Background())
@@ -79,7 +91,7 @@ func TestLoopbackRejectsInvalidState(t *testing.T) {
 
 	// This is not exactly testing state verification here since flow just returns it,
 	// but let's test missing params.
-	openBrowser = func(url string) error { return nil }
+	stubOpenBrowser(t, func(_ context.Context, _ string) error { return nil })
 	err = flow.Start(context.Background(), "http://example.com/auth")
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -88,7 +100,10 @@ func TestLoopbackRejectsInvalidState(t *testing.T) {
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		// Send error from OAuth server
-		http.Get(fmt.Sprintf("%s?error=invalid_request", uri))
+		resp, err := http.Get(fmt.Sprintf("%s?error=invalid_request", uri))
+		if err == nil {
+			_ = resp.Body.Close()
+		}
 	}()
 
 	_, _, err = flow.WaitForCallback(context.Background())
@@ -100,7 +115,7 @@ func TestLoopbackRejectsInvalidState(t *testing.T) {
 func TestLoopbackServerTimeout(t *testing.T) {
 	flow := NewLoopbackFlow()
 	_, _ = flow.RedirectURI()
-	openBrowser = func(url string) error { return nil }
+	stubOpenBrowser(t, func(_ context.Context, _ string) error { return nil })
 	_ = flow.Start(context.Background(), "http://test")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -112,5 +127,39 @@ func TestLoopbackServerTimeout(t *testing.T) {
 	}
 	if code != "" || state != "" {
 		t.Errorf("Expected empty code and state")
+	}
+}
+
+func TestStartAndCheckBrowserCommandFastFail(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var err error
+	if runtime.GOOS == "windows" {
+		err = startAndCheckBrowserCommand(ctx, "cmd", "/c", "exit", "1")
+	} else {
+		err = startAndCheckBrowserCommand(ctx, "sh", "-c", "exit 1")
+	}
+
+	if err == nil {
+		t.Fatal("expected fast-fail command error, got nil")
+	}
+}
+
+func TestStartAndCheckBrowserCommandLongRunning(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("long-running shell command test is Unix-specific")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := startAndCheckBrowserCommand(ctx, "sh", "-c", "sleep 2")
+	if err != nil {
+		t.Fatalf("expected nil for long-running command, got %v", err)
 	}
 }

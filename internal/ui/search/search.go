@@ -232,7 +232,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case debounceMsg:
-		if msg.ts == m.lastKeystroke {
+		if msg.ts.Equal(m.lastKeystroke) {
 			q := m.input.Value()
 			if q != m.query {
 				m.query = q
@@ -412,7 +412,7 @@ func (m SearchModel) View() tea.View {
 		postsTab = theme.StyleTabInactive.Render(postsTab)
 		peopleTab = theme.StyleTabActive.Render(peopleTab)
 	}
-	b.WriteString(fmt.Sprintf("%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab))
+	_, _ = fmt.Fprintf(&b, "%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab)
 	availableHeight := m.contentHeight()
 
 	// Content area

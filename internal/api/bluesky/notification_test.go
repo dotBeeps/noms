@@ -100,7 +100,9 @@ func TestMarkNotificationsRead(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 	}))

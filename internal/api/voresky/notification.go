@@ -108,7 +108,9 @@ func (c *VoreskyClient) GetNotifications(ctx context.Context, limit int, cursor 
 	if err != nil {
 		return nil, "", fmt.Errorf("get notifications: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", ParseError(resp)
@@ -128,7 +130,9 @@ func (c *VoreskyClient) GetUnreadNotificationCount(ctx context.Context) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("get unread count: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, ParseError(resp)
@@ -149,7 +153,9 @@ func (c *VoreskyClient) MarkNotificationsRead(ctx context.Context, ids []string)
 	if err != nil {
 		return fmt.Errorf("mark read: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return ParseError(resp)

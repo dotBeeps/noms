@@ -79,14 +79,22 @@ func (s *DPoPSigner) loadOrGenerateKey() error {
 	return nil
 }
 
-func (s *DPoPSigner) GetPublicJWK() map[string]interface{} {
+func (s *DPoPSigner) GetPublicJWK() (map[string]interface{}, error) {
 	pub := s.privKey.PublicKey
+	encoded, err := pub.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("encode DPoP public key: %w", err)
+	}
+	if len(encoded) != 65 || encoded[0] != 0x04 {
+		return nil, fmt.Errorf("unexpected DPoP public key encoding")
+	}
+
 	return map[string]interface{}{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(pub.X.Bytes()),
-		"y":   base64.RawURLEncoding.EncodeToString(pub.Y.Bytes()),
-	}
+		"x":   base64.RawURLEncoding.EncodeToString(encoded[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(encoded[33:65]),
+	}, nil
 }
 
 func (s *DPoPSigner) UpdateNonce(server, nonce string) {
@@ -123,7 +131,11 @@ func (s *DPoPSigner) Sign(method, reqUrl, accessToken string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 
 	token.Header["typ"] = "dpop+jwt"
-	token.Header["jwk"] = s.GetPublicJWK()
+	jwk, err := s.GetPublicJWK()
+	if err != nil {
+		return "", err
+	}
+	token.Header["jwk"] = jwk
 
 	return token.SignedString(s.privKey)
 }

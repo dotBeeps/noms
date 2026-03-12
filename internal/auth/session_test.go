@@ -51,7 +51,9 @@ func TestSessionProvideAuthenticatedClient(t *testing.T) {
 		capturedAuth = r.Header.Get("Authorization")
 		capturedDPoP = r.Header.Get("DPoP")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Fatalf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -79,8 +81,12 @@ func TestSessionProvideAuthenticatedClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET failed: %v", err)
 	}
-	defer resp.Body.Close()
-	io.ReadAll(resp.Body)
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
 
 	if capturedAuth != "DPoP my-access-token" {
 		t.Errorf("Expected Authorization 'DPoP my-access-token', got %q", capturedAuth)

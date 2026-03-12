@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -60,54 +63,28 @@ func TestFullOAuthFlow(t *testing.T) {
 
 	mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"resource":              serverURL,
 			"authorization_servers": []string{serverURL},
-		})
+		}); err != nil {
+			t.Fatalf("encode protected resource metadata: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AuthServerMetadata{
-			Issuer:                             serverURL,
-			AuthorizationEndpoint:              serverURL + "/authorize",
-			TokenEndpoint:                      serverURL + "/token",
-			PushedAuthorizationRequestEndpoint: serverURL + "/par",
-			ResponseTypesSupported:             []string{"code"},
-			GrantTypesSupported:                []string{"authorization_code", "refresh_token"},
-			CodeChallengeMethodsSupported:      []string{"S256"},
-			DPoPSigningAlgValuesSupported:      []string{"ES256"},
-			ScopesSupported:                    []string{"atproto"},
-		})
-	})
-
-	mux.HandleFunc("/par", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
+		if err := json.NewEncoder(w).Encode(AuthServerMetadata{
+			Issuer:                        serverURL,
+			AuthorizationEndpoint:         serverURL + "/authorize",
+			TokenEndpoint:                 serverURL + "/token",
+			ResponseTypesSupported:        []string{"code"},
+			GrantTypesSupported:           []string{"authorization_code", "refresh_token"},
+			CodeChallengeMethodsSupported: []string{"S256"},
+			DPoPSigningAlgValuesSupported: []string{"ES256"},
+			ScopesSupported:               []string{"atproto"},
+		}); err != nil {
+			t.Fatalf("encode auth server metadata: %v", err)
 		}
-		if r.Header.Get("DPoP") == "" {
-			http.Error(w, "missing DPoP", http.StatusBadRequest)
-			return
-		}
-
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if r.Form.Get("code_challenge_method") != "S256" {
-			t.Errorf("Expected S256, got %s", r.Form.Get("code_challenge_method"))
-		}
-		if r.Form.Get("code_challenge") == "" {
-			t.Error("Expected code_challenge in PAR request")
-		}
-
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"request_uri": "urn:ietf:params:oauth:request_uri:test123",
-			"expires_in":  90,
-		})
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
@@ -135,13 +112,15 @@ func TestFullOAuthFlow(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token":  "access-token-xyz",
 			"refresh_token": "refresh-token-xyz",
 			"expires_in":    3600,
 			"token_type":    "DPoP",
 			"sub":           "did:plc:testuser123",
-		})
+		}); err != nil {
+			t.Fatalf("encode token response: %v", err)
+		}
 	})
 
 	server := httptest.NewServer(mux)
@@ -194,21 +173,153 @@ func TestFullOAuthFlow(t *testing.T) {
 	if !strings.Contains(mockFlow.capturedURL, "/authorize") {
 		t.Errorf("Auth URL should contain /authorize: %q", mockFlow.capturedURL)
 	}
-	if !strings.Contains(mockFlow.capturedURL, "request_uri=") {
-		t.Errorf("Auth URL should contain request_uri (PAR): %q", mockFlow.capturedURL)
+	if !strings.Contains(mockFlow.capturedURL, "state=") {
+		t.Errorf("Auth URL should contain state parameter: %q", mockFlow.capturedURL)
+	}
+}
+
+func TestAuthenticateRejectsEmptyCallbackState(t *testing.T) {
+	t.Parallel()
+	var serverURL string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"resource":              serverURL,
+			"authorization_servers": []string{serverURL},
+		}); err != nil {
+			t.Fatalf("encode protected resource metadata: %v", err)
+		}
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(AuthServerMetadata{
+			Issuer:                             serverURL,
+			AuthorizationEndpoint:              serverURL + "/authorize",
+			TokenEndpoint:                      serverURL + "/token",
+			PushedAuthorizationRequestEndpoint: serverURL + "/par",
+		}); err != nil {
+			t.Fatalf("encode auth server metadata: %v", err)
+		}
+	})
+	mux.HandleFunc("/par", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		if err := json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:ietf:params:oauth:request_uri:test123"}); err != nil {
+			t.Fatalf("encode PAR response: %v", err)
+		}
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-token-xyz",
+			"refresh_token": "refresh-token-xyz",
+			"expires_in":    3600,
+			"token_type":    "DPoP",
+			"sub":           "did:plc:testuser123",
+		}); err != nil {
+			t.Fatalf("encode token response: %v", err)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	serverURL = server.URL
+	defer server.Close()
+
+	signer, err := NewDPoPSigner("")
+	if err != nil {
+		t.Fatalf("NewDPoPSigner: %v", err)
+	}
+
+	mockFlow := &testMockFlow{code: "test-auth-code", state: ""}
+	manager := NewOAuthManager(OAuthConfig{
+		ClientID:    "http://localhost/client-metadata.json",
+		RedirectURI: "http://127.0.0.1:9999/callback",
+		Scopes:      []string{"atproto"},
+	}, mockFlow, signer)
+	manager.HTTPClient = server.Client()
+	manager.ResolvePDSURL = func(ctx context.Context, handle string) (string, error) { return serverURL, nil }
+
+	_, err = manager.Authenticate(context.Background(), "test.bsky.social")
+	if err == nil || !strings.Contains(err.Error(), "state mismatch") {
+		t.Fatalf("expected state mismatch error, got %v", err)
+	}
+}
+
+func TestAuthenticateRejectsOversizedPARResponse(t *testing.T) {
+	t.Parallel()
+	var serverURL string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"resource":              serverURL,
+			"authorization_servers": []string{serverURL},
+		}); err != nil {
+			t.Fatalf("encode protected resource metadata: %v", err)
+		}
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(AuthServerMetadata{
+			Issuer:                             serverURL,
+			AuthorizationEndpoint:              serverURL + "/authorize",
+			TokenEndpoint:                      serverURL + "/token",
+			PushedAuthorizationRequestEndpoint: serverURL + "/par",
+		}); err != nil {
+			t.Fatalf("encode auth server metadata: %v", err)
+		}
+	})
+	mux.HandleFunc("/par", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Length", strconv.Itoa(maxOAuthResponseBytes+1))
+		_, _ = w.Write([]byte(strings.Repeat("x", maxOAuthResponseBytes+1)))
+	})
+
+	server := httptest.NewServer(mux)
+	serverURL = server.URL
+	defer server.Close()
+
+	signer, err := NewDPoPSigner("")
+	if err != nil {
+		t.Fatalf("NewDPoPSigner: %v", err)
+	}
+
+	mockFlow := &testMockFlow{code: "test-auth-code"}
+	manager := NewOAuthManager(OAuthConfig{
+		ClientID:    "http://localhost/client-metadata.json",
+		RedirectURI: "http://127.0.0.1:9999/callback",
+		Scopes:      []string{"atproto"},
+	}, mockFlow, signer)
+	manager.HTTPClient = server.Client()
+	manager.ResolvePDSURL = func(ctx context.Context, handle string) (string, error) { return serverURL, nil }
+
+	_, err = manager.Authenticate(context.Background(), "test.bsky.social")
+	want := fmt.Sprintf("PAR response exceeds %d bytes", maxOAuthResponseBytes)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected %q, got %v", want, err)
 	}
 }
 
 type testMockFlow struct {
 	code        string
+	state       string
 	capturedURL string
 }
 
 func (f *testMockFlow) Start(_ context.Context, authURL string) error {
 	f.capturedURL = authURL
+	parsed, err := url.Parse(authURL)
+	if err == nil {
+		state := parsed.Query().Get("state")
+		if state != "" {
+			f.state = state
+		}
+	}
 	return nil
 }
 
 func (f *testMockFlow) WaitForCallback(_ context.Context) (string, string, error) {
-	return f.code, "", nil
+	return f.code, f.state, nil
 }

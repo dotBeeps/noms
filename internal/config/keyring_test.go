@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/dotBeeps/noms/internal/config"
@@ -113,5 +114,38 @@ func TestFileFallbackRetrieve(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Errorf("Retrieve() = %q, want %q", got, want)
+	}
+}
+
+func TestFileStoreConcurrentWrites(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
+	t.Setenv("NOMS_TOKEN_KEY", "test-encryption-key-32-bytes-ok!")
+
+	store, err := config.NewFileStore()
+	if err != nil {
+		t.Fatalf("NewFileStore() error: %v", err)
+	}
+
+	const writers = 8
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			did := "did:plc:concurrent-" + string(rune('a'+i))
+			if err := store.Store(did, []byte("token")); err != nil {
+				t.Errorf("Store(%q) error: %v", did, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	accounts, err := store.ListAccounts()
+	if err != nil {
+		t.Fatalf("ListAccounts() error: %v", err)
+	}
+	if len(accounts) != writers {
+		t.Fatalf("ListAccounts() = %d, want %d", len(accounts), writers)
 	}
 }

@@ -113,16 +113,20 @@ func TestFollowActor(t *testing.T) {
 		}
 
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 
 		if col, ok := body["collection"].(string); !ok || col != "app.bsky.graph.follow" {
 			t.Errorf("collection = %v, want app.bsky.graph.follow", body["collection"])
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": "at://did:plc:testuser123/app.bsky.graph.follow/abc",
 			"cid": "cidfollow",
-		})
+		}); err != nil {
+			t.Fatalf("encode response body: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -142,23 +146,29 @@ func TestUnfollowActor(t *testing.T) {
 
 		if callCount == 1 {
 			// First call: getProfile returns viewer state with following URI
-			json.NewEncoder(w).Encode(map[string]any{
+			if err := json.NewEncoder(w).Encode(map[string]any{
 				"did":    "did:plc:target",
 				"handle": "target.bsky.social",
 				"viewer": map[string]any{
 					"following": "at://did:plc:testuser123/app.bsky.graph.follow/rkey123",
 				},
-			})
+			}); err != nil {
+				t.Fatalf("encode profile response: %v", err)
+			}
 			return
 		}
 
 		// Second call: deleteRecord
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode delete body: %v", err)
+		}
 		if rkey, ok := body["rkey"].(string); !ok || rkey != "rkey123" {
 			t.Errorf("rkey = %v, want rkey123", body["rkey"])
 		}
-		json.NewEncoder(w).Encode(map[string]any{})
+		if err := json.NewEncoder(w).Encode(map[string]any{}); err != nil {
+			t.Fatalf("encode delete response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -173,11 +183,13 @@ func TestUnfollowActorNotFollowing(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"did":    "did:plc:target",
 			"handle": "target.bsky.social",
 			"viewer": map[string]any{},
-		})
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

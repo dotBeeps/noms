@@ -13,12 +13,16 @@ func TestCreatePost(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": "at://did:plc:testuser123/app.bsky.feed.post/abc123",
 			"cid": "cidabc123",
-		})
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -62,9 +66,13 @@ func TestDeletePost(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{})
+		if err := json.NewEncoder(w).Encode(map[string]any{}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -112,12 +120,16 @@ func TestLike(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": "at://did:plc:testuser123/app.bsky.feed.like/like1",
 			"cid": "cidlike1",
-		})
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -140,9 +152,13 @@ func TestUnlike(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{})
+		if err := json.NewEncoder(w).Encode(map[string]any{}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -173,10 +189,12 @@ func TestRepost(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": "at://did:plc:testuser123/app.bsky.feed.repost/rp1",
 			"cid": "cidrepost1",
-		})
+		}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -195,9 +213,13 @@ func TestUnRepost(t *testing.T) {
 	t.Parallel()
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&capturedBody)
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{})
+		if err := json.NewEncoder(w).Encode(map[string]any{}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 

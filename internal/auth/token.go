@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const maxTokenResponseBytes = 1 << 20
+
 type TokenSet struct {
 	AccessToken  string
 	RefreshToken string
@@ -105,10 +107,13 @@ func (m *TokenManager) Refresh(ctx context.Context) (*TokenSet, error) {
 			m.DPoPSigner.UpdateNonce(host, nonce)
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenResponseBytes+1))
+		_ = resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read token response: %w", err)
+		}
+		if len(body) > maxTokenResponseBytes {
+			return nil, fmt.Errorf("token response exceeds %d bytes", maxTokenResponseBytes)
 		}
 
 		if resp.StatusCode != http.StatusOK {
