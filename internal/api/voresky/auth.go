@@ -18,11 +18,12 @@ import (
 // SessionInfo holds the authenticated user's identity returned by
 // GET /api/auth/session.
 type SessionInfo struct {
-	DID         string `json:"did"`
-	Handle      string `json:"handle"`
-	DisplayName string `json:"displayName"`
-	Avatar      string `json:"avatar"`
-	Active      bool   `json:"active"`
+	DID             string `json:"did"`
+	Handle          string `json:"handle"`
+	DisplayName     string `json:"displayName"`
+	Avatar          string `json:"avatar"`
+	MainCharacterID string `json:"mainCharacterId"`
+	Active          bool   `json:"active"`
 }
 
 // sessionResponse is the raw JSON shape returned by GET /api/auth/session.
@@ -135,11 +136,12 @@ func (a *VoreskyAuth) ValidateSession(ctx context.Context) (*SessionInfo, error)
 	}
 
 	return &SessionInfo{
-		DID:         sr.User.DID,
-		Handle:      sr.User.Handle,
-		DisplayName: sr.User.DisplayName,
-		Avatar:      sr.User.Avatar,
-		Active:      true,
+		DID:             sr.User.DID,
+		Handle:          sr.User.Handle,
+		DisplayName:     sr.User.DisplayName,
+		Avatar:          sr.User.Avatar,
+		MainCharacterID: sr.User.MainCharacterID,
+		Active:          true,
 	}, nil
 }
 

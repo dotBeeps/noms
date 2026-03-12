@@ -166,7 +166,7 @@ func TestProfileHeaderRender(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -194,7 +194,7 @@ func TestProfileBioWithFacets(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -244,7 +244,7 @@ func TestFollowAction(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -278,7 +278,7 @@ func TestUnfollowAction(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -320,7 +320,7 @@ func TestOwnProfileNoFollowButton(t *testing.T) {
 	}
 
 	// Create model where viewDID == ownDID (own profile)
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -352,7 +352,7 @@ func TestProfileNotFound(t *testing.T) {
 		getProfileErr: testErr,
 	}
 
-	model := NewProfileModel(mock, "did:plc:nonexistent", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:nonexistent", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileErrorMsg{Err: testErr})
 	model = updated.(ProfileModel)
 
@@ -378,7 +378,7 @@ func TestProfileAuthorFeed(t *testing.T) {
 		},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -411,7 +411,7 @@ func TestProfileAuthorFeedPagination(t *testing.T) {
 		feedCursor: "next-cursor",
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: "next-cursor"})
@@ -434,7 +434,7 @@ func TestBackNavigation(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -474,7 +474,7 @@ func TestViewThreadNavigation(t *testing.T) {
 		},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -505,7 +505,7 @@ func TestRefreshProfile(t *testing.T) {
 		},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -549,7 +549,7 @@ func TestNavigateFeed(t *testing.T) {
 		},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -613,7 +613,7 @@ func TestProfileDeleteFirstDPress(t *testing.T) {
 	}
 	mock.authorFeed[0].Post.Author.Did = "did:plc:alice"
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -645,7 +645,7 @@ func TestProfileDeleteSecondDPress(t *testing.T) {
 	}
 	mock.authorFeed[0].Post.Author.Did = "did:plc:alice"
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -680,7 +680,7 @@ func TestProfileDeleteNotOwnPost(t *testing.T) {
 	}
 	mock.authorFeed[0].Post.Author.Did = "did:plc:other"
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:me", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:me", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: mock.authorFeed, Cursor: ""})
@@ -703,7 +703,7 @@ func TestProfileDeletePostResultRemovesPost(t *testing.T) {
 		profile: makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:alice", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	model.authorFeed = []*bsky.FeedDefs_FeedViewPost{
@@ -733,7 +733,7 @@ func TestProfileMouseWheelDownScrolls(t *testing.T) {
 		posts[i] = makeTestPost("alice.bsky.social", "Alice", "Post", "at://post"+string(rune('0'+i)), 0, 0, 0)
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: posts, Cursor: ""})
@@ -757,7 +757,7 @@ func TestProfileMouseWheelUpScrolls(t *testing.T) {
 		posts[i] = makeTestPost("alice.bsky.social", "Alice", "Post", "at://post"+string(rune('0'+i)), 0, 0, 0)
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: posts, Cursor: ""})
@@ -778,7 +778,7 @@ func TestProfileSpinnerTickDuringLoad(t *testing.T) {
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 
 	_, cmd := model.Update(model.spinner.Tick())
 	if cmd == nil {
@@ -792,7 +792,7 @@ func TestProfileSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 		profile:    makeTestProfile("alice.bsky.social", "Alice", "Bio", 100, 50, 25, nil),
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	model.loading = false
 	model.loadingFeed = false
 
@@ -809,7 +809,7 @@ func TestStatsLineFormat(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -837,7 +837,7 @@ func TestFollowStateAfterToggle(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	updated, _ := model.Update(ProfileLoadedMsg{Profile: mock.profile})
 	model = updated.(ProfileModel)
 
@@ -875,7 +875,7 @@ func TestInitReturnsBatchCommands(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 	cmd := model.Init()
 
 	if cmd == nil {
@@ -890,7 +890,7 @@ func TestWindowSizeUpdate(t *testing.T) {
 		authorFeed: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24)
+	model := NewProfileModel(mock, "did:plc:alice", "did:plc:bob", 80, 24, nil)
 
 	// Update window size
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})

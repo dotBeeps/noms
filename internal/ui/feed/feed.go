@@ -2,12 +2,14 @@ package feed
 
 import (
 	"context"
+	"strings"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -23,20 +25,22 @@ type FeedErrorMsg struct{ Err error }
 type FeedRefreshMsg struct{}
 
 type FeedModel struct {
-	client        bluesky.BlueskyClient
-	ownDID        string
-	posts         []*bsky.FeedDefs_FeedViewPost
-	selectedIndex int
-	cursor        string
-	loading       bool
-	width, height int
-	err           error
-	offset        int
-	spinner       spinner.Model
-	confirmDelete int // index of post pending delete confirmation, -1 = none
+	client          bluesky.BlueskyClient
+	ownDID          string
+	avatarOverrides map[string]string
+	posts           []*bsky.FeedDefs_FeedViewPost
+	selectedIndex   int
+	cursor          string
+	loading         bool
+	width, height   int
+	err             error
+	offset          int
+	spinner         spinner.Model
+	confirmDelete   int // index of post pending delete confirmation, -1 = none
+	imageCache      *images.Cache
 }
 
-func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int) FeedModel {
+func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int, cache *images.Cache) FeedModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
@@ -49,6 +53,7 @@ func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int
 		loading:       true,
 		spinner:       sp,
 		confirmDelete: -1,
+		imageCache:    cache,
 	}
 }
 
@@ -81,11 +86,36 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.posts = append(m.posts, msg.Posts...)
 		}
 		m.cursor = msg.Cursor
+		var fetchCmds []tea.Cmd
+		for _, p := range msg.Posts {
+			for _, url := range ExtractImageURLs(p) {
+				if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+					fetchCmds = append(fetchCmds, cmd)
+				}
+			}
+			avatarURL := ExtractAvatarURL(p)
+			if p != nil && p.Post != nil && p.Post.Author != nil {
+				if override, ok := m.avatarOverrides[p.Post.Author.Did]; ok && override != "" {
+					avatarURL = override
+				}
+			}
+			if avatarURL != "" {
+				if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+					fetchCmds = append(fetchCmds, cmd)
+				}
+			}
+		}
+		if len(fetchCmds) > 0 {
+			return m, tea.Batch(fetchCmds...)
+		}
 		return m, nil
 
 	case FeedErrorMsg:
 		m.loading = false
 		m.err = msg.Err
+		return m, nil
+
+	case images.ImageFetchedMsg:
 		return m, nil
 
 	case spinner.TickMsg:
@@ -201,9 +231,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex++
 				}
 			}
-			if m.selectedIndex > m.offset+m.visibleCount()-1 {
-				m.offset = m.selectedIndex - m.visibleCount() + 1
-			}
+			m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
 			if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
 				m.loading = true
 				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
@@ -214,9 +242,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex--
 				}
 			}
-			if m.selectedIndex < m.offset {
-				m.offset = m.selectedIndex
-			}
+			m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
 		}
 		return m, nil
 
@@ -233,9 +259,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "j", "down":
 			if m.selectedIndex < len(m.posts)-1 {
 				m.selectedIndex++
-				if m.selectedIndex > m.offset+m.visibleCount()-1 {
-					m.offset++
-				}
+				m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
 				if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
 					m.loading = true
 					return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
@@ -244,9 +268,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "k", "up":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
-				if m.selectedIndex < m.offset {
-					m.offset = m.selectedIndex
-				}
+				m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
 			}
 		case "r":
 			if m.selectedIndex < len(m.posts) {
@@ -299,9 +321,30 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m FeedModel) visibleCount() int {
-	// rough estimate of posts that fit in height, each post might be ~6 lines
-	return max(1, m.height/6)
+func ensureSelectedVisible(posts []*bsky.FeedDefs_FeedViewPost, selectedIndex, offset, width, height int, cache *images.Cache, avatarOverrides map[string]string) int {
+	if len(posts) == 0 {
+		return 0
+	}
+	if selectedIndex < offset {
+		return selectedIndex
+	}
+
+	totalHeight := 0
+	heights := make([]int, 0, selectedIndex-offset+1)
+	for i := offset; i <= selectedIndex && i < len(posts); i++ {
+		h := strings.Count(RenderPost(posts[i], width, false, cache, avatarOverrides), "\n")
+		heights = append(heights, h)
+		totalHeight += h
+	}
+
+	const margin = 2
+	for totalHeight+margin > height && offset < selectedIndex {
+		totalHeight -= heights[0]
+		heights = heights[1:]
+		offset++
+	}
+
+	return offset
 }
 
 func (m FeedModel) View() tea.View {
@@ -318,8 +361,14 @@ func (m FeedModel) View() tea.View {
 		}
 	} else {
 		var rendered string
-		for i := m.offset; i < len(m.posts) && i < m.offset+m.visibleCount(); i++ {
-			rendered += RenderPost(m.posts[i], m.width, i == m.selectedIndex)
+		linesUsed := 0
+		for i := m.offset; i < len(m.posts); i++ {
+			post := RenderPost(m.posts[i], m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
+			rendered += post
+			linesUsed += strings.Count(post, "\n")
+			if linesUsed >= m.height {
+				break
+			}
 		}
 		if m.loading {
 			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading more...")
@@ -337,4 +386,8 @@ func (m FeedModel) View() tea.View {
 	v := tea.NewView(content)
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+func (m *FeedModel) SetAvatarOverrides(overrides map[string]string) {
+	m.avatarOverrides = overrides
 }

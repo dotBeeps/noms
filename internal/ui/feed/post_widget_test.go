@@ -19,7 +19,7 @@ func TestRenderPostWithImageEmbed(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "🖼") {
 		t.Error("Expected image indicator 🖼 in rendered post")
@@ -42,7 +42,7 @@ func TestRenderPostWithMultipleImages(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "🖼") {
 		t.Error("Expected image indicator 🖼 in rendered post")
@@ -65,7 +65,7 @@ func TestRenderPostWithExternalLinkEmbed(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "🔗") {
 		t.Error("Expected link indicator 🔗 in rendered post")
@@ -101,7 +101,7 @@ func TestRenderPostWithQuoteEmbed(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "❝") {
 		t.Error("Expected quote indicator ❝ in rendered post")
@@ -126,7 +126,7 @@ func TestRenderPostWithVideoEmbed(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "🎥") {
 		t.Error("Expected video indicator 🎥 in rendered post")
@@ -169,7 +169,7 @@ func TestRenderPostWithRecordMediaEmbed(t *testing.T) {
 		},
 	}
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "🖼") {
 		t.Error("Expected image indicator 🖼 in record with media embed")
@@ -190,7 +190,7 @@ func TestRenderPostWithNoEmbed(t *testing.T) {
 	post := createTestPost("Just text", "grace.bsky.social", "Grace", "at://uri7", "cid7")
 	// Embed is nil by default from createTestPost
 
-	rendered := stripAnsi(RenderPost(post, 80, false))
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	if !strings.Contains(rendered, "Just text") {
 		t.Error("Expected post text in rendered output")
@@ -213,7 +213,7 @@ func TestRenderPostWithNilEmbedFields(t *testing.T) {
 				External: nil,
 			},
 		}
-		rendered := stripAnsi(RenderPost(post, 80, false))
+		rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 		if strings.Contains(rendered, "🔗") {
 			t.Error("Expected no link indicator when External is nil")
 		}
@@ -227,7 +227,7 @@ func TestRenderPostWithNilEmbedFields(t *testing.T) {
 				Record: nil,
 			},
 		}
-		rendered := stripAnsi(RenderPost(post, 80, false))
+		rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 		if strings.Contains(rendered, "❝") {
 			t.Error("Expected no quote indicator when Record is nil")
 		}
@@ -243,7 +243,7 @@ func TestRenderPostWithNilEmbedFields(t *testing.T) {
 				},
 			},
 		}
-		rendered := stripAnsi(RenderPost(post, 80, false))
+		rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 		if strings.Contains(rendered, "❝") {
 			t.Error("Expected no quote indicator when ViewRecord is nil")
 		}
@@ -259,12 +259,41 @@ func TestRenderPostWithNilEmbedFields(t *testing.T) {
 				Playlist: "https://example.com/video.m3u8",
 			},
 		}
-		rendered := stripAnsi(RenderPost(post, 80, false))
+		rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 		if !strings.Contains(rendered, "🎥") {
 			t.Error("Expected video indicator 🎥 even with nil alt")
 		}
 		if !strings.Contains(rendered, "video") {
 			t.Error("Expected 'video' text even with nil alt")
+		}
+	})
+}
+
+func TestExtractAvatarURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns avatar URL when present", func(t *testing.T) {
+		t.Parallel()
+		post := createTestPost("Hello", "test.bsky.social", "Test", "at://uri", "cid")
+		avatar := "https://cdn.bsky.app/img/avatar/test.jpg"
+		post.Post.Author.Avatar = &avatar
+		if got := ExtractAvatarURL(post); got != avatar {
+			t.Errorf("ExtractAvatarURL() = %q, want %q", got, avatar)
+		}
+	})
+
+	t.Run("returns empty when no avatar", func(t *testing.T) {
+		t.Parallel()
+		post := createTestPost("Hello", "test.bsky.social", "Test", "at://uri", "cid")
+		if got := ExtractAvatarURL(post); got != "" {
+			t.Errorf("ExtractAvatarURL() = %q, want empty", got)
+		}
+	})
+
+	t.Run("returns empty for nil post", func(t *testing.T) {
+		t.Parallel()
+		if got := ExtractAvatarURL(nil); got != "" {
+			t.Errorf("ExtractAvatarURL(nil) = %q, want empty", got)
 		}
 	})
 }

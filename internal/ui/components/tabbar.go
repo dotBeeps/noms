@@ -32,19 +32,24 @@ const (
 	TabNotifications
 	TabProfile
 	TabSearch
+	TabVoresky
+	TabVoreskyNotifications
 	TabCount
 )
 
 var tabNames = map[Tab]string{
-	TabFeed:          "Feed",
-	TabNotifications: "Notifications",
-	TabProfile:       "Profile",
-	TabSearch:        "Search",
+	TabFeed:                 "Feed",
+	TabNotifications:        "Notifications",
+	TabProfile:              "Profile",
+	TabSearch:               "Search",
+	TabVoresky:              "Voresky",
+	TabVoreskyNotifications: "V-Notifs",
 }
 
 type TabBar struct {
-	Width     int
-	ActiveTab Tab
+	Width         int
+	ActiveTab     Tab
+	VoreskyActive bool
 }
 
 func NewTabBar() TabBar {
@@ -69,6 +74,9 @@ func (m TabBar) View() tea.View {
 	var tabs []string
 
 	for i := Tab(0); i < TabCount; i++ {
+		if !m.VoreskyActive && (i == TabVoresky || i == TabVoreskyNotifications) {
+			continue
+		}
 		key := fmt.Sprintf("[%d]", i+1)
 		name := tabNames[i]
 

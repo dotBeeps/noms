@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -32,10 +33,61 @@ func FormatRelativeTime(t time.Time) string {
 
 // RenderPost renders a single post for display in the feed.
 // The width parameter controls text wrapping, and selected determines if the post is highlighted.
-func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) string {
+// ExtractImageURLs returns all image/thumbnail URLs from a post's embed for prefetching.
+func ExtractImageURLs(post *bsky.FeedDefs_FeedViewPost) []string {
+	if post == nil || post.Post == nil || post.Post.Embed == nil {
+		return nil
+	}
+	embed := post.Post.Embed
+	var urls []string
+
+	switch {
+	case embed.EmbedImages_View != nil:
+		for _, img := range embed.EmbedImages_View.Images {
+			if img.Thumb != "" {
+				urls = append(urls, img.Thumb)
+			}
+		}
+	case embed.EmbedExternal_View != nil:
+		if ext := embed.EmbedExternal_View.External; ext != nil && ext.Thumb != nil && *ext.Thumb != "" {
+			urls = append(urls, *ext.Thumb)
+		}
+	case embed.EmbedVideo_View != nil:
+		if vid := embed.EmbedVideo_View; vid.Thumbnail != nil && *vid.Thumbnail != "" {
+			urls = append(urls, *vid.Thumbnail)
+		}
+	case embed.EmbedRecordWithMedia_View != nil:
+		if m := embed.EmbedRecordWithMedia_View.Media; m != nil {
+			if m.EmbedImages_View != nil {
+				for _, img := range m.EmbedImages_View.Images {
+					if img.Thumb != "" {
+						urls = append(urls, img.Thumb)
+					}
+				}
+			}
+			if m.EmbedExternal_View != nil && m.EmbedExternal_View.External != nil {
+				if t := m.EmbedExternal_View.External.Thumb; t != nil && *t != "" {
+					urls = append(urls, *t)
+				}
+			}
+			if m.EmbedVideo_View != nil && m.EmbedVideo_View.Thumbnail != nil {
+				urls = append(urls, *m.EmbedVideo_View.Thumbnail)
+			}
+		}
+	}
+	return urls
+}
+
+func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
+	if post == nil || post.Post == nil || post.Post.Author == nil || post.Post.Author.Avatar == nil {
+		return ""
+	}
+	return *post.Post.Author.Avatar
+}
+
+func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache *images.Cache, avatarOverrides map[string]string) string {
 	var b strings.Builder
 
-	// Indicator above post (repost or reply)
 	if post.Reason != nil && post.Reason.FeedDefs_ReasonRepost != nil {
 		reason := post.Reason.FeedDefs_ReasonRepost
 		handle := reason.By.Handle
@@ -49,7 +101,6 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 		}
 	}
 
-	// Author line: DisplayName @handle · 2h ago
 	if post.Post == nil || post.Post.Author == nil {
 		return theme.StyleMuted.Render("[unavailable post]")
 	}
@@ -69,30 +120,54 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 		}
 	}
 
-	b.WriteString(fmt.Sprintf("%s %s · %s\n", authorName, handle, timeStr))
+	nameLine := fmt.Sprintf("%s %s · %s", authorName, handle, timeStr)
 
-	// Content with facets (rich text)
+	avatarURL := ExtractAvatarURL(post)
+	if post != nil && post.Post != nil && post.Post.Author != nil {
+		if override, ok := avatarOverrides[post.Post.Author.Did]; ok && override != "" {
+			avatarURL = override
+		}
+	}
+	if avatarURL != "" && cache.Enabled() && cache.IsCached(avatarURL) {
+		avatarStr := strings.TrimRight(cache.RenderImage(avatarURL, 4, 2), "\n ")
+		if avatarStr != "" {
+			avatarLines := strings.Split(avatarStr, "\n")
+			b.WriteString(avatarLines[0] + " " + nameLine + "\n")
+			for i := 1; i < len(avatarLines); i++ {
+				b.WriteString(avatarLines[i] + "\n")
+			}
+		} else {
+			b.WriteString(nameLine + "\n")
+		}
+	} else {
+		b.WriteString(nameLine + "\n")
+	}
+
+	// Content with facets (rich text), wrapped to account for left border width
 	if post.Post.Record != nil && post.Post.Record.Val != nil {
 		if record, ok := post.Post.Record.Val.(*bsky.FeedPost); ok {
 			segments := bluesky.ParseFacets(record.Text, record.Facets)
+			var body strings.Builder
 			for _, seg := range segments {
 				switch seg.Type {
 				case bluesky.SegmentMention:
-					b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(seg.Text))
 				case bluesky.SegmentLink:
-					b.WriteString(lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("45")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("45")).Render(seg.Text))
 				case bluesky.SegmentTag:
-					b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render(seg.Text))
 				default:
-					b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(seg.Text))
 				}
 			}
+			contentWidth := max(10, width-2)
+			b.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(body.String()))
 			b.WriteString("\n")
 		}
 	}
 
 	if post.Post.Embed != nil {
-		if embedStr := renderEmbed(post.Post.Embed, width); embedStr != "" {
+		if embedStr := strings.TrimRight(renderEmbed(post.Post.Embed, width-2, cache), "\n "); embedStr != "" {
 			b.WriteString(embedStr)
 			b.WriteString("\n")
 		}
@@ -133,22 +208,30 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool) stri
 
 	res := b.String()
 
+	borderColor := lipgloss.Color("238")
 	if selected {
-		indicator := lipgloss.NewStyle().
-			Foreground(theme.ColorAccent).
-			Bold(true).
-			Render("▶ ")
-		res = indicator + res
-	} else {
-		res = "  " + res
+		borderColor = theme.ColorAccent
 	}
+	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎ ")
 
 	// Separator line
 	sep := theme.StyleMuted.Render(strings.Repeat("─", max(1, width-4)))
-	return res + "\n" + sep + "\n"
+
+	allContent := strings.TrimRight(res, "\n") + "\n" + sep
+	lines := strings.Split(allContent, "\n")
+	var result strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		result.WriteString(styledBorder + line)
+	}
+	result.WriteString("\n")
+
+	return result.String()
 }
 
-func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
+func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.Cache) string {
 	if embed == nil {
 		return ""
 	}
@@ -163,6 +246,9 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
 	switch {
 	case embed.EmbedImages_View != nil:
 		imgs := embed.EmbedImages_View.Images
+		if rendered := renderImages(imgs, width, cache); rendered != "" {
+			return rendered
+		}
 		if len(imgs) == 1 {
 			alt := ""
 			if imgs[0].Alt != "" {
@@ -176,6 +262,15 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
 		ext := embed.EmbedExternal_View.External
 		if ext == nil {
 			return ""
+		}
+		if ext.Thumb != nil && *ext.Thumb != "" && cache.Enabled() && cache.IsCached(*ext.Thumb) {
+			cols := max(10, width/4)
+			rendered := strings.TrimRight(cache.RenderImage(*ext.Thumb, cols, 4), "\n ")
+			if rendered != "" {
+				rendered += "\n"
+			}
+			rendered += embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(ext.Title, 50)))
+			return rendered
 		}
 		title := truncateStr(ext.Title, 50)
 		desc := ""
@@ -216,7 +311,11 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
 		if rwm.Media != nil {
 			switch {
 			case rwm.Media.EmbedImages_View != nil:
-				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(rwm.Media.EmbedImages_View.Images))))
+				if rendered := renderImages(rwm.Media.EmbedImages_View.Images, width, cache); rendered != "" {
+					parts = append(parts, rendered)
+				} else {
+					parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(rwm.Media.EmbedImages_View.Images))))
+				}
 			case rwm.Media.EmbedExternal_View != nil && rwm.Media.EmbedExternal_View.External != nil:
 				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(rwm.Media.EmbedExternal_View.External.Title, 50))))
 			case rwm.Media.EmbedVideo_View != nil:
@@ -241,6 +340,98 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int) string {
 	}
 
 	return ""
+}
+
+func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache *images.Cache) string {
+	if len(imgs) == 0 || cache == nil || !cache.Enabled() {
+		return ""
+	}
+
+	var cached []*bsky.EmbedImages_ViewImage
+	for _, img := range imgs {
+		if cache.IsCached(img.Thumb) {
+			cached = append(cached, img)
+		}
+	}
+	if len(cached) == 0 {
+		return ""
+	}
+
+	switch len(cached) {
+	case 1:
+		cols := max(10, width*3/4)
+		rendered := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 16), "\n ")
+		if rendered == "" {
+			return ""
+		}
+		if cached[0].Alt != "" {
+			rendered += "\n" + theme.StyleMuted.Render(truncateStr(cached[0].Alt, 60))
+		}
+		return rendered
+
+	case 2:
+		cols := max(8, (width-2)/2)
+		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 10), "\n ")
+		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 10), "\n ")
+		if img1 == "" || img2 == "" {
+			return ""
+		}
+		return joinHorizontalRaw(img1, img2, "  ")
+
+	case 3:
+		cols := max(8, (width-2)/2)
+		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 8), "\n ")
+		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 8), "\n ")
+		img3 := strings.TrimRight(cache.RenderImage(cached[2].Thumb, cols, 8), "\n ")
+		if img1 == "" || img2 == "" || img3 == "" {
+			return ""
+		}
+		return joinHorizontalRaw(img1, img2, "  ") + "\n" + img3
+
+	default:
+		cols := max(8, (width-2)/2)
+		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 8), "\n ")
+		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 8), "\n ")
+		img3 := strings.TrimRight(cache.RenderImage(cached[2].Thumb, cols, 8), "\n ")
+		img4 := strings.TrimRight(cache.RenderImage(cached[3].Thumb, cols, 8), "\n ")
+		if img1 == "" || img2 == "" || img3 == "" || img4 == "" {
+			return ""
+		}
+		return joinHorizontalRaw(img1, img2, "  ") + "\n" + joinHorizontalRaw(img3, img4, "  ")
+	}
+}
+
+// joinHorizontalRaw joins two multi-line strings side-by-side with a separator.
+// Unlike lipgloss.JoinHorizontal, this does NOT pad lines to equal width,
+// avoiding width miscalculation with Kitty Unicode placeholder characters.
+func joinHorizontalRaw(left, right, sep string) string {
+	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
+	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
+
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+
+	var result strings.Builder
+	for i := 0; i < maxLines; i++ {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		l, r := "", ""
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		result.WriteString(l)
+		if r != "" {
+			result.WriteString(sep)
+			result.WriteString(r)
+		}
+	}
+	return result.String()
 }
 
 func truncateStr(s string, maxLen int) string {

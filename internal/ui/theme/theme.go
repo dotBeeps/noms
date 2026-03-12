@@ -40,6 +40,9 @@ var (
 	StyleError = lipgloss.NewStyle().
 			Foreground(ColorError)
 
+	StyleHeaderSubtle = lipgloss.NewStyle().
+				Foreground(ColorPrimary)
+
 	StyleTabActive = lipgloss.NewStyle().
 			Foreground(ColorAccent).
 			Border(lipgloss.NormalBorder(), false, false, true, false).

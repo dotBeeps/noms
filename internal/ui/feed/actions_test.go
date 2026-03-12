@@ -64,7 +64,7 @@ func TestLikePost(t *testing.T) {
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/1", "cid1")
 	post.Post.LikeCount = int64Ptr(5)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -112,7 +112,7 @@ func TestUnlikePost(t *testing.T) {
 	client := &actionMockClient{}
 	post := createTestPostWithViewer("Hello", "at://post/uri/2", "cid2", &likeURI, nil, 10, 0)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -157,7 +157,7 @@ func TestRepostFromFeed(t *testing.T) {
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/3", "cid3")
 	post.Post.RepostCount = int64Ptr(2)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -196,7 +196,7 @@ func TestUnRepostFromFeed(t *testing.T) {
 	client := &actionMockClient{}
 	post := createTestPostWithViewer("Hello", "at://post/uri/4", "cid4", nil, &repostURI, 0, 7)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -237,7 +237,7 @@ func TestReplyOpensCompose(t *testing.T) {
 	client := &actionMockClient{}
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/5", "cid5")
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 	m.selectedIndex = 0
@@ -268,7 +268,7 @@ func TestOptimisticUpdate(t *testing.T) {
 	initialCount := int64(42)
 	post.Post.LikeCount = &initialCount
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -295,7 +295,7 @@ func TestOptimisticRevertOnError(t *testing.T) {
 	initialCount := int64(10)
 	post.Post.LikeCount = &initialCount
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -331,7 +331,7 @@ func TestViewThreadNavigation(t *testing.T) {
 		createTestPost("Second", "b.bsky.social", "B", "at://uri/second", "cid2"),
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
 	m.loading = false
 	m.selectedIndex = 1
@@ -358,7 +358,7 @@ func TestLikeResultMsgUpdatesRealURI(t *testing.T) {
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/9", "cid9")
 	post.Post.LikeCount = int64Ptr(5)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 
@@ -386,7 +386,7 @@ func TestRepostResultMsgUpdatesRealURI(t *testing.T) {
 	post := createTestPost("Hello", "test.bsky.social", "Test", "at://post/uri/10", "cid10")
 	post.Post.RepostCount = int64Ptr(3)
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
 	m.loading = false
 

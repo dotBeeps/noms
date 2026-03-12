@@ -44,6 +44,8 @@ const (
 	HelpContextNotifications
 	HelpContextSearch
 	HelpContextCompose
+	HelpContextVoresky
+	HelpContextVoreskyNotifications
 )
 
 var loginKeyBindings = []KeyBinding{
@@ -53,8 +55,9 @@ var loginKeyBindings = []KeyBinding{
 }
 
 var globalKeyBindings = []KeyBinding{
-	{Key: "1-4", Description: "Switch tabs"},
+	{Key: "1-6", Description: "Switch tabs"},
 	{Key: "j/k", Description: "Navigate up/down"},
+	{Key: "v", Description: "Voresky setup"},
 	{Key: "?", Description: "Toggle help"},
 	{Key: "q", Description: "Quit"},
 	{Key: "Ctrl+C", Description: "Force quit"},
@@ -168,6 +171,20 @@ func (m HelpModel) View() tea.View {
 	case HelpContextCompose:
 		viewBindings = composeKeyBindings
 		title = "Compose"
+	case HelpContextVoresky:
+		viewBindings = []KeyBinding{
+			{Key: "j/k", Description: "Navigate characters"},
+			{Key: "enter", Description: "View character"},
+		}
+		globals = globalKeyBindings
+		title = "Voresky"
+	case HelpContextVoreskyNotifications:
+		viewBindings = []KeyBinding{
+			{Key: "j/k", Description: "Navigate notifications"},
+			{Key: "r", Description: "Mark as read"},
+		}
+		globals = globalKeyBindings
+		title = "Voresky Notifications"
 	default:
 		viewBindings = globalKeyBindings
 		title = "Keyboard Shortcuts"

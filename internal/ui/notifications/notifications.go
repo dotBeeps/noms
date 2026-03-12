@@ -13,6 +13,7 @@ import (
 
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -50,14 +51,6 @@ type NavigateToProfileMsg struct {
 
 // Styles for notification rendering
 var (
-	notificationStyle = lipgloss.NewStyle().
-				Padding(0, 1)
-
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorHighlight).
-			Bold(true).
-			Padding(0, 1)
-
 	unreadDotStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorAccent)
 
@@ -88,19 +81,6 @@ var (
 
 	timeStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorMuted)
-
-	loadingStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Padding(1, 2)
-
-	emptyStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Padding(1, 2).
-			Italic(true)
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorError).
-			Padding(1, 2)
 )
 
 type notifGroup struct {
@@ -244,9 +224,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected++
 				}
 			}
-			if m.selected > m.offset+m.visibleCount()-1 {
-				m.offset = m.selected - m.visibleCount() + 1
-			}
+			m.ensureSelectedVisible()
 			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
 				m.loading = true
 				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
@@ -257,9 +235,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected--
 				}
 			}
-			if m.selected < m.offset {
-				m.offset = m.selected
-			}
+			m.ensureSelectedVisible()
 		}
 		return m, nil
 
@@ -270,19 +246,12 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m NotificationsModel) visibleCount() int {
-	// Each notification is ~3-4 lines, estimate visible count
-	return max(1, m.height/4)
-}
-
 func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
 		if m.selected < len(m.groups)-1 {
 			m.selected++
-			if m.selected > m.offset+m.visibleCount()-1 {
-				m.offset++
-			}
+			m.ensureSelectedVisible()
 			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
 				m.loading = true
 				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
@@ -293,9 +262,7 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	case "k", "up":
 		if m.selected > 0 {
 			m.selected--
-			if m.selected < m.offset {
-				m.offset = m.selected
-			}
+			m.ensureSelectedVisible()
 		}
 		return m, nil
 
@@ -355,8 +322,9 @@ func (m NotificationsModel) View() tea.View {
 	if m.unreadCount > 0 {
 		header = fmt.Sprintf("Notifications (%d unread)", m.unreadCount)
 	}
-	content.WriteString(theme.StyleHeader.Render(header))
+	content.WriteString(theme.StyleHeaderSubtle.Render(header))
 	content.WriteString("\n\n")
+	headerHeight := 2
 
 	mouseView := func(s string) tea.View {
 		v := tea.NewView(s)
@@ -365,30 +333,47 @@ func (m NotificationsModel) View() tea.View {
 	}
 
 	if m.loading && len(m.notifications) == 0 {
-		content.WriteString(loadingStyle.Render(m.spinner.View() + " Loading notifications..."))
+		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(m.spinner.View()+" Loading notifications...")))
 		return mouseView(content.String())
 	}
 
 	if m.err != nil {
-		content.WriteString(errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
+		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err))))
 		return mouseView(content.String())
 	}
 
 	if len(m.groups) == 0 {
-		content.WriteString(emptyStyle.Render("No notifications yet"))
+		emptyText := lipgloss.NewStyle().Foreground(theme.ColorMuted).Italic(true).Render("No notifications yet")
+		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, emptyText))
 		return mouseView(content.String())
 	}
 
-	for i := m.offset; i < len(m.groups) && i < m.offset+m.visibleCount()+1; i++ {
-		content.WriteString(m.renderGroup(m.groups[i], i == m.selected))
-		content.WriteString("\n")
+	availableHeight := max(0, m.height-headerHeight)
+	var rendered string
+	linesUsed := 0
+	for i := m.offset; i < len(m.groups); i++ {
+		group := m.renderGroup(i, i == m.selected)
+		rendered += group
+		linesUsed += strings.Count(group, "\n")
+		if linesUsed >= availableHeight {
+			break
+		}
 	}
+	content.WriteString(rendered)
 
 	if m.loading {
-		content.WriteString(loadingStyle.Render(m.spinner.View() + " Loading more..."))
+		content.WriteString("\n")
+		content.WriteString(theme.StyleMuted.Render(m.spinner.View() + " Loading more..."))
 	}
 
 	return mouseView(content.String())
+}
+
+func (m *NotificationsModel) ensureSelectedVisible() {
+	headerHeight := 2 // header line + blank line
+	m.offset = shared.EnsureSelectedVisible(len(m.groups), m.selected, m.offset, m.height-headerHeight, func(index int) string {
+		return m.renderGroup(index, false)
+	})
 }
 
 func (m *NotificationsModel) buildGroups() {
@@ -446,13 +431,9 @@ func (m *NotificationsModel) buildGroups() {
 	}
 }
 
-func (m NotificationsModel) renderGroup(g notifGroup, selected bool) string {
+func (m NotificationsModel) renderGroup(index int, selected bool) string {
 	var b strings.Builder
-
-	indicator := "  "
-	if selected {
-		indicator = "▶ "
-	}
+	g := m.groups[index]
 
 	unreadDot := ""
 	if !g.allRead {
@@ -471,10 +452,10 @@ func (m NotificationsModel) renderGroup(g notifGroup, selected bool) string {
 
 	authorStyled := authorStyle.Render(authorDisplay)
 	actionLine := fmt.Sprintf("%s%s %s", unreadDot, style.Render(icon), action)
-	b.WriteString(fmt.Sprintf("%s%s %s\n", indicator, authorStyled, actionLine))
+	b.WriteString(fmt.Sprintf("%s %s\n", authorStyled, actionLine))
 
 	if g.preview != "" {
-		b.WriteString(fmt.Sprintf("%s    %s\n", indicator, contentPreviewStyle.Render(g.preview)))
+		b.WriteString(fmt.Sprintf("  %s\n", contentPreviewStyle.Render(g.preview)))
 	}
 
 	var timeStr string
@@ -485,16 +466,9 @@ func (m NotificationsModel) renderGroup(g notifGroup, selected bool) string {
 			timeStr = g.notif.IndexedAt
 		}
 	}
-	b.WriteString(fmt.Sprintf("%s    %s", indicator, timeStyle.Render(timeStr)))
+	b.WriteString(fmt.Sprintf("  %s", timeStyle.Render(timeStr)))
 
-	result := b.String()
-	if selected {
-		result = selectedStyle.Render(result)
-	} else {
-		result = notificationStyle.Render(result)
-	}
-
-	return result
+	return shared.RenderItemWithBorder(b.String(), selected, m.width)
 }
 
 func getNotificationStyle(reason string) (icon, action string, style lipgloss.Style) {

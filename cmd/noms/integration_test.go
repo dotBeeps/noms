@@ -159,14 +159,17 @@ func newTestApp(client *mockClient) ui.App {
 	updated, _ = app.Update(ui.LoginSuccessMsg{Session: session})
 	app = updated.(ui.App)
 
+	updated, _ = app.Update(ui.VoreskySkipMsg{})
+	app = updated.(ui.App)
+
 	app.SetClient(client)
 	h := app.Height() - 2
 	if h < 1 {
 		h = 1
 	}
-	app.SetFeedModel(feed.NewFeedModel(client, "", app.Width(), h))
+	app.SetFeedModel(feed.NewFeedModel(client, "", app.Width(), h, nil))
 	app.SetNotifModel(notifications.NewNotificationsModel(client, app.Width(), h))
-	app.SetSearchModel(search.NewSearchModel(client, app.Width(), h))
+	app.SetSearchModel(search.NewSearchModel(client, app.Width(), h, nil))
 	return app
 }
 
@@ -185,14 +188,20 @@ func TestLoginFlowToFeed(t *testing.T) {
 	updated, cmd := app.Update(ui.LoginSuccessMsg{Session: session})
 	app = updated.(ui.App)
 
-	if app.Screen() != ui.ScreenFeed {
-		t.Fatalf("expected ScreenFeed after login, got %d", app.Screen())
+	if app.Screen() != ui.ScreenVoreskySetup {
+		t.Fatalf("expected ScreenVoreskySetup after login, got %d", app.Screen())
 	}
 	if !app.IsLoggedIn() {
 		t.Fatal("expected IsLoggedIn true")
 	}
 	if cmd == nil {
-		t.Fatal("expected non-nil cmd from login (feed init)")
+		t.Fatal("expected non-nil cmd from login (feed init + vsetup)")
+	}
+
+	updated, _ = app.Update(ui.VoreskySkipMsg{})
+	app = updated.(ui.App)
+	if app.Screen() != ui.ScreenFeed {
+		t.Fatalf("expected ScreenFeed after voresky skip, got %d", app.Screen())
 	}
 }
 

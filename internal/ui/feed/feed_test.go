@@ -145,7 +145,7 @@ func TestFeedRenderSinglePost(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -174,7 +174,7 @@ func TestFeedRenderMultiplePosts(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -197,7 +197,7 @@ func TestPostWidgetAuthorLine(t *testing.T) {
 	t.Parallel()
 	post := createTestPost("Test content", "testhandle.bsky.social", "Test Display Name", "at://uri", "cid")
 
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 
 	if !strings.Contains(rendered, "Test Display Name") {
 		t.Errorf("Expected author line to contain display name 'Test Display Name', got %q", rendered)
@@ -251,7 +251,7 @@ func TestFacetMentionHighlight(t *testing.T) {
 	}
 
 	post := createTestPostWithFacets(text, "test.bsky.social", facets)
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 
 	// The mention should be rendered (content is present)
 	if !strings.Contains(rendered, "@alice.bsky.social") {
@@ -279,7 +279,7 @@ func TestFacetLinkUnderline(t *testing.T) {
 	}
 
 	post := createTestPostWithFacets(text, "test.bsky.social", facets)
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 	rendered = stripAnsi(rendered)
 
 	if !strings.Contains(rendered, "https://example.com") {
@@ -308,7 +308,7 @@ func TestFacetWithEmoji(t *testing.T) {
 	}
 
 	post := createTestPostWithFacets(text, "test.bsky.social", facets)
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 	rendered = stripAnsi(rendered)
 
 	if !strings.Contains(rendered, "👋") {
@@ -330,7 +330,7 @@ func TestScrollDown(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -366,7 +366,7 @@ func TestScrollUp(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.selectedIndex = 2
 	m.loading = false
@@ -410,7 +410,7 @@ func TestScrollPagination(t *testing.T) {
 		timelineCursor: "next-page-cursor",
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts[:20]
 	m.cursor = "next-page-cursor"
 	m.loading = false
@@ -435,7 +435,7 @@ func TestEmptyFeed(t *testing.T) {
 		timelinePosts: []*bsky.FeedDefs_FeedViewPost{},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = nil
 	m.loading = false
 
@@ -452,7 +452,7 @@ func TestFeedLoading(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	// loading is set to true in NewFeedModel
 
 	v := m.View()
@@ -473,15 +473,15 @@ func TestPostSelection(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 
-	// First post should be selected
+	// First post should be selected (accent-colored left border)
 	v := m.View()
 	content := v.Content
-	if !strings.Contains(content, "▶") {
-		t.Errorf("Expected selected post to have marker '▶', got %q", content)
+	if !strings.Contains(content, "\x1b[38;5;205m▎") {
+		t.Errorf("Expected selected post to have accent-colored border, got %q", content)
 	}
 
 	// Move selection down
@@ -510,7 +510,7 @@ func TestPostActionKeybinds(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 
@@ -584,7 +584,7 @@ func TestFeedRefresh(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("Old post", "old.bsky.social", "Old", "at://old", "oldcid"),
 	}
@@ -624,7 +624,7 @@ func TestFeedError(t *testing.T) {
 		timelineErr: errors.New("network error"),
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 
 	// Simulate receiving an error message
 	updated, _ := m.Update(FeedErrorMsg{Err: errors.New("network error")})
@@ -658,7 +658,7 @@ func TestRepostIndicator(t *testing.T) {
 		},
 	}
 
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 
 	if !strings.Contains(rendered, "Reposted by") {
 		t.Errorf("Expected repost indicator, got %q", rendered)
@@ -689,7 +689,7 @@ func TestReplyIndicator(t *testing.T) {
 		},
 	}
 
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 
 	if !strings.Contains(rendered, "Replying to") {
 		t.Errorf("Expected reply indicator, got %q", rendered)
@@ -708,7 +708,7 @@ func TestFeedModelInit(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 
 	if !m.loading {
 		t.Error("Expected initial loading state to be true")
@@ -724,7 +724,7 @@ func TestFeedModelInit(t *testing.T) {
 func TestWindowSizeMsg(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = updated.(FeedModel)
@@ -741,7 +741,7 @@ func TestWindowSizeMsg(t *testing.T) {
 func TestFeedLoadedMsg(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.loading = true
 
 	posts := []*bsky.FeedDefs_FeedViewPost{
@@ -766,7 +766,7 @@ func TestFeedLoadedMsg(t *testing.T) {
 func TestFeedLoadedMsgAppend(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("First", "a.bsky.social", "A", "at://1", "c1"),
 	}
@@ -795,7 +795,7 @@ func TestDeleteFirstDPress(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 	// Ensure post author DID matches ownDID
@@ -826,7 +826,7 @@ func TestDeleteSecondDPress(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:testuser"
@@ -863,7 +863,7 @@ func TestDeleteCancelOnOtherKey(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:testuser"
@@ -893,7 +893,7 @@ func TestDeleteNotOwnPost(t *testing.T) {
 		},
 	}
 
-	m := NewFeedModel(client, "did:plc:me", 80, 24)
+	m := NewFeedModel(client, "did:plc:me", 80, 24, nil)
 	m.posts = client.timelinePosts
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:other"
@@ -914,7 +914,7 @@ func TestDeletePostResultRemovesPost(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
 
-	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("Post 1", "a.bsky.social", "A", "at://post1", "c1"),
 		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
@@ -942,7 +942,7 @@ func TestDeletePostResultAdjustsIndex(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
 
-	m := NewFeedModel(client, "did:plc:testuser", 80, 24)
+	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("Post 1", "a.bsky.social", "A", "at://post1", "c1"),
 		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
@@ -971,7 +971,7 @@ func TestFeedMouseWheelDownScrolls(t *testing.T) {
 	}
 	client := &mockBlueskyClient{timelinePosts: posts}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
 	m.loading = false
 
@@ -991,7 +991,7 @@ func TestFeedMouseWheelUpScrolls(t *testing.T) {
 	}
 	client := &mockBlueskyClient{timelinePosts: posts}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
 	m.loading = false
 	m.selectedIndex = 5
@@ -1012,7 +1012,7 @@ func TestFeedMouseWheelBoundsCheck(t *testing.T) {
 	}
 	client := &mockBlueskyClient{timelinePosts: posts}
 
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
 	m.loading = false
 
@@ -1037,7 +1037,7 @@ func TestFeedMouseWheelBoundsCheck(t *testing.T) {
 func TestFeedSpinnerTickDuringLoad(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	// loading is true by default
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -1049,7 +1049,7 @@ func TestFeedSpinnerTickDuringLoad(t *testing.T) {
 func TestFeedSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	m.loading = false
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -1061,7 +1061,7 @@ func TestFeedSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 func TestFeedLoadingViewShowsSpinner(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewFeedModel(client, "", 80, 24)
+	m := NewFeedModel(client, "", 80, 24, nil)
 	// loading is true by default
 
 	v := m.View()
@@ -1078,7 +1078,7 @@ func TestEngagementLine(t *testing.T) {
 	post.Post.RepostCount = int64Ptr(10)
 	post.Post.ReplyCount = int64Ptr(5)
 
-	rendered := RenderPost(post, 80, false)
+	rendered := RenderPost(post, 80, false, nil, nil)
 
 	if !strings.Contains(rendered, "42") {
 		t.Errorf("Expected like count 42 in engagement line, got %q", rendered)

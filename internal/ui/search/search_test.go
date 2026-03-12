@@ -160,7 +160,7 @@ func createTestActor(handle, displayName, did, description string) *bsky.ActorDe
 func TestSearchInput(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	// Check input is focused
 	if !m.input.Focused() {
@@ -203,7 +203,7 @@ func TestSearchDebounce(t *testing.T) {
 			createTestPostView("Test post", "test.bsky.social", "Test User", "at://test/1", "cid1"),
 		},
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	// Type a character
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "t"})
@@ -240,7 +240,7 @@ func TestSearchPostsResults(t *testing.T) {
 			createTestPostView("Another post", "bob.bsky.social", "Bob", "at://test/2", "cid2"),
 		},
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.query = "test"
 
@@ -278,7 +278,7 @@ func TestSearchPeopleResults(t *testing.T) {
 			createTestActor("bob.bsky.social", "Bob", "did:plc:bob", "Bob here"),
 		},
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePeople
 	m.query = "test"
 
@@ -311,7 +311,7 @@ func TestSearchPeopleResults(t *testing.T) {
 func TestSearchToggleMode(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	// Initially Posts mode
 	if m.mode != ModePosts {
@@ -354,7 +354,7 @@ func TestSearchResultNavigation(t *testing.T) {
 			createTestPostView("Post 3", "c.bsky.social", "C", "at://3", "c3"),
 		},
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = client.searchPosts
 	m.input.Blur() // Unfocus input to enable navigation
@@ -409,7 +409,7 @@ func TestSearchResultNavigation(t *testing.T) {
 func TestSearchEmpty(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	// Empty query
 	if m.query != "" {
@@ -430,7 +430,7 @@ func TestSearchNoResults(t *testing.T) {
 	client := &mockBlueskyClient{
 		searchPosts: []*bsky.FeedDefs_PostView{}, // Empty results
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.query = "nonexistent"
 
@@ -471,7 +471,7 @@ func TestSearchPagination(t *testing.T) {
 		searchPosts:       firstPage,
 		searchPostsCursor: "next-page-cursor",
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.query = "test"
 	m.postResults = firstPage
@@ -518,7 +518,7 @@ func TestSearchEnterNavigation(t *testing.T) {
 				createTestPostView("Test post", "test.bsky.social", "Test", "at://test/123", "cid123"),
 			},
 		}
-		m := NewSearchModel(client, 80, 24)
+		m := NewSearchModel(client, 80, 24, nil)
 		m.mode = ModePosts
 		m.postResults = client.searchPosts
 		m.input.Blur()
@@ -545,7 +545,7 @@ func TestSearchEnterNavigation(t *testing.T) {
 				createTestActor("test.bsky.social", "Test User", "did:plc:test", "Bio"),
 			},
 		}
-		m := NewSearchModel(client, 80, 24)
+		m := NewSearchModel(client, 80, 24, nil)
 		m.mode = ModePeople
 		m.actorResults = client.searchActors
 		m.input.Blur()
@@ -573,7 +573,7 @@ func TestSearchError(t *testing.T) {
 	client := &mockBlueskyClient{
 		searchPostsErr: errors.New("network error"),
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.query = "test"
 
@@ -598,7 +598,7 @@ func TestSearchError(t *testing.T) {
 func TestSearchEscape(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.query = "test"
 	m.postResults = []*bsky.FeedDefs_PostView{
 		createTestPostView("Test", "test.bsky.social", "Test", "at://1", "c1"),
@@ -621,7 +621,7 @@ func TestSearchEscape(t *testing.T) {
 func TestSearchEscapeBlurs(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.query = "test"
 	m.postResults = []*bsky.FeedDefs_PostView{
 		createTestPostView("Test", "test.bsky.social", "Test", "at://1", "c1"),
@@ -645,7 +645,7 @@ func TestSearchEscapeBlurs(t *testing.T) {
 func TestSearchFocusSlash(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.input.Blur()
 
 	if m.input.Focused() {
@@ -668,7 +668,7 @@ func TestSearchFocusSlash(t *testing.T) {
 func TestSearchInit(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	cmd := m.Init()
 	if cmd == nil {
@@ -680,7 +680,7 @@ func TestSearchInit(t *testing.T) {
 func TestSearchWindowSizeMsg(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = updated.(SearchModel)
@@ -698,7 +698,7 @@ func TestSearchStatusBar(t *testing.T) {
 	t.Parallel()
 	t.Run("Shows Searching during load", func(t *testing.T) {
 		client := &mockBlueskyClient{}
-		m := NewSearchModel(client, 80, 24)
+		m := NewSearchModel(client, 80, 24, nil)
 		m.query = "test"
 		m.loading = true
 
@@ -710,7 +710,7 @@ func TestSearchStatusBar(t *testing.T) {
 
 	t.Run("Shows result count", func(t *testing.T) {
 		client := &mockBlueskyClient{}
-		m := NewSearchModel(client, 80, 24)
+		m := NewSearchModel(client, 80, 24, nil)
 		m.query = "test"
 		m.postResults = []*bsky.FeedDefs_PostView{
 			createTestPostView("Test", "test.bsky.social", "Test", "at://1", "c1"),
@@ -731,7 +731,7 @@ func TestSearchMouseWheelDownScrolls(t *testing.T) {
 		posts[i] = createTestPostView("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
 	}
 	client := &mockBlueskyClient{searchPosts: posts}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
 	m.input.Blur()
@@ -751,7 +751,7 @@ func TestSearchMouseWheelUpScrolls(t *testing.T) {
 		posts[i] = createTestPostView("Post", "user.bsky.social", "User", "at://uri"+string(rune('0'+i)), "cid")
 	}
 	client := &mockBlueskyClient{searchPosts: posts}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
 	m.input.Blur()
@@ -772,7 +772,7 @@ func TestSearchMouseWheelBoundsCheck(t *testing.T) {
 		createTestPostView("Post 2", "b.bsky.social", "B", "at://2", "c2"),
 	}
 	client := &mockBlueskyClient{searchPosts: posts}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
 	m.input.Blur()
@@ -794,7 +794,7 @@ func TestSearchMouseWheelBoundsCheck(t *testing.T) {
 func TestSearchSpinnerTickDuringLoad(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.loading = true
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -806,7 +806,7 @@ func TestSearchSpinnerTickDuringLoad(t *testing.T) {
 func TestSearchSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.loading = false
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -818,7 +818,7 @@ func TestSearchSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 func TestSearchLoadingViewShowsSpinner(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.query = "test"
 	m.loading = true
 
@@ -839,7 +839,7 @@ func TestSearchModeResetsResults(t *testing.T) {
 			createTestActor("test.bsky.social", "Test", "did:plc:test", "Bio"),
 		},
 	}
-	m := NewSearchModel(client, 80, 24)
+	m := NewSearchModel(client, 80, 24, nil)
 	m.query = "test"
 	m.postResults = []*bsky.FeedDefs_PostView{
 		createTestPostView("Old post", "old.bsky.social", "Old", "at://old", "cold"),

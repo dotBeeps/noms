@@ -102,7 +102,7 @@ func TestThreadRenderSinglePost(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://uri1", "", 80, 24)
+	m := NewThreadModel(client, "at://uri1", "", 80, 24, nil)
 
 	cmd := m.Init()
 	msg := cmd()
@@ -131,7 +131,7 @@ func TestThreadRenderWithParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	view := m.View().Content
@@ -165,7 +165,7 @@ func TestThreadRenderDeepParentChain(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 3 {
@@ -195,7 +195,7 @@ func TestThreadRenderReplies(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -232,7 +232,7 @@ func TestThreadRenderNestedReplies(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 3 {
@@ -255,7 +255,7 @@ func TestThreadTargetPostHighlighted(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if !m.threadPosts[0].IsTarget {
@@ -282,7 +282,7 @@ func TestThreadScrollNavigation(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	// Currently at index 0
@@ -302,7 +302,7 @@ func TestThreadScrollNavigation(t *testing.T) {
 // 8. TestThreadBackNavigation
 func TestThreadBackNavigation(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "esc"})
 	if cmd == nil {
@@ -329,7 +329,7 @@ func TestThreadMissingParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -357,7 +357,7 @@ func TestThreadActionKeybinds(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	// Test Like (l)
@@ -388,7 +388,7 @@ func TestThreadActionKeybinds(t *testing.T) {
 // 11. TestThreadLoadingState
 func TestThreadLoadingState(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 	if !m.loading {
 		t.Errorf("Expected loading state initially")
 	}
@@ -402,7 +402,7 @@ func TestThreadLoadingState(t *testing.T) {
 // 12. TestThreadErrorState
 func TestThreadErrorState(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, ThreadErrorMsg{Err: errors.New("network error")})
 
 	view := m.View().Content
@@ -426,7 +426,7 @@ func TestThreadBlockedParent(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -457,7 +457,7 @@ func TestThreadEnterOnReply(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	// Move to the reply (index 1)
@@ -484,7 +484,7 @@ func TestThreadEnterOnReply(t *testing.T) {
 // 15. TestThreadWindowSizeMsg
 func TestThreadWindowSizeMsg(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = updated.(ThreadModel)
@@ -509,7 +509,7 @@ func TestThreadDeleteFirstDPress(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
@@ -540,7 +540,7 @@ func TestThreadDeleteSecondDPress(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	m = doUpdate(m, tea.KeyPressMsg{Text: "d"})
@@ -571,7 +571,7 @@ func TestThreadDeleteCancelOnOtherKey(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24)
+	m := NewThreadModel(client, "at://target", "did:plc:testuser", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	m = doUpdate(m, tea.KeyPressMsg{Text: "d"})
@@ -597,7 +597,7 @@ func TestThreadDeleteNotOwnPost(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "did:plc:me", 80, 24)
+	m := NewThreadModel(client, "at://target", "did:plc:me", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "d"})
@@ -626,7 +626,7 @@ func TestThreadDeletePostResultRemovesPost(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "did:plc:user", 80, 24)
+	m := NewThreadModel(client, "at://target", "did:plc:user", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 2 {
@@ -660,7 +660,7 @@ func TestThreadMouseWheelDownScrolls(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
@@ -692,7 +692,7 @@ func TestThreadMouseWheelUpScrolls(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://target", "", 80, 24)
+	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 	m.selectedIndex = 6
 
@@ -707,7 +707,7 @@ func TestThreadMouseWheelUpScrolls(t *testing.T) {
 // 23. TestThreadSpinnerTickDuringLoad
 func TestThreadSpinnerTickDuringLoad(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 
 	_, cmd := m.Update(m.spinner.Tick())
 	if cmd == nil {
@@ -718,7 +718,7 @@ func TestThreadSpinnerTickDuringLoad(t *testing.T) {
 // 24. TestThreadSpinnerTickIgnoredWhenNotLoading
 func TestThreadSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 	t.Parallel()
-	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24)
+	m := NewThreadModel(&mockClient{}, "at://target", "", 80, 24, nil)
 	m.loading = false
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -737,7 +737,7 @@ func TestThreadNotFoundRoot(t *testing.T) {
 			},
 		},
 	}
-	m := NewThreadModel(client, "at://notfound", "", 80, 24)
+	m := NewThreadModel(client, "at://notfound", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
 
 	if len(m.threadPosts) != 1 {
