@@ -217,6 +217,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.C
 
 	embedBoxStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("246")).
+		Background(lipgloss.Color("236")).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
 		Padding(0, 1).

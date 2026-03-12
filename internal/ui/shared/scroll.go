@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -37,14 +38,16 @@ func EnsureSelectedVisible(itemCount, selectedIndex, offset, height int, renderI
 
 func RenderItemWithBorder(content string, selected bool, width int) string {
 	borderColor := lipgloss.Color("238")
-	panelBg := lipgloss.Color("236")
+	panelBgName := "236"
 	if selected {
 		borderColor = theme.ColorAccent
-		panelBg = lipgloss.Color("237")
+		panelBgName = "237"
 	}
+	panelBg := lipgloss.Color(panelBgName)
 	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
 	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
 	lineStyle := lipgloss.NewStyle().Background(panelBg).Padding(0, 1).Width(max(1, width-2))
+	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgName)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) == 0 {
@@ -56,7 +59,10 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 		if i > 0 {
 			result.WriteString("\n")
 		}
-		result.WriteString(styledBorder + gap + lineStyle.Render(line))
+		stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
+		stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
+		stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
+		result.WriteString(styledBorder + gap + lineStyle.Render(stabilized))
 	}
 	result.WriteString("\n\n")
 
