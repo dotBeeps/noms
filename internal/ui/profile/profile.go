@@ -12,6 +12,8 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/images"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -26,19 +28,21 @@ type ProfileModel struct {
 	authorFeed []*bsky.FeedDefs_FeedViewPost
 	cursor     string
 
-	selectedIndex int
-	offset        int
-	loading       bool
-	loadingFeed   bool
-	err           error
-	width         int
-	height        int
-	spinner       spinner.Model
-	confirmDelete int // -1 = none
+	selectedIndex   int
+	offset          int
+	loading         bool
+	loadingFeed     bool
+	err             error
+	width           int
+	height          int
+	spinner         spinner.Model
+	confirmDelete   int // -1 = none
+	imageCache      *images.Cache
+	avatarOverrides map[string]string
 }
 
 // NewProfileModel creates a new profile model.
-func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width, height int) ProfileModel {
+func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width, height int, cache *images.Cache) ProfileModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
@@ -55,7 +59,12 @@ func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width
 		selectedIndex: 0,
 		spinner:       sp,
 		confirmDelete: -1,
+		imageCache:    cache,
 	}
+}
+
+func (m *ProfileModel) SetAvatarOverrides(overrides map[string]string) {
+	m.avatarOverrides = overrides
 }
 
 // Messages for profile operations.
@@ -171,6 +180,26 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.authorFeed = append(m.authorFeed, msg.Posts...)
 		}
 		m.cursor = msg.Cursor
+		var fetchCmds []tea.Cmd
+		for _, p := range msg.Posts {
+			for _, url := range feed.ExtractImageURLs(p) {
+				if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+					fetchCmds = append(fetchCmds, cmd)
+				}
+			}
+			avatarURL := feed.ExtractAvatarURL(p)
+			if avatarURL != "" {
+				if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+					fetchCmds = append(fetchCmds, cmd)
+				}
+			}
+		}
+		if len(fetchCmds) > 0 {
+			return m, tea.Batch(fetchCmds...)
+		}
+
+	case images.ImageFetchedMsg:
+		return m, nil
 
 	case ProfileErrorMsg:
 		m.err = msg.Err
@@ -267,10 +296,7 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex++
 				}
 			}
-			vc := max(1, m.height/6)
-			if m.selectedIndex > m.offset+vc-1 {
-				m.offset = m.selectedIndex - vc + 1
-			}
+			m.ensureSelectedVisible()
 			if m.selectedIndex >= len(m.authorFeed)-3 && m.cursor != "" && !m.loadingFeed {
 				m.loadingFeed = true
 				return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
@@ -281,9 +307,7 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex--
 				}
 			}
-			if m.selectedIndex < m.offset {
-				m.offset = m.selectedIndex
-			}
+			m.ensureSelectedVisible()
 		}
 		return m, nil
 
@@ -305,10 +329,7 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.selectedIndex < len(m.authorFeed)-1 {
 			m.selectedIndex++
-			vc := max(1, m.height/6)
-			if m.selectedIndex > m.offset+vc-1 {
-				m.offset++
-			}
+			m.ensureSelectedVisible()
 		} else if m.cursor != "" && !m.loadingFeed {
 			m.loadingFeed = true
 			return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
@@ -317,9 +338,7 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		if m.selectedIndex > 0 {
 			m.selectedIndex--
-			if m.selectedIndex < m.offset {
-				m.offset = m.selectedIndex
-			}
+			m.ensureSelectedVisible()
 		}
 
 	case "f":
@@ -378,24 +397,27 @@ func (m ProfileModel) View() tea.View {
 	}
 
 	if m.err != nil {
-		errorStyle := lipgloss.NewStyle().
+		errorText := lipgloss.NewStyle().
 			Foreground(theme.ColorError).
-			Padding(1, 2)
-		return mouseView(errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry or 'esc' to go back", m.err)))
+			Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry or 'esc' to go back", m.err))
+		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, errorText))
 	}
 
 	if m.loading && m.profile == nil {
-		loadingStyle := lipgloss.NewStyle().
+		loadingText := lipgloss.NewStyle().
 			Foreground(theme.ColorAccent).
-			Padding(1, 2)
-		return mouseView(loadingStyle.Render(m.spinner.View() + " Loading profile..."))
+			Render(m.spinner.View() + " Loading profile...")
+		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, loadingText))
 	}
 
 	var b strings.Builder
+	headerHeight := 0
 
 	// Render header
 	if m.profile != nil {
+		before := b.Len()
 		m.renderHeader(&b)
+		headerHeight += strings.Count(b.String()[before:], "\n")
 	}
 
 	// Render separator
@@ -403,15 +425,17 @@ func (m ProfileModel) View() tea.View {
 		Foreground(theme.ColorSecondary).
 		Render(strings.Repeat("─", min(m.width, 60))))
 	b.WriteString("\n")
+	headerHeight++
+	availableHeight := max(1, m.height-headerHeight)
 
 	// Render feed
 	if len(m.authorFeed) == 0 && !m.loadingFeed {
-		mutedStyle := lipgloss.NewStyle().
+		emptyText := lipgloss.NewStyle().
 			Foreground(theme.ColorMuted).
-			Padding(1, 2)
-		b.WriteString(mutedStyle.Render("No posts yet"))
+			Render("No posts yet")
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, emptyText))
 	} else {
-		m.renderFeed(&b)
+		m.renderFeed(&b, availableHeight)
 	}
 
 	if m.loadingFeed {
@@ -545,75 +569,31 @@ func (m ProfileModel) renderFollowButton(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-func (m ProfileModel) renderFeed(b *strings.Builder) {
-	postStyle := lipgloss.NewStyle().Padding(0, 2)
-	selectedStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorAccent).
-		Bold(true).
-		Padding(0, 2)
-	authorStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorPrimary).
-		Bold(true)
-	mutedStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorMuted)
-
-	vc := max(1, m.height/6)
-	for i := m.offset; i < len(m.authorFeed) && i < m.offset+vc+1; i++ {
-		post := m.authorFeed[i]
-		if post.Post == nil {
-			continue
-		}
-
-		// Cursor and selection
-		cursorStr := "  "
-		style := postStyle
-		if i == m.selectedIndex {
-			cursorStr = "▶ "
-			style = selectedStyle
-		}
-
-		// Author line
-		if post.Post.Author == nil {
-			continue
-		}
-		authorName := post.Post.Author.Handle
-		if post.Post.Author.DisplayName != nil {
-			authorName = *post.Post.Author.DisplayName
-		}
-
-		// Post text
-		var text string
-		if record, ok := post.Post.Record.Val.(*bsky.FeedPost); ok {
-			text = record.Text
-		}
-
-		// Engagement counts
-		var likes, reposts, replies int64
-		if post.Post.LikeCount != nil {
-			likes = *post.Post.LikeCount
-		}
-		if post.Post.RepostCount != nil {
-			reposts = *post.Post.RepostCount
-		}
-		if post.Post.ReplyCount != nil {
-			replies = *post.Post.ReplyCount
-		}
-
-		// Render post
-		line := fmt.Sprintf("%s%s: %s",
-			cursorStr,
-			authorStyle.Render(authorName),
-			text)
-
-		b.WriteString(style.Render(line))
-		b.WriteString("\n")
-
-		// Engagement line
-		engagement := fmt.Sprintf("    %s",
-			mutedStyle.Render(fmt.Sprintf("♥ %d  ↻ %d  ⤶ %d", likes, reposts, replies)))
-		b.WriteString(style.Render(engagement))
-		b.WriteString("\n")
+func (m *ProfileModel) ensureSelectedVisible() {
+	contentHeight := m.height
+	if m.profile != nil {
+		var b strings.Builder
+		m.renderHeader(&b)
+		headerHeight := strings.Count(b.String(), "\n") + 1
+		contentHeight = max(1, m.height-headerHeight)
 	}
+	m.offset = shared.EnsureSelectedVisible(len(m.authorFeed), m.selectedIndex, m.offset, contentHeight, func(index int) string {
+		return feed.RenderPost(m.authorFeed[index], m.width, false, m.imageCache, m.avatarOverrides)
+	})
+}
+
+func (m ProfileModel) renderFeed(b *strings.Builder, availableHeight int) {
+	var rendered string
+	linesUsed := 0
+	for i := m.offset; i < len(m.authorFeed); i++ {
+		post := feed.RenderPost(m.authorFeed[i], m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
+		rendered += post
+		linesUsed += strings.Count(post, "\n")
+		if linesUsed >= availableHeight {
+			break
+		}
+	}
+	b.WriteString(rendered)
 }
 
 // formatCount formats large numbers with K/M suffixes.

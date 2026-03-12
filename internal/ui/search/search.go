@@ -13,6 +13,8 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/images"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -21,13 +23,6 @@ type SearchMode int
 const (
 	ModePosts SearchMode = iota
 	ModePeople
-
-	// maxVisiblePosts is the maximum number of post results shown before scrolling.
-	maxVisiblePosts = 15
-	// maxVisibleActors is the maximum number of actor results shown before scrolling.
-	maxVisibleActors = 20
-	// scrollMargin is the distance from offset before auto-scrolling kicks in.
-	scrollMargin = 10
 )
 
 type debounceMsg struct {
@@ -56,24 +51,26 @@ type ViewProfileMsg struct {
 }
 
 type SearchModel struct {
-	client        bluesky.BlueskyClient
-	input         textinput.Model
-	mode          SearchMode
-	postResults   []*bsky.FeedDefs_PostView
-	actorResults  []*bsky.ActorDefs_ProfileView
-	selectedIndex int
-	cursor        string
-	loading       bool
-	lastKeystroke time.Time
-	width         int
-	height        int
-	query         string
-	err           error
-	offset        int // For scrolling
-	spinner       spinner.Model
+	client          bluesky.BlueskyClient
+	input           textinput.Model
+	mode            SearchMode
+	postResults     []*bsky.FeedDefs_PostView
+	actorResults    []*bsky.ActorDefs_ProfileView
+	selectedIndex   int
+	cursor          string
+	loading         bool
+	lastKeystroke   time.Time
+	width           int
+	height          int
+	query           string
+	err             error
+	offset          int // For scrolling
+	spinner         spinner.Model
+	imageCache      *images.Cache
+	avatarOverrides map[string]string
 }
 
-func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel {
+func NewSearchModel(client bluesky.BlueskyClient, width, height int, cache *images.Cache) SearchModel {
 	ti := textinput.New()
 	ti.Placeholder = "Type to search..."
 	ti.Focus()
@@ -95,7 +92,12 @@ func NewSearchModel(client bluesky.BlueskyClient, width, height int) SearchModel
 		width:         width,
 		height:        height,
 		spinner:       sp,
+		imageCache:    cache,
 	}
+}
+
+func (m *SearchModel) SetAvatarOverrides(overrides map[string]string) {
+	m.avatarOverrides = overrides
 }
 
 func (m SearchModel) Init() tea.Cmd {
@@ -141,6 +143,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = ModePosts
 			}
 			m.selectedIndex = 0
+			m.offset = 0
 			m.cursor = ""
 			m.postResults = nil
 			m.actorResults = nil
@@ -169,10 +172,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.selectedIndex > 0 {
 					m.selectedIndex--
 				}
-				// Adjust offset
-				if m.selectedIndex < m.offset {
-					m.offset = m.selectedIndex
-				}
+				m.ensureSelectedVisible()
 				return m, nil
 			}
 
@@ -188,9 +188,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
 				}
-				if m.selectedIndex > m.offset+scrollMargin {
-					m.offset = m.selectedIndex - scrollMargin
-				}
+				m.ensureSelectedVisible()
 				return m, nil
 			}
 		}
@@ -217,9 +215,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedIndex++
 					}
 				}
-				if m.selectedIndex > m.offset+scrollMargin {
-					m.offset = m.selectedIndex - scrollMargin
-				}
+				m.ensureSelectedVisible()
 				if m.selectedIndex >= limit-3 && m.cursor != "" && !m.loading {
 					m.loading = true
 					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
@@ -230,9 +226,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedIndex--
 					}
 				}
-				if m.selectedIndex < m.offset {
-					m.offset = m.selectedIndex
-				}
+				m.ensureSelectedVisible()
 			}
 			return m, nil
 		}
@@ -244,6 +238,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.query = q
 				m.cursor = ""
 				m.selectedIndex = 0
+				m.offset = 0
 				m.postResults = nil
 				m.actorResults = nil
 				if q != "" {
@@ -258,6 +253,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mode != m.mode {
 			return m, nil // Stale response
 		}
+		var fetchCmds []tea.Cmd
 		if msg.Append {
 			if m.mode == ModePosts {
 				m.postResults = append(m.postResults, msg.Posts...)
@@ -273,6 +269,29 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cursor = msg.Cursor
 		m.err = nil
+		if msg.Mode == ModePosts {
+			for _, pv := range msg.Posts {
+				fvp := &bsky.FeedDefs_FeedViewPost{Post: pv}
+				for _, url := range feed.ExtractImageURLs(fvp) {
+					if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+						fetchCmds = append(fetchCmds, cmd)
+					}
+				}
+				avatarURL := feed.ExtractAvatarURL(fvp)
+				if avatarURL != "" {
+					if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+						fetchCmds = append(fetchCmds, cmd)
+					}
+				}
+			}
+		}
+		m.ensureSelectedVisible()
+		if len(fetchCmds) > 0 {
+			return m, tea.Batch(fetchCmds...)
+		}
+
+	case images.ImageFetchedMsg:
+		return m, nil
 
 	case SearchErrorMsg:
 		m.loading = false
@@ -318,6 +337,64 @@ func (m SearchModel) performSearch(query, cursor string, mode SearchMode, append
 	}
 }
 
+func (m *SearchModel) contentHeight() int {
+	availableHeight := m.height - 5
+	if availableHeight < 1 {
+		return 1
+	}
+	return availableHeight
+}
+
+func (m SearchModel) renderPerson(index int, selected bool) string {
+	if index < 0 || index >= len(m.actorResults) {
+		return ""
+	}
+	actor := m.actorResults[index]
+
+	displayName := actor.Handle
+	if actor.DisplayName != nil && *actor.DisplayName != "" {
+		displayName = *actor.DisplayName
+	}
+
+	bio := ""
+	if actor.Description != nil {
+		bio = strings.ReplaceAll(*actor.Description, "\n", " ")
+		if len(bio) > 80 {
+			bio = bio[:77] + "..."
+		}
+	}
+
+	nameStr := theme.StyleHeader.Render(displayName)
+	handleStr := theme.StyleMuted.Render("@" + actor.Handle)
+	bioStr := theme.StyleMuted.Render(bio)
+
+	line := fmt.Sprintf("%s %s — %s", handleStr, nameStr, bioStr)
+	return shared.RenderItemWithBorder(line, selected, m.width)
+}
+
+func (m *SearchModel) ensureSelectedVisible() {
+	var itemCount int
+	var renderFn func(int) string
+
+	if m.mode == ModePosts {
+		itemCount = len(m.postResults)
+		renderFn = func(i int) string {
+			if i < 0 || i >= len(m.postResults) {
+				return ""
+			}
+			fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[i]}
+			return feed.RenderPost(fvp, m.width, false, m.imageCache, m.avatarOverrides)
+		}
+	} else {
+		itemCount = len(m.actorResults)
+		renderFn = func(i int) string {
+			return m.renderPerson(i, false)
+		}
+	}
+
+	m.offset = shared.EnsureSelectedVisible(itemCount, m.selectedIndex, m.offset, m.contentHeight(), renderFn)
+}
+
 func (m SearchModel) View() tea.View {
 	var b strings.Builder
 
@@ -336,75 +413,46 @@ func (m SearchModel) View() tea.View {
 		peopleTab = theme.StyleTabActive.Render(peopleTab)
 	}
 	b.WriteString(fmt.Sprintf("%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab))
+	availableHeight := m.contentHeight()
 
 	// Content area
 	if m.err != nil {
-		b.WriteString(theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err)))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err))))
 	} else if m.query == "" {
-		b.WriteString(theme.StyleMuted.Render("Type to search..."))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render("Type to search...")))
 	} else if m.loading && len(m.postResults) == 0 && len(m.actorResults) == 0 {
-		b.WriteString(m.spinner.View() + " Searching...")
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, m.spinner.View()+" Searching..."))
 	} else if m.mode == ModePosts && len(m.postResults) == 0 {
-		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query)))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query))))
 	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
-		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query)))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query))))
 	} else {
 		// List results
 		if m.mode == ModePosts {
-			for i, pv := range m.postResults {
-				if i < m.offset {
-					continue
-				}
-				// Wrap PostView in FeedViewPost for rendering compatibility
-				fvp := &bsky.FeedDefs_FeedViewPost{
-					Post: pv,
-				}
-				postStr := feed.RenderPost(fvp, m.width, i == m.selectedIndex)
-				b.WriteString(postStr)
-				b.WriteString("\n")
-				if i-m.offset > maxVisiblePosts {
+			var rendered string
+			linesUsed := 0
+			for i := m.offset; i < len(m.postResults); i++ {
+				fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[i]}
+				item := feed.RenderPost(fvp, m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
+				rendered += item
+				linesUsed += strings.Count(item, "\n")
+				if linesUsed >= availableHeight {
 					break
 				}
 			}
+			b.WriteString(rendered)
 		} else {
-			for i, actor := range m.actorResults {
-				if i < m.offset {
-					continue
-				}
-
-				displayName := actor.Handle
-				if actor.DisplayName != nil && *actor.DisplayName != "" {
-					displayName = *actor.DisplayName
-				}
-
-				bio := ""
-				if actor.Description != nil {
-					bio = strings.ReplaceAll(*actor.Description, "\n", " ")
-					if len(bio) > 80 {
-						bio = bio[:77] + "..."
-					}
-				}
-
-				nameStr := theme.StyleHeader.Render(displayName)
-				handleStr := theme.StyleMuted.Render("@" + actor.Handle)
-				bioStr := theme.StyleMuted.Render(bio)
-
-				line := fmt.Sprintf("%s %s — %s", handleStr, nameStr, bioStr)
-
-				if i == m.selectedIndex {
-					line = "▶ " + line
-					line = theme.StyleSelected.Render(line)
-				} else {
-					line = "  " + line
-				}
-
-				b.WriteString(line)
-				b.WriteString("\n")
-
-				if i-m.offset > maxVisibleActors {
+			var rendered string
+			linesUsed := 0
+			for i := m.offset; i < len(m.actorResults); i++ {
+				item := m.renderPerson(i, i == m.selectedIndex)
+				rendered += item
+				linesUsed += strings.Count(item, "\n")
+				if linesUsed >= availableHeight {
 					break
 				}
 			}
+			b.WriteString(rendered)
 		}
 	}
 

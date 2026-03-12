@@ -10,8 +10,11 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
+
+const scrollPad = 2
 
 type ThreadLoadedMsg struct {
 	Thread *bsky.FeedGetPostThread_Output
@@ -33,20 +36,22 @@ type ThreadPost struct {
 }
 
 type ThreadModel struct {
-	threadPosts   []ThreadPost
-	selectedIndex int
-	loading       bool
-	width, height int
-	client        bluesky.BlueskyClient
-	ownDID        string
-	targetURI     string
-	err           error
-	offset        int
-	spinner       spinner.Model
-	confirmDelete int // -1 = none
+	threadPosts     []ThreadPost
+	selectedIndex   int
+	loading         bool
+	width, height   int
+	client          bluesky.BlueskyClient
+	ownDID          string
+	targetURI       string
+	err             error
+	offset          int
+	spinner         spinner.Model
+	confirmDelete   int // -1 = none
+	imageCache      *images.Cache
+	avatarOverrides map[string]string
 }
 
-func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int) ThreadModel {
+func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int, cache *images.Cache) ThreadModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
@@ -60,7 +65,12 @@ func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, hei
 		loading:       true,
 		spinner:       sp,
 		confirmDelete: -1,
+		imageCache:    cache,
 	}
+}
+
+func (m *ThreadModel) SetAvatarOverrides(overrides map[string]string) {
+	m.avatarOverrides = overrides
 }
 
 func (m ThreadModel) Init() tea.Cmd {
@@ -84,15 +94,31 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		if msg.Thread != nil && msg.Thread.Thread != nil {
 			m.threadPosts = flattenThread(msg.Thread.Thread)
-			// Find target to select it initially
 			for i, p := range m.threadPosts {
 				if p.IsTarget {
 					m.selectedIndex = i
-					m.offset = max(0, i-2) // Try to show some context above
+					m.offset = max(0, i-2)
 					break
 				}
 			}
 		}
+		var fetchCmds []tea.Cmd
+		for _, tp := range m.threadPosts {
+			if tp.Post != nil && tp.Post.Embed != nil {
+				fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
+				for _, url := range feed.ExtractImageURLs(fvp) {
+					if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+						fetchCmds = append(fetchCmds, cmd)
+					}
+				}
+			}
+		}
+		if len(fetchCmds) > 0 {
+			return m, tea.Batch(fetchCmds...)
+		}
+		return m, nil
+
+	case images.ImageFetchedMsg:
 		return m, nil
 
 	case ThreadErrorMsg:
@@ -225,15 +251,16 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "j", "down":
 			if m.selectedIndex < len(m.threadPosts)-1 {
 				m.selectedIndex++
-				if m.selectedIndex > m.offset+m.visibleCount()-1 {
-					m.offset++
+				vc := m.visibleCount()
+				if m.selectedIndex > m.offset+vc-1-scrollPad {
+					m.offset = max(m.offset, m.selectedIndex-vc+1+scrollPad)
 				}
 			}
 		case "k", "up":
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
-				if m.selectedIndex < m.offset {
-					m.offset = m.selectedIndex
+				if m.selectedIndex < m.offset+scrollPad {
+					m.offset = max(0, m.selectedIndex-scrollPad)
 				}
 			}
 		case "enter":
@@ -295,8 +322,9 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex++
 				}
 			}
-			if m.selectedIndex > m.offset+m.visibleCount()-1 {
-				m.offset = m.selectedIndex - m.visibleCount() + 1
+			vc := m.visibleCount()
+			if m.selectedIndex > m.offset+vc-1-scrollPad {
+				m.offset = max(m.offset, m.selectedIndex-vc+1+scrollPad)
 			}
 		case tea.MouseWheelUp:
 			for range 3 {
@@ -304,8 +332,8 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedIndex--
 				}
 			}
-			if m.selectedIndex < m.offset {
-				m.offset = m.selectedIndex
+			if m.selectedIndex < m.offset+scrollPad {
+				m.offset = max(0, m.selectedIndex-scrollPad)
 			}
 		}
 		return m, nil
@@ -338,7 +366,7 @@ func (m ThreadModel) View() tea.View {
 	}
 
 	var rendered strings.Builder
-	for i := m.offset; i < len(m.threadPosts) && i < m.offset+m.visibleCount()+1; i++ {
+	for i := m.offset; i < len(m.threadPosts) && i < m.offset+m.visibleCount(); i++ {
 		tp := m.threadPosts[i]
 		isSelected := (i == m.selectedIndex)
 
@@ -387,7 +415,7 @@ func (m ThreadModel) View() tea.View {
 			postWidth = 20
 		}
 
-		postStr := feed.RenderPost(fvp, postWidth, isSelected)
+		postStr := feed.RenderPost(fvp, postWidth, isSelected, m.imageCache, m.avatarOverrides)
 
 		// Apply indent line by line
 		lines := strings.Split(postStr, "\n")

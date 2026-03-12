@@ -53,14 +53,15 @@ type postSuccessMsg struct {
 
 // ComposeModel is the Bubble Tea model for the compose screen
 type ComposeModel struct {
-	textarea   textarea.Model
-	mode       ComposeMode
-	parentPost *bsky.FeedDefs_PostView
-	client     bluesky.BlueskyClient
-	width      int
-	height     int
-	loading    bool
-	err        error
+	textarea        textarea.Model
+	mode            ComposeMode
+	parentPost      *bsky.FeedDefs_PostView
+	client          bluesky.BlueskyClient
+	width           int
+	height          int
+	loading         bool
+	err             error
+	avatarOverrides map[string]string
 }
 
 // NewComposeModel creates a new compose model
@@ -79,6 +80,10 @@ func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost 
 		width:      width,
 		height:     height,
 	}
+}
+
+func (m *ComposeModel) SetAvatarOverrides(overrides map[string]string) {
+	m.avatarOverrides = overrides
 }
 
 // Init initializes the compose model
@@ -216,7 +221,7 @@ func (m ComposeModel) View() tea.View {
 		parentFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
 		}
-		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false)
+		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false, nil, m.avatarOverrides)
 		b.WriteString(theme.StyleMuted.Render("Replying to:"))
 		b.WriteString("\n")
 		b.WriteString(parentRendered)
@@ -250,7 +255,7 @@ func (m ComposeModel) View() tea.View {
 		quotedFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
 		}
-		quotedRendered := feed.RenderPost(quotedFeedPost, m.width-8, false)
+		quotedRendered := feed.RenderPost(quotedFeedPost, m.width-8, false, nil, m.avatarOverrides)
 		b.WriteString(quotedRendered)
 	}
 
