@@ -12,17 +12,32 @@ import (
 var (
 	statusBarStyle = lipgloss.NewStyle().
 			Background(theme.ColorSecondary).
-			Foreground(lipgloss.Color("255")).
+			Foreground(theme.ColorTextStrong).
 			Padding(0, 1)
 
 	connectedStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
 	offlineStyle   = lipgloss.NewStyle().Foreground(theme.ColorError)
 	badgeStyle     = lipgloss.NewStyle().
 			Background(theme.ColorAccent).
-			Foreground(lipgloss.Color("255")).
+			Foreground(theme.ColorOnAccent).
 			Padding(0, 1).
 			Bold(true)
 )
+
+func syncStatusStyles() {
+	statusBarStyle = lipgloss.NewStyle().
+		Background(theme.ColorSecondary).
+		Foreground(theme.ColorTextStrong).
+		Padding(0, 1)
+
+	connectedStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
+	offlineStyle = lipgloss.NewStyle().Foreground(theme.ColorError)
+	badgeStyle = lipgloss.NewStyle().
+		Background(theme.ColorAccent).
+		Foreground(theme.ColorOnAccent).
+		Padding(0, 1).
+		Bold(true)
+}
 
 type StatusBar struct {
 	Width       int
@@ -49,6 +64,8 @@ func (m StatusBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m StatusBar) View() tea.View {
+	syncStatusStyles()
+
 	status := offlineStyle.Render("○ Offline")
 	if m.Connected {
 		status = connectedStyle.Render("● Connected")

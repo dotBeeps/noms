@@ -447,7 +447,7 @@ func (m ProfileModel) View() tea.View {
 
 	if m.confirmDelete >= 0 {
 		confirmStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("203")).
+			Foreground(theme.ColorWarning).
 			Bold(true)
 		b.WriteString("\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
 			confirmStyle.Render("Press d to confirm delete, any other key to cancel")))

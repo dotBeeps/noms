@@ -37,17 +37,18 @@ func EnsureSelectedVisible(itemCount, selectedIndex, offset, height int, renderI
 }
 
 func RenderItemWithBorder(content string, selected bool, width int) string {
-	borderColor := lipgloss.Color("238")
-	panelBgName := "236"
+	borderColor := theme.ColorBorder
+	panelBg := theme.ColorSurface
+	panelBgCode := theme.SurfaceCode()
 	if selected {
 		borderColor = theme.ColorAccent
-		panelBgName = "237"
+		panelBg = theme.ColorSurfaceAlt
+		panelBgCode = theme.SurfaceAltCode()
 	}
-	panelBg := lipgloss.Color(panelBgName)
 	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
 	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
 	lineStyle := lipgloss.NewStyle().Background(panelBg).Padding(0, 1).Width(max(1, width-2))
-	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgName)
+	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) == 0 {

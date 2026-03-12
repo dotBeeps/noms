@@ -9,6 +9,7 @@ import (
 	"github.com/dotBeeps/noms/internal/auth"
 	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/login"
+	"github.com/dotBeeps/noms/internal/ui/theme"
 	"github.com/dotBeeps/noms/internal/ui/vsetup"
 )
 
@@ -228,5 +229,73 @@ func TestAltScreen(t *testing.T) {
 
 	if !v.AltScreen {
 		t.Errorf("Expected AltScreen to be true for main view")
+	}
+}
+
+func TestThemeCycleKeybindings(t *testing.T) {
+	theme.Apply("default")
+	t.Cleanup(func() {
+		theme.Apply("default")
+	})
+
+	app := NewApp()
+	app.cfg = nil
+	app.loggedIn = true
+	app.screen = ScreenFeed
+
+	original := theme.ActiveTheme()
+
+	updated, _ := app.Update(tea.KeyPressMsg{Text: "]"})
+	app = updated.(App)
+
+	afterNext := theme.ActiveTheme()
+	if afterNext == original {
+		t.Fatalf("expected ] to change theme, stayed on %q", afterNext)
+	}
+
+	updated, _ = app.Update(tea.KeyPressMsg{Text: "["})
+	app = updated.(App)
+
+	if theme.ActiveTheme() != original {
+		t.Fatalf("expected [ to return to original theme %q, got %q", original, theme.ActiveTheme())
+	}
+}
+
+func TestThemePickerHotkeyAndSelection(t *testing.T) {
+	theme.Apply("default")
+	t.Cleanup(func() {
+		theme.Apply("default")
+	})
+
+	app := NewApp()
+	app.cfg = nil
+	app.loggedIn = true
+	app.screen = ScreenFeed
+	app.width = 80
+	app.height = 24
+
+	updated, _ := app.Update(tea.KeyPressMsg{Text: "ctrl+t"})
+	app = updated.(App)
+
+	if !app.showThemePicker {
+		t.Fatalf("expected ctrl+t to open theme picker")
+	}
+
+	v := app.View()
+	if !strings.Contains(v.Content, "Theme Picker") {
+		t.Fatalf("expected theme picker overlay to be visible, got %q", v.Content)
+	}
+
+	updated, _ = app.Update(tea.KeyPressMsg{Text: "j"})
+	app = updated.(App)
+	updated, _ = app.Update(tea.KeyPressMsg{Text: "enter"})
+	app = updated.(App)
+
+	if app.showThemePicker {
+		t.Fatalf("expected theme picker to close after Enter")
+	}
+
+	if theme.ActiveTheme() == "default" {
+		t.Fatalf("expected selection in picker to apply a non-default theme")
 	}
 }

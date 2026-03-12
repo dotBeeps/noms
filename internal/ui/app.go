@@ -100,7 +100,10 @@ type App struct {
 	tabBar    components.TabBar
 	help      components.HelpModel
 	showHelp  bool
-	err       error
+
+	showThemePicker  bool
+	themePickerIndex int
+	err              error
 
 	ownDID     string
 	imageCache *images.Cache
@@ -111,6 +114,7 @@ func NewApp() App {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+	theme.Apply(cfg.Theme.Name)
 
 	return App{
 		screen:     ScreenLogin,
@@ -818,7 +822,7 @@ func (m *App) updateTabBarForScreen() {
 func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	if key == "?" && m.screen != ScreenCompose {
+	if key == "?" && m.screen != ScreenCompose && !m.showThemePicker {
 		m.showHelp = !m.showHelp
 		return m, nil
 	}
@@ -827,6 +831,58 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if key == "esc" || key == "q" || key == "?" {
 			m.showHelp = false
 		}
+		return m, nil
+	}
+
+	if m.showThemePicker {
+		themes := theme.AvailableThemes()
+		if len(themes) == 0 {
+			m.showThemePicker = false
+			return m, nil
+		}
+
+		switch key {
+		case "ctrl+c":
+			m.imageCache.Close()
+			return m, tea.Quit
+		case "esc", "q", "ctrl+t":
+			m.showThemePicker = false
+			return m, nil
+		case "j", "down":
+			if m.themePickerIndex < len(themes)-1 {
+				m.themePickerIndex++
+			}
+			return m, nil
+		case "k", "up":
+			if m.themePickerIndex > 0 {
+				m.themePickerIndex--
+			}
+			return m, nil
+		case "g":
+			m.themePickerIndex = 0
+			return m, nil
+		case "G":
+			m.themePickerIndex = len(themes) - 1
+			return m, nil
+		case "enter":
+			if m.themePickerIndex < 0 || m.themePickerIndex >= len(themes) {
+				m.themePickerIndex = 0
+			}
+			m.applyTheme(themes[m.themePickerIndex])
+			m.showThemePicker = false
+			return m, nil
+		case "[":
+			m.cycleTheme(-1)
+			themes = theme.AvailableThemes()
+			m.themePickerIndex = m.themeIndex(themes)
+			return m, nil
+		case "]":
+			m.cycleTheme(1)
+			themes = theme.AvailableThemes()
+			m.themePickerIndex = m.themeIndex(themes)
+			return m, nil
+		}
+
 		return m, nil
 	}
 
@@ -859,6 +915,26 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.composeModel.Update(msg)
 		m.composeModel = updated.(compose.ComposeModel)
 		return m, cmd
+	}
+
+	if m.loggedIn && m.screen != ScreenLogin && m.screen != ScreenVoreskySetup && m.screen != ScreenCompose {
+		switch key {
+		case "[":
+			m.cycleTheme(-1)
+			return m, nil
+		case "]":
+			m.cycleTheme(1)
+			return m, nil
+		case "ctrl+t":
+			themes := theme.AvailableThemes()
+			if len(themes) == 0 {
+				return m, nil
+			}
+			m.showThemePicker = true
+			m.showHelp = false
+			m.themePickerIndex = m.themeIndex(themes)
+			return m, nil
+		}
 	}
 
 	// Tab switching takes priority (from main screens, not thread/compose)
@@ -1012,6 +1088,10 @@ func (m App) View() tea.View {
 		v = m.renderHelpOverlay(v)
 	}
 
+	if m.showThemePicker {
+		v = m.renderThemePickerOverlay(v)
+	}
+
 	return v
 }
 
@@ -1022,7 +1102,7 @@ func (m App) renderMainContent(height int) string {
 
 	if m.client == nil {
 		style := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
+			Foreground(theme.ColorText).
 			Padding(1, 2)
 
 		var content string
@@ -1081,16 +1161,107 @@ func (m App) renderHelpOverlay(baseView tea.View) tea.View {
 	helpHeight := lipgloss.Height(helpContent)
 
 	overlayStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252")).
-		Background(lipgloss.Color("236"))
+		Foreground(theme.ColorText).
+		Background(theme.ColorSurface)
 
 	overlay := overlayStyle.
 		Width(helpWidth).
 		Height(helpHeight).
 		Render(helpContent)
 
-	whitespaceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
+	whitespaceStyle := lipgloss.NewStyle().Foreground(theme.ColorSurface)
 	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(whitespaceStyle)))
+}
+
+func (m App) renderThemePickerOverlay(baseView tea.View) tea.View {
+	themes := theme.AvailableThemes()
+	if len(themes) == 0 {
+		return baseView
+	}
+
+	selectedIndex := m.themePickerIndex
+	if selectedIndex < 0 || selectedIndex >= len(themes) {
+		selectedIndex = 0
+	}
+
+	active := theme.ActiveTheme()
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary)
+	selectedStyle := lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true)
+	rowStyle := lipgloss.NewStyle().Foreground(theme.ColorText)
+	hintStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted)
+
+	var lines []string
+	lines = append(lines, titleStyle.Render("Theme Picker"))
+	lines = append(lines, "")
+
+	for i, name := range themes {
+		line := "  " + name
+		if name == active {
+			line += " (current)"
+		}
+
+		if i == selectedIndex {
+			line = "› " + name
+			if name == active {
+				line += " (current)"
+			}
+			lines = append(lines, selectedStyle.Render(line))
+			continue
+		}
+
+		lines = append(lines, rowStyle.Render(line))
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, hintStyle.Render("j/k or ↑/↓: move  •  Enter: apply  •  [ ]: cycle  •  Esc: close"))
+
+	content := strings.Join(lines, "\n")
+	overlayStyle := lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Background(theme.ColorSurface).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ColorPrimary)
+
+	overlay := overlayStyle.Render(content)
+	whitespaceStyle := lipgloss.NewStyle().Foreground(theme.ColorSurface)
+
+	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(whitespaceStyle)))
+}
+
+func (m *App) applyTheme(name string) {
+	resolved := theme.Apply(name)
+	if m.cfg != nil {
+		m.cfg.Theme.Name = resolved
+		_ = config.Save(m.cfg)
+	}
+}
+
+func (m *App) cycleTheme(delta int) {
+	themes := theme.AvailableThemes()
+	if len(themes) == 0 {
+		return
+	}
+
+	idx := m.themeIndex(themes)
+	idx = (idx + delta + len(themes)) % len(themes)
+	m.applyTheme(themes[idx])
+	m.themePickerIndex = idx
+}
+
+func (m *App) themeIndex(themes []string) int {
+	if len(themes) == 0 {
+		return 0
+	}
+
+	active := theme.ActiveTheme()
+	for i, name := range themes {
+		if name == active {
+			return i
+		}
+	}
+
+	return 0
 }
 
 func updateLogin(m login.LoginModel, msg tea.Msg) (login.LoginModel, tea.Cmd) {

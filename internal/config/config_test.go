@@ -57,6 +57,20 @@ name = "dracula"
 	if cfg.Theme.Name != "dracula" {
 		t.Errorf("Theme.Name = %q, want %q", cfg.Theme.Name, "dracula")
 	}
+
+	cfg.Theme.Name = "terminal"
+	if err := config.Save(cfg); err != nil {
+		t.Fatalf("Save() error after setting terminal theme: %v", err)
+	}
+
+	reloaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error after saving terminal theme: %v", err)
+	}
+	if reloaded.Theme.Name != "terminal" {
+		t.Errorf("Theme.Name = %q, want %q", reloaded.Theme.Name, "terminal")
+	}
+
 	if cfg.ImageProtocol != "kitty" {
 		t.Errorf("ImageProtocol = %q, want %q", cfg.ImageProtocol, "kitty")
 	}
@@ -91,5 +105,32 @@ func TestConfigSaveToFile(t *testing.T) {
 	}
 	if !strings.Contains(content, "sixel") {
 		t.Errorf("saved file missing image_protocol; got:\n%s", content)
+	}
+}
+
+func TestConfigLoadBlankThemeFallsBackToDefault(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	cfgDir := filepath.Join(tmp, "noms")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	tomlContent := `
+[theme]
+name = "   "
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.Theme.Name != "default" {
+		t.Errorf("Theme.Name = %q, want %q", cfg.Theme.Name, "default")
 	}
 }

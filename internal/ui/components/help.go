@@ -6,27 +6,49 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
 var (
 	helpOverlayStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252")).
-				Background(lipgloss.Color("236")).
+				Foreground(theme.ColorText).
+				Background(theme.ColorSurface).
 				Padding(1, 2).
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("62"))
+				BorderForeground(theme.ColorPrimary)
 
 	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(theme.ColorAccent).
 			Bold(true)
 
 	helpDescStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("246"))
+			Foreground(theme.ColorMuted)
 
 	helpSectionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("246")).
+				Foreground(theme.ColorMuted).
 				Italic(true)
 )
+
+func syncHelpStyles() {
+	helpOverlayStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Background(theme.ColorSurface).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ColorPrimary)
+
+	helpKeyStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorAccent).
+		Bold(true)
+
+	helpDescStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorMuted)
+
+	helpSectionStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorMuted).
+		Italic(true)
+}
 
 type KeyBinding struct {
 	Key         string
@@ -57,6 +79,8 @@ var loginKeyBindings = []KeyBinding{
 var globalKeyBindings = []KeyBinding{
 	{Key: "1-6", Description: "Switch tabs"},
 	{Key: "j/k", Description: "Navigate up/down"},
+	{Key: "[ / ]", Description: "Previous/next theme"},
+	{Key: "Ctrl+T", Description: "Theme picker"},
 	{Key: "v", Description: "Voresky setup"},
 	{Key: "?", Description: "Toggle help"},
 	{Key: "q", Description: "Quit"},
@@ -102,7 +126,7 @@ var searchKeyBindings = []KeyBinding{
 }
 
 var composeKeyBindings = []KeyBinding{
-	{Key: "Ctrl+D", Description: "Submit post"},
+	{Key: "Ctrl+Enter", Description: "Submit post"},
 	{Key: "Esc", Description: "Cancel"},
 }
 
@@ -133,6 +157,8 @@ func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m HelpModel) View() tea.View {
+	syncHelpStyles()
+
 	if !m.Visible {
 		return tea.NewView("")
 	}
@@ -199,7 +225,7 @@ func (m HelpModel) View() tea.View {
 	}
 
 	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62")).Render(title))
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary).Render(title))
 	lines = append(lines, "")
 
 	for _, kb := range viewBindings {

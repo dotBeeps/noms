@@ -152,13 +152,13 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 			for _, seg := range segments {
 				switch seg.Type {
 				case bluesky.SegmentMention:
-					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorMention).Render(seg.Text))
 				case bluesky.SegmentLink:
-					body.WriteString(lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("45")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Underline(true).Foreground(theme.ColorLink).Render(seg.Text))
 				case bluesky.SegmentTag:
-					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorTag).Render(seg.Text))
 				default:
-					body.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render(seg.Text))
+					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorText).Render(seg.Text))
 				}
 			}
 			contentWidth := max(10, width-2)
@@ -192,13 +192,13 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	likeStyle := theme.StyleMuted
 	if liked {
 		likeIcon = "♥"
-		likeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
+		likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
 	}
 
 	repostIcon := "⟲"
 	repostStyle := theme.StyleMuted
 	if reposted {
-		repostStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
+		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
 	}
 
 	engLine := likeStyle.Render(fmt.Sprintf("%s %d", likeIcon, likeCount)) +
@@ -216,10 +216,10 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.C
 	}
 
 	embedBoxStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("246")).
-		Background(lipgloss.Color("236")).
+		Foreground(theme.ColorMuted).
+		Background(theme.ColorSurface).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(theme.ColorBorder).
 		Padding(0, 1).
 		Width(max(10, width-8))
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -50,6 +51,11 @@ func Load() (*Config, error) {
 
 	if _, err := toml.Decode(string(data), cfg); err != nil {
 		return nil, err
+	}
+
+	cfg.Theme.Name = strings.TrimSpace(cfg.Theme.Name)
+	if cfg.Theme.Name == "" {
+		cfg.Theme.Name = "default"
 	}
 
 	return cfg, nil

@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
 // ─── Messages emitted to the parent App ─────────────────────────────────────
@@ -39,35 +40,67 @@ const (
 
 var (
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("62")).
+			Foreground(theme.ColorPrimary).
 			Bold(true).
 			Padding(1, 0)
 
 	instructionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("246")).
+				Foreground(theme.ColorMuted).
 				Padding(0, 2)
 
 	stepStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
+			Foreground(theme.ColorText).
 			Padding(0, 4)
 
 	inputLabelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
+			Foreground(theme.ColorText).
 			Padding(0, 2)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.ColorError).
 			Bold(true).
 			Padding(1, 2)
 
 	loadingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(theme.ColorAccent).
 			Padding(1, 2)
 
 	hintStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(theme.ColorMuted).
 			Padding(0, 2)
 )
+
+func syncStyles() {
+	titleStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorPrimary).
+		Bold(true).
+		Padding(1, 0)
+
+	instructionStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorMuted).
+		Padding(0, 2)
+
+	stepStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Padding(0, 4)
+
+	inputLabelStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Padding(0, 2)
+
+	errorStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorError).
+		Bold(true).
+		Padding(1, 2)
+
+	loadingStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorAccent).
+		Padding(1, 2)
+
+	hintStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorMuted).
+		Padding(0, 2)
+}
 
 // Model is the BubbleTea model for the Voresky cookie setup screen.
 type Model struct {
@@ -173,6 +206,8 @@ func (m Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	syncStyles()
+
 	var b strings.Builder
 
 	b.WriteString(titleStyle.Render("Voresky Connection"))

@@ -10,37 +10,68 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/dotBeeps/noms/internal/auth"
+	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
 var (
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("62")).
+			Foreground(theme.ColorPrimary).
 			Bold(true).
 			Padding(1, 0)
 
 	inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
+			Foreground(theme.ColorText).
 			Padding(0, 1)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
+			Foreground(theme.ColorError).
 			Bold(true).
 			Padding(1, 0)
 
 	optionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("246")).
+			Foreground(theme.ColorMuted).
 			Padding(0, 2)
 
 	selectedOptionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("229")).
-				Background(lipgloss.Color("62")).
+				Foreground(theme.ColorOnPrimary).
+				Background(theme.ColorPrimary).
 				Bold(true).
 				Padding(0, 2)
 
 	loadingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(theme.ColorAccent).
 			Padding(1, 0)
 )
+
+func syncStyles() {
+	titleStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorPrimary).
+		Bold(true).
+		Padding(1, 0)
+
+	inputStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Padding(0, 1)
+
+	errorStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorError).
+		Bold(true).
+		Padding(1, 0)
+
+	optionStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorMuted).
+		Padding(0, 2)
+
+	selectedOptionStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorOnPrimary).
+		Background(theme.ColorPrimary).
+		Bold(true).
+		Padding(0, 2)
+
+	loadingStyle = lipgloss.NewStyle().
+		Foreground(theme.ColorAccent).
+		Padding(1, 0)
+}
 
 type LoginState int
 
@@ -256,6 +287,8 @@ func (m LoginModel) handleErrorState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m LoginModel) View() tea.View {
+	syncStyles()
+
 	var content strings.Builder
 
 	content.WriteString(titleStyle.Render("noms - atproto + voresky TUI client"))

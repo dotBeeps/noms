@@ -64,13 +64,13 @@ var (
 			Foreground(theme.ColorPrimary)
 
 	mentionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("51")) // cyan
+			Foreground(theme.ColorMention)
 
 	replyStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorHighlight)
 
 	quoteStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("141")) // purple
+			Foreground(theme.ColorTag)
 
 	authorStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorPrimary).
@@ -82,6 +82,19 @@ var (
 	timeStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorMuted)
 )
+
+func syncStyles() {
+	unreadDotStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
+	likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
+	repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
+	followStyle = lipgloss.NewStyle().Foreground(theme.ColorPrimary)
+	mentionStyle = lipgloss.NewStyle().Foreground(theme.ColorMention)
+	replyStyle = lipgloss.NewStyle().Foreground(theme.ColorHighlight)
+	quoteStyle = lipgloss.NewStyle().Foreground(theme.ColorTag)
+	authorStyle = lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true)
+	contentPreviewStyle = lipgloss.NewStyle().Foreground(theme.ColorMuted)
+	timeStyle = lipgloss.NewStyle().Foreground(theme.ColorMuted)
+}
 
 type notifGroup struct {
 	reason  string
@@ -316,6 +329,8 @@ func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
 }
 
 func (m NotificationsModel) View() tea.View {
+	syncStyles()
+
 	var content strings.Builder
 
 	header := "Notifications"
