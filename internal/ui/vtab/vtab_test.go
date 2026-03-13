@@ -64,8 +64,8 @@ func TestVoreskyAvatarPlaceholderWhenUncached(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	if !strings.Contains(content, "[··]") {
-		t.Errorf("Expected placeholder '[··]' for uncached avatar, got: %s", content)
+	if !strings.Contains(content, "[····]") {
+		t.Errorf("Expected placeholder '[····]' for uncached avatar, got: %s", content)
 	}
 }
 
