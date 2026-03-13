@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 )
 
 func TestRenderPostWithImageEmbed(t *testing.T) {
@@ -453,5 +454,148 @@ func TestRenderPostNilCacheFallback(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "NilCacheUser") {
 		t.Error("Expected author name to appear in rendered output with nil cache")
+	}
+}
+
+func TestPostWidgetAvatarIndentAllRows(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost("L1\nL2\nL3\nL4\nL5", "indent.bsky.social", "IndentUser", "at://indent", "cid_indent")
+	avatarURL := "https://example.com/avatar_indent.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "AAAAAA\nBBBBBB\nCCCCCC" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+	lines := strings.Split(rendered, "\n")
+
+	for _, marker := range []string{"L3", "L4", "L5"} {
+		found := false
+		for _, line := range lines {
+			idx := strings.Index(line, marker)
+			if idx == -1 {
+				continue
+			}
+			found = true
+			prefix := line[:idx]
+			if !strings.HasSuffix(prefix, strings.Repeat(" ", shared.AvatarCols+1)) {
+				t.Fatalf("expected line containing %q to include >=%d trailing gutter spaces before content; line=%q", marker, shared.AvatarCols+1, line)
+			}
+			break
+		}
+		if !found {
+			t.Fatalf("expected to find marker %q in rendered output", marker)
+		}
+	}
+}
+
+func TestPostWidgetNoAvatarNoIndent(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost("BodyLineNoAvatar", "noindent.bsky.social", "NoIndentUser", "at://noindent", "cid_noindent")
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+
+	for _, line := range strings.Split(rendered, "\n") {
+		if !(strings.Contains(line, "NoIndentUser") || strings.Contains(line, "BodyLineNoAvatar")) {
+			continue
+		}
+		if strings.Contains(line, strings.Repeat(" ", shared.AvatarCols+1)+"BodyLineNoAvatar") {
+			t.Fatalf("unexpected avatar gutter indentation in no-avatar render: %q", line)
+		}
+	}
+}
+
+func TestPostWidgetEmbedWidthReducedWithAvatar(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost("Embed width check", "embedwidth.bsky.social", "EmbedWidthUser", "at://embedwidth", "cid_embedwidth")
+	avatarURL := "https://example.com/avatar_embed.jpg"
+	post.Post.Author.Avatar = &avatarURL
+	post.Post.Embed = &bsky.FeedDefs_PostView_Embed{
+		EmbedExternal_View: &bsky.EmbedExternal_View{
+			External: &bsky.EmbedExternal_ViewExternal{
+				Title:       strings.Repeat("T", 120),
+				Description: strings.Repeat("D", 180),
+				Uri:         "https://example.com/very-long-link",
+			},
+		},
+	}
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "AVATAR\nAVATAR\nAVATAR" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+	for _, line := range strings.Split(rendered, "\n") {
+		trimmed := strings.TrimLeft(line, "▎ ")
+		trimmed = strings.TrimRight(trimmed, " ")
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "🔗") || strings.Contains(trimmed, "TTTT") || strings.Contains(trimmed, "DDDD") || strings.Contains(trimmed, "╭") || strings.Contains(trimmed, "│") || strings.Contains(trimmed, "╰") {
+			if got := len([]rune(trimmed)); got > 71 {
+				t.Fatalf("embed-related line width exceeded 71 with avatar: got=%d line=%q", got, trimmed)
+			}
+		}
+	}
+}
+
+func TestPostWidgetAvatarPresentInOutput(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost("Avatar appears", "avatarpresent.bsky.social", "AvatarPresentUser", "at://avpresent", "cid_avpresent")
+	avatarURL := "https://example.com/avatar_present.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "VISIBLE_AVATAR" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+	if !strings.Contains(rendered, "VISIBLE_AVATAR") {
+		t.Fatalf("expected avatar marker in rendered output, got: %q", rendered)
+	}
+}
+
+func TestPostWidgetBodyWrappedToAvatarWidth(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost(strings.Repeat("Q", 170), "wrap.bsky.social", "WrapUser", "at://wrap", "cid_wrap")
+	avatarURL := "https://example.com/avatar_wrap.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "AVWRAP\nAVWRAP\nAVWRAP" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+	lines := strings.Split(rendered, "\n")
+
+	foundBody := false
+	for _, line := range lines {
+		idx := strings.Index(line, "QQQ")
+		if idx == -1 {
+			continue
+		}
+		foundBody = true
+		bodyPart := line[idx:]
+		bodyPart = strings.TrimRight(bodyPart, " ")
+		if got := len([]rune(bodyPart)); got > 71 {
+			t.Fatalf("wrapped body line exceeds 71 cols with avatar: got=%d line=%q", got, bodyPart)
+		}
+	}
+
+	if !foundBody {
+		t.Fatal("expected wrapped body content lines in rendered output")
 	}
 }

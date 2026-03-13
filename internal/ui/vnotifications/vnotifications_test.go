@@ -4,6 +4,7 @@ package vnotifications
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,12 @@ import (
 
 	voresky "github.com/dotBeeps/noms/internal/api/voresky"
 )
+
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string {
+	return ansiEscapeRe.ReplaceAllString(s, "")
+}
 
 // ─── stub ImageRenderer ───────────────────────────────────────────────────────
 
@@ -250,4 +257,136 @@ func TestRenderNotification_UncachedAvatars(t *testing.T) {
 		t.Error("uncached avatars: expected non-empty render")
 	}
 	t.Logf("uncached avatar render OK (placeholder used)")
+}
+
+func TestDualAvatarGutterWidth13(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	tgt := makeChar("Pip", "https://example.com/pip.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{"universe":"TestU"}`), src, tgt)
+	notif.Universe = "A-very-long-universe-name-to-force-extra-wrap"
+
+	stub := &stubImageRenderer{cached: true, img: "AAAAAA\nBBBBBB\nCCCCCC"}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         30,
+	}
+
+	out := stripAnsi(m.renderNotification(0, false))
+	lines := strings.Split(out, "\n")
+
+	foundIndented := false
+	for _, line := range lines {
+		if !strings.Contains(line, "Jan") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "▎  ")
+		idx := strings.Index(line, "Jan")
+		if idx == -1 {
+			continue
+		}
+		if strings.HasSuffix(line[:idx], strings.Repeat(" ", 16)) {
+			foundIndented = true
+			break
+		}
+	}
+	if !foundIndented {
+		t.Fatalf("expected >=13 gutter spaces before time line for dual avatars; output: %q", out)
+	}
+}
+
+func TestSingleAvatarGutterWidth6(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{"universe":"TestU"}`), src, nil)
+	notif.Universe = "Long-universe-wrap"
+
+	stub := &stubImageRenderer{cached: true, img: "AAAAAA\nBBBBBB\nCCCCCC"}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         24,
+	}
+
+	out := stripAnsi(m.renderNotification(0, false))
+	lines := strings.Split(out, "\n")
+
+	foundIndented := false
+	for _, line := range lines {
+		if !strings.Contains(line, "Jan") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "▎  ")
+		idx := strings.Index(line, "Jan")
+		if idx == -1 {
+			continue
+		}
+		if strings.HasSuffix(line[:idx], strings.Repeat(" ", 9)) {
+			foundIndented = true
+			break
+		}
+	}
+	if !foundIndented {
+		t.Fatalf("expected >=6 gutter spaces before time line for single avatar; output: %q", out)
+	}
+}
+
+func TestNarrowTerminalFallsBackToSingleAvatar(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	tgt := makeChar("Pip", "https://example.com/pip.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{"universe":"TestU"}`), src, tgt)
+
+	stub := &stubImageRenderer{cached: true, img: "AAAAAA\nBBBBBB\nCCCCCC"}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         20,
+	}
+
+	out := m.renderNotification(0, false)
+	if strings.Count(out, "AAAAAA") > 1 {
+		t.Fatalf("expected fallback to single avatar at narrow width, got dual avatar block: %q", out)
+	}
+	if strings.Contains(out, strings.Repeat(" ", 14)) {
+		t.Fatalf("expected no 13-width dual gutter at narrow width; output: %q", out)
+	}
+}
+
+func TestVnotificationAvatarPresentInOutput(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{}`), src, nil)
+
+	stub := &stubImageRenderer{cached: true, img: "VN_AVATAR"}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         80,
+	}
+
+	out := m.renderNotification(0, false)
+	if !strings.Contains(out, "VN_AVATAR") {
+		t.Fatalf("expected avatar marker in output, got: %q", out)
+	}
+}
+
+func TestDualAvatarRenderContainsBothWhenWide(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	tgt := makeChar("Pip", "https://example.com/pip.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{}`), src, tgt)
+
+	stub := &stubImageRenderer{cached: true, img: "DUALAV"}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         80,
+	}
+
+	out := m.renderNotification(0, false)
+	if strings.Count(out, "DUALAV") < 2 {
+		t.Fatalf("expected two avatars to render on wide terminal; output: %q", out)
+	}
 }

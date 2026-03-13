@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 )
+
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string {
+	return ansiEscapeRe.ReplaceAllString(s, "")
+}
 
 // mockBlueskyClient implements bluesky.BlueskyClient for testing
 type mockBlueskyClient struct {
@@ -1132,5 +1140,91 @@ func TestGroupingNavigationBounds(t *testing.T) {
 	m = updated.(NotificationsModel)
 	if m.selected != 0 {
 		t.Errorf("Expected selected to stay at 0 at start, got %d", m.selected)
+	}
+}
+
+func TestNotificationAvatarGutterIndentation(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "AAAAAA\nBBBBBB\nCCCCCC"}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithRecord("mention", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				strings.Repeat("very long wrapped preview text ", 8)),
+		},
+	}
+	mockClient.notifications[0].Author.Avatar = strPtr("https://cdn.bsky.app/img/avatar/alice.jpg")
+
+	m := NewNotificationsModel(mockClient, 36, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	rendered := stripAnsi(m.View().Content)
+	lines := strings.Split(rendered, "\n")
+
+	foundIndented := false
+	for _, line := range lines {
+		if !(strings.Contains(line, "5m") || strings.Contains(line, "very long")) {
+			continue
+		}
+		idx := strings.Index(line, "5m")
+		if idx == -1 {
+			idx = strings.Index(line, "very long")
+		}
+		if idx == -1 {
+			continue
+		}
+		if strings.Contains(line[:idx], strings.Repeat(" ", shared.AvatarCols+1)) {
+			foundIndented = true
+			break
+		}
+	}
+	if !foundIndented {
+		t.Fatalf("expected gutter indentation on lines beyond avatar rows; output: %q", rendered)
+	}
+}
+
+func TestNotificationNoAvatarGutterAbsent(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotification("mention", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	rendered := stripAnsi(m.View().Content)
+	for _, line := range strings.Split(rendered, "\n") {
+		if !strings.Contains(line, "mentioned you") {
+			continue
+		}
+		if strings.Contains(line, strings.Repeat(" ", shared.AvatarCols+1)+"@") || strings.Contains(line, strings.Repeat(" ", shared.AvatarCols+1)+"●") {
+			t.Fatalf("unexpected avatar gutter indentation without avatar: %q", line)
+		}
+	}
+}
+
+func TestNotificationAvatarPresentInOutput(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "NOTIF_AVATAR"}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithAvatar("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				"https://cdn.bsky.app/img/avatar/alice.jpg"),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	content := stripAnsi(m.View().Content)
+	if !strings.Contains(content, "NOTIF_AVATAR") {
+		t.Fatalf("expected avatar marker in notification output, got: %q", content)
 	}
 }

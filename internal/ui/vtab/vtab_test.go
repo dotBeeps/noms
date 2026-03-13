@@ -1,6 +1,7 @@
 package vtab
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -8,6 +9,12 @@ import (
 	voresky "github.com/dotBeeps/noms/internal/api/voresky"
 	"github.com/dotBeeps/noms/internal/ui/images"
 )
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
+}
 
 type stubImageRenderer struct {
 	enabled bool
@@ -106,5 +113,95 @@ func TestVoreskyNilImageCache(t *testing.T) {
 
 	if !strings.Contains(content, "Foxy") {
 		t.Errorf("Expected character name with nil imageCache, got: %s", content)
+	}
+}
+
+func TestVoreskyAvatarContentInsideBorder(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "VTAB_AVATAR"}
+
+	m := NewVoreskyModel(nil, 80, 24, stub)
+	updated, _ := m.Update(CharactersLoadedMsg{
+		Characters:      []voresky.Character{makeTestCharacter("Foxy", "https://example.com/avatar.png")},
+		MainCharacterID: "",
+	})
+	m = updated.(VoreskyModel)
+	m.characters[0].Description = "inside border test"
+
+	content := stripAnsi(m.View().Content)
+
+	if !strings.Contains(content, "VTAB_AVATAR") {
+		t.Fatalf("expected avatar marker in rendered output, got: %q", content)
+	}
+	if !strings.Contains(content, "▎") {
+		t.Fatalf("expected border character ▎ in rendered output")
+	}
+}
+
+func TestVoreskyNoAvatarFullWidth(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "SHOULD_NOT_APPEAR"}
+
+	m := NewVoreskyModel(nil, 80, 24, stub)
+	desc := "This is a fairly long description that should remain visible without avatar gutter reduction."
+	updated, _ := m.Update(CharactersLoadedMsg{
+		Characters: []voresky.Character{{
+			ID:          "char-foxy",
+			Name:        "Foxy",
+			Avatar:      "",
+			Status:      "active",
+			Description: desc,
+		}},
+		MainCharacterID: "",
+	})
+	m = updated.(VoreskyModel)
+
+	content := stripAnsi(m.View().Content)
+	if strings.Contains(content, "SHOULD_NOT_APPEAR") {
+		t.Fatalf("did not expect avatar render when avatar URL is empty")
+	}
+	if !strings.Contains(content, "This is a fairly long description") {
+		t.Fatalf("expected long description to render without avatar truncation artifact; got %q", content)
+	}
+}
+
+func TestVoreskyDescriptionTruncatedToContentWidth(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "AV6\nAV6\nAV6"}
+
+	m := NewVoreskyModel(nil, 80, 24, stub)
+	updated, _ := m.Update(CharactersLoadedMsg{
+		Characters: []voresky.Character{{
+			ID:          "char-lore",
+			Name:        "Lore",
+			Avatar:      "https://example.com/lore.png",
+			Status:      "active",
+			Description: strings.Repeat("x", 200),
+		}},
+		MainCharacterID: "",
+	})
+	m = updated.(VoreskyModel)
+
+	content := stripAnsi(m.View().Content)
+
+	found := false
+	for _, line := range strings.Split(content, "\n") {
+		idx := strings.Index(line, "xxxx")
+		if idx == -1 {
+			continue
+		}
+		found = true
+		descPart := strings.TrimRight(line[idx:], " ")
+		if got := len([]rune(descPart)); got > 71+3 {
+			t.Fatalf("expected truncated description to fit content width (<=74 incl ellipsis), got=%d line=%q", got, line)
+		}
+		if !strings.Contains(descPart, "...") {
+			t.Fatalf("expected truncated description to include ellipsis, got %q", descPart)
+		}
+		break
+	}
+
+	if !found {
+		t.Fatal("expected truncated description line in output")
 	}
 }
