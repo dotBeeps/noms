@@ -34,3 +34,45 @@ func JoinHorizontalRaw(left, right, sep string) string {
 	}
 	return result.String()
 }
+
+// JoinWithGutter joins two multi-line strings side by side with a fixed-width left gutter.
+// When the left string has fewer lines than the right, remaining rows are indented by
+// gutterWidth+len(sep) spaces, creating consistent full-body indentation.
+func JoinWithGutter(left, right, sep string, gutterWidth int) string {
+	leftTrimmed := strings.TrimRight(left, "\n")
+	rightTrimmed := strings.TrimRight(right, "\n")
+
+	var leftLines []string
+	if leftTrimmed != "" {
+		leftLines = strings.Split(leftTrimmed, "\n")
+	}
+
+	var rightLines []string
+	if rightTrimmed != "" {
+		rightLines = strings.Split(rightTrimmed, "\n")
+	}
+
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+
+	gutter := strings.Repeat(" ", gutterWidth)
+
+	var result strings.Builder
+	for i := 0; i < maxLines; i++ {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		if i < len(leftLines) {
+			result.WriteString(leftLines[i])
+		} else {
+			result.WriteString(gutter)
+		}
+		if i < len(rightLines) {
+			result.WriteString(sep)
+			result.WriteString(rightLines[i])
+		}
+	}
+	return result.String()
+}
