@@ -510,7 +510,9 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 
 	var finalContent string
 	if avatarBlock != "" {
-		finalContent = shared.JoinHorizontalRaw(avatarBlock, contentStr, " ")
+		avatarContentWidth := max(10, m.width-2-shared.AvatarCols-1)
+		wrappedContent := lipgloss.NewStyle().Width(avatarContentWidth).Render(contentStr)
+		finalContent = shared.JoinWithGutter(avatarBlock, wrappedContent, " ", shared.AvatarCols)
 	} else {
 		finalContent = contentStr
 	}
