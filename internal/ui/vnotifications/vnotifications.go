@@ -385,6 +385,7 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 	contentStr := b.String()
 
 	var avatarBlock string
+	var gutterWidth int
 	if m.imageCache != nil && m.imageCache.Enabled() {
 		sourceAv, targetAv := "", ""
 
@@ -406,17 +407,23 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 			}
 		}
 
-		if sourceAv != "" && targetAv != "" {
+		hasBoth := sourceAv != "" && targetAv != ""
+		if hasBoth && m.width >= shared.AvatarCols*2+1+15 {
 			avatarBlock = shared.JoinHorizontalRaw(sourceAv, targetAv, " ")
+			gutterWidth = shared.AvatarCols*2 + 1
 		} else if sourceAv != "" {
 			avatarBlock = sourceAv
+			gutterWidth = shared.AvatarCols
 		} else if targetAv != "" {
 			avatarBlock = targetAv
+			gutterWidth = shared.AvatarCols
 		}
 	}
 
 	if avatarBlock != "" {
-		contentStr = shared.JoinHorizontalRaw(avatarBlock, contentStr, " ")
+		contentWidth := max(10, m.width-2-gutterWidth-1)
+		contentStr = lipgloss.NewStyle().Width(contentWidth).Render(contentStr)
+		contentStr = shared.JoinWithGutter(avatarBlock, contentStr, " ", gutterWidth)
 	}
 
 	return shared.RenderItemWithBorder(contentStr, selected, m.width)
