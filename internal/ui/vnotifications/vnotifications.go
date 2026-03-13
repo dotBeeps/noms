@@ -40,14 +40,6 @@ var (
 	unreadDotStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorAccent)
 
-	sourceNameStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary).
-			Bold(true)
-
-	targetNameStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorSecondary).
-			Bold(true)
-
 	universeStyle = lipgloss.NewStyle().
 			Foreground(theme.ColorSecondary)
 
@@ -170,6 +162,22 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notifications = msg.Notifications
 		} else {
 			m.notifications = append(m.notifications, msg.Notifications...)
+		}
+
+		var cmds []tea.Cmd
+		if m.imageCache != nil && m.imageCache.Enabled() {
+			for _, notif := range msg.Notifications {
+				if notif.SourceCharacter != nil && notif.SourceCharacter.Avatar.URL != "" {
+					cmds = append(cmds, m.imageCache.FetchAvatar(notif.SourceCharacter.Avatar.URL))
+				}
+				if notif.TargetCharacter != nil && notif.TargetCharacter.Avatar.URL != "" {
+					cmds = append(cmds, m.imageCache.FetchAvatar(notif.TargetCharacter.Avatar.URL))
+				}
+			}
+		}
+
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 
@@ -364,25 +372,7 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 		unreadDot = unreadDotStyle.Render("●") + " "
 	}
 
-	icon, label, style := notifIcon(n.Type)
-	iconStr := style.Render(icon)
-
-	sourceName := ""
-	if n.SourceCharacter != nil {
-		sourceName = n.SourceCharacter.Name
-	}
-	targetName := ""
-	if n.TargetCharacter != nil {
-		targetName = n.TargetCharacter.Name
-	}
-
-	line := fmt.Sprintf("%s%s %s", unreadDot, iconStr, label)
-	if sourceName != "" {
-		line += "  " + sourceNameStyle.Render(sourceName)
-	}
-	if targetName != "" {
-		line += " → " + targetNameStyle.Render(targetName)
-	}
+	line := unreadDot + notificationStyle(n.Type).Render(formatNotification(&n))
 	b.WriteString(line + "\n")
 
 	if n.Universe != "" {
@@ -392,36 +382,461 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 	ts := n.CreatedAt.Format("Jan 2, 2006 15:04")
 	_, _ = fmt.Fprintf(&b, "  %s", timeStyle.Render(ts))
 
-	result := b.String()
-	return shared.RenderItemWithBorder(result, selected, m.width)
+	contentStr := b.String()
+
+	var avatarBlock string
+	if m.imageCache != nil && m.imageCache.Enabled() {
+		sourceAv, targetAv := "", ""
+
+		if n.SourceCharacter != nil && n.SourceCharacter.Avatar.URL != "" {
+			url := n.SourceCharacter.Avatar.URL
+			if m.imageCache.IsCached(url) {
+				sourceAv = m.imageCache.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+			} else {
+				sourceAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+			}
+		}
+
+		if n.TargetCharacter != nil && n.TargetCharacter.Avatar.URL != "" {
+			url := n.TargetCharacter.Avatar.URL
+			if m.imageCache.IsCached(url) {
+				targetAv = m.imageCache.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+			} else {
+				targetAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+			}
+		}
+
+		if sourceAv != "" && targetAv != "" {
+			avatarBlock = joinHorizontalRaw(sourceAv, targetAv, " ")
+		} else if sourceAv != "" {
+			avatarBlock = sourceAv
+		} else if targetAv != "" {
+			avatarBlock = targetAv
+		}
+	}
+
+	if avatarBlock != "" {
+		contentStr = joinHorizontalRaw(avatarBlock, contentStr, " ")
+	}
+
+	return shared.RenderItemWithBorder(contentStr, selected, m.width)
 }
 
-func notifIcon(t voresky.NotificationType) (icon, label string, style lipgloss.Style) {
+func notificationStyle(t voresky.NotificationType) lipgloss.Style {
 	s := string(t)
 	switch {
 	case t == voresky.NotifPoke:
-		return "👉", "poke", pokeStyle
+		return pokeStyle
 	case t == voresky.NotifStalk || t == voresky.NotifStalkTargetAvailable:
-		return "👀", "stalk", stalkStyle
-	case strings.HasPrefix(s, "HOUSING_"):
-		return "🏠", humanReadable(t), housingStyle
-	case strings.HasPrefix(s, "INTERACTION_"):
-		return "⚔️", humanReadable(t), interactionStyle
-	case strings.HasPrefix(s, "COLLAR_"):
-		return "🔗", humanReadable(t), collarStyle
+		return stalkStyle
+	case strings.HasPrefix(s, "housing_"):
+		return housingStyle
+	case strings.HasPrefix(s, "interaction_"):
+		return interactionStyle
+	case strings.HasPrefix(s, "collar_"):
+		return collarStyle
 	default:
-		return "•", humanReadable(t), theme.StyleMuted
+		return theme.StyleMuted
 	}
 }
 
-func humanReadable(t voresky.NotificationType) string {
-	s := string(t)
-	for _, prefix := range []string{"HOUSING_", "INTERACTION_", "COLLAR_"} {
-		if strings.HasPrefix(s, prefix) {
-			s = strings.TrimPrefix(s, prefix)
-			break
+func formatNotification(notif *voresky.Notification) string {
+	if notif == nil {
+		return "Notification"
+	}
+
+	sourceName := "Someone"
+	targetName := "someone"
+	if notif.SourceCharacter != nil && notif.SourceCharacter.Name != "" {
+		sourceName = notif.SourceCharacter.Name
+	}
+	if notif.TargetCharacter != nil && notif.TargetCharacter.Name != "" {
+		targetName = notif.TargetCharacter.Name
+	}
+
+	payload, _ := voresky.ParsePayload(notif.Type, notif.Payload)
+
+	switch notif.Type {
+	case voresky.NotifPoke:
+		return fmt.Sprintf("%s poked %s", sourceName, targetName)
+	case voresky.NotifStalk:
+		return fmt.Sprintf("%s is stalking %s", sourceName, targetName)
+	case voresky.NotifStalkTargetAvailable:
+		return fmt.Sprintf("%s is now available", targetName)
+
+	case voresky.NotifHousingInvite:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			owner := sourceName
+			member := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			return fmt.Sprintf("%s invited %s to their home", owner, member)
+		}
+		return fmt.Sprintf("%s invited %s to their home", sourceName, targetName)
+	case voresky.NotifHousingRequest:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			member := sourceName
+			owner := targetName
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s requested to join %s's home", member, owner)
+		}
+		return fmt.Sprintf("%s requested to join %s's home", sourceName, targetName)
+	case voresky.NotifHousingJoin:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			member := sourceName
+			owner := targetName
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s joined %s's home", member, owner)
+		}
+		return fmt.Sprintf("%s joined %s's home", sourceName, targetName)
+	case voresky.NotifHousingLeave:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			member := sourceName
+			owner := targetName
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s left %s's home", member, owner)
+		}
+		return fmt.Sprintf("%s left %s's home", sourceName, targetName)
+	case voresky.NotifHousingKick:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			owner := sourceName
+			member := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			return fmt.Sprintf("%s kicked %s from their home", owner, member)
+		}
+		return fmt.Sprintf("%s kicked %s from their home", sourceName, targetName)
+	case voresky.NotifHousingInviteAccepted, voresky.NotifHousingRequestAccepted:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			member := sourceName
+			owner := targetName
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s accepted %s's housing request", member, owner)
+		}
+		return fmt.Sprintf("%s accepted %s's housing request", sourceName, targetName)
+	case voresky.NotifHousingInviteRejected, voresky.NotifHousingRequestRejected:
+		if p, ok := payload.(*voresky.HousingPayload); ok && p != nil {
+			member := sourceName
+			owner := targetName
+			if p.MemberCharacterName != "" {
+				member = p.MemberCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s rejected %s's housing request", member, owner)
+		}
+		return fmt.Sprintf("%s rejected %s's housing request", sourceName, targetName)
+
+	case voresky.NotifInteractionProposal:
+		if p, ok := payload.(*voresky.InteractionProposalPayload); ok && p != nil {
+			pred, prey, path := p.PredatorCharacterName, p.PreyCharacterName, p.PathName
+			if pred == "" {
+				pred = sourceName
+			}
+			if prey == "" {
+				prey = targetName
+			}
+			if path == "" {
+				path = "their path"
+			}
+			if p.InitiatedBy == "prey" {
+				return fmt.Sprintf("%s offered to be caught by %s via %s", prey, pred, path)
+			}
+			return fmt.Sprintf("%s proposed catching %s via %s", pred, prey, path)
+		}
+		return fmt.Sprintf("%s proposed an interaction with %s", sourceName, targetName)
+	case voresky.NotifInteractionAccepted:
+		if p, ok := payload.(*voresky.InteractionBasePayload); ok && p != nil {
+			path := p.PathName
+			if path == "" {
+				return fmt.Sprintf("%s accepted an interaction with %s", sourceName, targetName)
+			}
+			return fmt.Sprintf("%s accepted the %s interaction with %s", sourceName, path, targetName)
+		}
+		return fmt.Sprintf("%s accepted an interaction with %s", sourceName, targetName)
+	case voresky.NotifInteractionRejected:
+		if p, ok := payload.(*voresky.InteractionBasePayload); ok && p != nil {
+			path := p.PathName
+			if path == "" {
+				return fmt.Sprintf("%s rejected an interaction with %s", sourceName, targetName)
+			}
+			return fmt.Sprintf("%s rejected the %s interaction with %s", sourceName, path, targetName)
+		}
+		return fmt.Sprintf("%s rejected an interaction with %s", sourceName, targetName)
+	case voresky.NotifInteractionCounter:
+		if p, ok := payload.(*voresky.InteractionCounterPayload); ok && p != nil {
+			pred := p.PredatorCharacterName
+			prey := p.PreyCharacterName
+			if pred == "" {
+				pred = sourceName
+			}
+			if prey == "" {
+				prey = targetName
+			}
+			if p.PathName != "" {
+				return fmt.Sprintf("%s countered the proposal with %s on %s", pred, prey, p.PathName)
+			}
+			return fmt.Sprintf("%s countered a proposal with %s", pred, prey)
+		}
+		return fmt.Sprintf("%s countered a proposal with %s", sourceName, targetName)
+	case voresky.NotifInteractionVipCaught:
+		if p, ok := payload.(*voresky.InteractionBasePayload); ok && p != nil {
+			pred := p.PredatorCharacterName
+			prey := p.PreyCharacterName
+			path := p.PathName
+			if pred == "" {
+				pred = sourceName
+			}
+			if prey == "" {
+				prey = targetName
+			}
+			if path != "" {
+				return fmt.Sprintf("%s caught %s via %s!", pred, prey, path)
+			}
+			return fmt.Sprintf("%s caught %s!", pred, prey)
+		}
+		return fmt.Sprintf("%s caught %s!", sourceName, targetName)
+	case voresky.NotifInteractionNodeChanged:
+		if p, ok := payload.(*voresky.InteractionNodePayload); ok && p != nil && p.NewNodeVerbPast != "" {
+			return fmt.Sprintf("Interaction progressed: %s was %s", targetName, p.NewNodeVerbPast)
+		}
+		return "Interaction progressed"
+	case voresky.NotifInteractionEscaped:
+		if p, ok := payload.(*voresky.InteractionBasePayload); ok && p != nil {
+			pred := p.PredatorCharacterName
+			prey := p.PreyCharacterName
+			if pred == "" {
+				pred = sourceName
+			}
+			if prey == "" {
+				prey = targetName
+			}
+			return fmt.Sprintf("%s escaped from %s!", prey, pred)
+		}
+		return fmt.Sprintf("%s escaped from %s!", targetName, sourceName)
+	case voresky.NotifInteractionReleased:
+		if p, ok := payload.(*voresky.InteractionBasePayload); ok && p != nil {
+			pred := p.PredatorCharacterName
+			prey := p.PreyCharacterName
+			if pred == "" {
+				pred = sourceName
+			}
+			if prey == "" {
+				prey = targetName
+			}
+			return fmt.Sprintf("%s released %s", pred, prey)
+		}
+		return fmt.Sprintf("%s released %s", sourceName, targetName)
+	case voresky.NotifInteractionRetreated:
+		if p, ok := payload.(*voresky.InteractionRetreatPayload); ok && p != nil {
+			prey := p.PreyCharacterName
+			if prey == "" {
+				prey = targetName
+			}
+			if p.RetreatedToNode != "" {
+				return fmt.Sprintf("%s retreated to %s", prey, p.RetreatedToNode)
+			}
+			return fmt.Sprintf("%s retreated", prey)
+		}
+		return fmt.Sprintf("%s retreated", targetName)
+	case voresky.NotifInteractionRespawning:
+		if p, ok := payload.(*voresky.InteractionRespawnPayload); ok && p != nil {
+			prey := p.PreyCharacterName
+			if prey == "" {
+				prey = targetName
+			}
+			return fmt.Sprintf("%s is respawning...", prey)
+		}
+		return fmt.Sprintf("%s is respawning...", targetName)
+	case voresky.NotifInteractionCompleted:
+		if p, ok := payload.(*voresky.InteractionCompletedPayload); ok && p != nil {
+			if p.VerbPast != "" {
+				prey := p.PreyCharacterName
+				pred := p.PredatorCharacterName
+				if prey == "" {
+					prey = targetName
+				}
+				if pred == "" {
+					pred = sourceName
+				}
+				return fmt.Sprintf("%s was %s by %s", prey, p.VerbPast, pred)
+			}
+			if p.PathName != "" {
+				return fmt.Sprintf("Interaction completed: %s × %s on %s", sourceName, targetName, p.PathName)
+			}
+			return fmt.Sprintf("Interaction completed: %s × %s", sourceName, targetName)
+		}
+		return fmt.Sprintf("Interaction completed: %s × %s", sourceName, targetName)
+	case voresky.NotifInteractionSafeword:
+		if p, ok := payload.(*voresky.InteractionSafewordPayload); ok && p != nil && p.PathName != "" {
+			return fmt.Sprintf("A safe word was used in %s", p.PathName)
+		}
+		return "A safe word was used"
+
+	case voresky.NotifCollarOffer:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s offered a collar to %s", owner, pet)
+		}
+		return fmt.Sprintf("%s offered a collar to %s", sourceName, targetName)
+	case voresky.NotifCollarRequest:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s requested to collar %s", owner, pet)
+		}
+		return fmt.Sprintf("%s requested to collar %s", sourceName, targetName)
+	case voresky.NotifCollarAccepted:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			pet := sourceName
+			owner := targetName
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s accepted %s's collar", pet, owner)
+		}
+		return fmt.Sprintf("%s accepted %s's collar", sourceName, targetName)
+	case voresky.NotifCollarRejected:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			pet := sourceName
+			owner := targetName
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			return fmt.Sprintf("%s rejected %s's collar", pet, owner)
+		}
+		return fmt.Sprintf("%s rejected %s's collar", sourceName, targetName)
+	case voresky.NotifCollarBroken:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s broke the collar with %s", owner, pet)
+		}
+		return fmt.Sprintf("%s broke the collar with %s", sourceName, targetName)
+	case voresky.NotifCollarLockRequest:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s requested to lock %s's collar", owner, pet)
+		}
+		return fmt.Sprintf("%s requested to lock %s's collar", sourceName, targetName)
+	case voresky.NotifCollarLocked:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s locked %s's collar", owner, pet)
+		}
+		return fmt.Sprintf("%s locked %s's collar", sourceName, targetName)
+	case voresky.NotifCollarUnlocked:
+		if p, ok := payload.(*voresky.CollarPayload); ok && p != nil {
+			owner := sourceName
+			pet := targetName
+			if p.OwnerCharacterName != "" {
+				owner = p.OwnerCharacterName
+			}
+			if p.PetCharacterName != "" {
+				pet = p.PetCharacterName
+			}
+			return fmt.Sprintf("%s unlocked %s's collar", owner, pet)
+		}
+		return fmt.Sprintf("%s unlocked %s's collar", sourceName, targetName)
+	default:
+		return fmt.Sprintf("%s → %s", sourceName, targetName)
+	}
+}
+
+func joinHorizontalRaw(left, right, sep string) string {
+	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
+	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
+
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+
+	var result strings.Builder
+	for i := 0; i < maxLines; i++ {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		l, r := "", ""
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		result.WriteString(l)
+		if r != "" {
+			result.WriteString(sep)
+			result.WriteString(r)
 		}
 	}
-	s = strings.ReplaceAll(s, "_", " ")
-	return strings.ToLower(s)
+	return result.String()
 }
