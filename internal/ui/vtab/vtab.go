@@ -289,19 +289,6 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 		statusStr = statusInactiveStyle.Render("○ " + c.Status)
 	}
 
-	_, _ = fmt.Fprintf(&b, "%s%s  %s\n", nameStr, mainIndicator, statusStr)
-
-	if c.FeaturedUniverse != "" {
-		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle.Render(c.FeaturedUniverse))
-	}
-
-	if c.Description != "" {
-		desc := truncateText(c.Description, 60)
-		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle.Render(desc))
-	}
-
-	characterInfoStr := shared.RenderItemWithBorder(b.String(), selected, m.width)
-
 	var avatarBlock string
 	if m.imageCache != nil && m.imageCache.Enabled() && c.Avatar != "" {
 		if m.imageCache.IsCached(c.Avatar) {
@@ -311,10 +298,27 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 		}
 	}
 
+	contentWidth := m.width - 2
 	if avatarBlock != "" {
-		return shared.JoinHorizontalRaw(avatarBlock, characterInfoStr, " ")
+		contentWidth = max(10, m.width-2-shared.AvatarCols-1)
 	}
-	return characterInfoStr
+
+	_, _ = fmt.Fprintf(&b, "%s%s  %s\n", nameStr, mainIndicator, statusStr)
+
+	if c.FeaturedUniverse != "" {
+		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle.Render(c.FeaturedUniverse))
+	}
+
+	if c.Description != "" {
+		desc := truncateText(c.Description, contentWidth)
+		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle.Render(desc))
+	}
+
+	if avatarBlock != "" {
+		joined := shared.JoinWithGutter(avatarBlock, b.String(), " ", shared.AvatarCols)
+		return shared.RenderItemWithBorder(joined, selected, m.width)
+	}
+	return shared.RenderItemWithBorder(b.String(), selected, m.width)
 }
 
 func (m *VoreskyModel) ensureSelectedVisible() {
