@@ -121,7 +121,15 @@ func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.characters = msg.Characters
 		m.mainCharacterID = msg.MainCharacterID
-		return m, nil
+		var cmds []tea.Cmd
+		if m.imageCache != nil && m.imageCache.Enabled() {
+			for _, char := range m.characters {
+				if char.Avatar != "" {
+					cmds = append(cmds, m.imageCache.FetchAvatar(char.Avatar))
+				}
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case CharactersErrorMsg:
 		m.loading = false
@@ -292,7 +300,21 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle.Render(desc))
 	}
 
-	return shared.RenderItemWithBorder(b.String(), selected, m.width)
+	characterInfoStr := shared.RenderItemWithBorder(b.String(), selected, m.width)
+
+	var avatarBlock string
+	if m.imageCache != nil && m.imageCache.Enabled() && c.Avatar != "" {
+		if m.imageCache.IsCached(c.Avatar) {
+			avatarBlock = m.imageCache.RenderImage(c.Avatar, shared.AvatarCols, shared.AvatarRows)
+		} else {
+			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+		}
+	}
+
+	if avatarBlock != "" {
+		return joinHorizontalRaw(avatarBlock, characterInfoStr, " ")
+	}
+	return characterInfoStr
 }
 
 func (m *VoreskyModel) ensureSelectedVisible() {
@@ -312,4 +334,37 @@ func truncateText(text string, maxLen int) string {
 		truncated = truncated[:lastSpace]
 	}
 	return truncated + "..."
+}
+
+// joinHorizontalRaw joins two multi-line strings side by side with a separator.
+// Unlike lipgloss.JoinHorizontal, this does NOT pad lines to equal width,
+// avoiding width miscalculation with Kitty Unicode placeholder characters.
+func joinHorizontalRaw(left, right, sep string) string {
+	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
+	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
+
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+
+	var result strings.Builder
+	for i := 0; i < maxLines; i++ {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		l, r := "", ""
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		result.WriteString(l)
+		if r != "" {
+			result.WriteString(sep)
+			result.WriteString(r)
+		}
+	}
+	return result.String()
 }
