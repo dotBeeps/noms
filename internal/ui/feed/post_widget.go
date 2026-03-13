@@ -172,18 +172,9 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 
 	if avatarStr != "" {
-		nameAndBodyFirstLine := nameLine
-		if len(bodyLines) > 0 {
-			nameAndBodyFirstLine += "\n" + bodyLines[0]
-		} else {
-			nameAndBodyFirstLine += "\n"
-		}
-		b.WriteString(shared.JoinHorizontalRaw(avatarStr, nameAndBodyFirstLine, " "))
+		completeContent := nameLine + "\n" + strings.Join(bodyLines, "\n")
+		b.WriteString(shared.JoinWithGutter(avatarStr, completeContent, " ", shared.AvatarCols))
 		b.WriteString("\n")
-		if len(bodyLines) > 1 {
-			b.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(strings.Join(bodyLines[1:], "\n")))
-			b.WriteString("\n")
-		}
 	} else {
 		b.WriteString(nameLine)
 		b.WriteString("\n")
@@ -194,7 +185,11 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 
 	if post.Post.Embed != nil {
-		if embedStr := strings.TrimRight(renderEmbed(post.Post.Embed, width-2, cache), "\n "); embedStr != "" {
+		embedWidth := width - 2
+		if avatarStr != "" {
+			embedWidth = max(10, width-2-shared.AvatarCols-1)
+		}
+		if embedStr := strings.TrimRight(renderEmbed(post.Post.Embed, embedWidth, cache), "\n "); embedStr != "" {
 			b.WriteString(embedStr)
 			b.WriteString("\n")
 		}

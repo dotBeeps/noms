@@ -390,8 +390,8 @@ func TestRenderPostPlaceholderWhenUncached(t *testing.T) {
 
 	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
 
-	if !strings.Contains(rendered, "[··]") {
-		t.Errorf("Expected placeholder '[··]' in rendered post when avatar is not cached; got:\n%s", rendered)
+	if !strings.Contains(rendered, "[····]") {
+		t.Errorf("Expected placeholder '[····]' in rendered post when avatar is not cached; got:\n%s", rendered)
 	}
 }
 
