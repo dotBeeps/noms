@@ -215,7 +215,14 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notifications = append(m.notifications, msg.Notifications...)
 		}
 		m.buildGroups()
-		return m, nil
+		if m.imageCache != nil && m.imageCache.Enabled() {
+			for _, notif := range msg.Notifications {
+				if notif.Author != nil && notif.Author.Avatar != nil {
+					cmds = append(cmds, m.imageCache.FetchAvatar(*notif.Author.Avatar))
+				}
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case NotificationsErrorMsg:
 		m.loading = false
@@ -489,7 +496,26 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 	}
 	_, _ = fmt.Fprintf(&b, "  %s", timeStyle.Render(timeStr))
 
-	return shared.RenderItemWithBorder(b.String(), selected, m.width)
+	contentStr := b.String()
+
+	var avatarBlock string
+	if m.imageCache != nil && m.imageCache.Enabled() && g.notif != nil && g.notif.Author != nil && g.notif.Author.Avatar != nil {
+		avatarURL := *g.notif.Author.Avatar
+		if m.imageCache.IsCached(avatarURL) {
+			avatarBlock = m.imageCache.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows)
+		} else {
+			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+		}
+	}
+
+	var finalContent string
+	if avatarBlock != "" {
+		finalContent = shared.JoinHorizontalRaw(avatarBlock, contentStr, " ")
+	} else {
+		finalContent = contentStr
+	}
+
+	return shared.RenderItemWithBorder(finalContent, selected, m.width)
 }
 
 func getNotificationStyle(reason string) (icon, action string, style lipgloss.Style) {
