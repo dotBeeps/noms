@@ -88,6 +88,8 @@ func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
 
 func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string) string {
 	var b strings.Builder
+	contentWidth := max(10, width-2)
+	b.WriteString("\n")
 
 	if post.Reason != nil && post.Reason.FeedDefs_ReasonRepost != nil {
 		reason := post.Reason.FeedDefs_ReasonRepost
@@ -129,22 +131,21 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 			avatarURL = override
 		}
 	}
-	if avatarURL != "" && cache.Enabled() && cache.IsCached(avatarURL) {
-		avatarStr := strings.TrimRight(cache.RenderImage(avatarURL, 4, 2), "\n ")
-		if avatarStr != "" {
-			avatarLines := strings.Split(avatarStr, "\n")
-			b.WriteString(avatarLines[0] + " " + nameLine + "\n")
-			for i := 1; i < len(avatarLines); i++ {
-				b.WriteString(avatarLines[i] + "\n")
+
+	avatarStr := ""
+	if cache != nil && cache.Enabled() && post.Post.Author.Avatar != nil {
+		if cache.IsCached(avatarURL) {
+			avatarStr = strings.TrimRight(cache.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows), "\n ")
+			if avatarStr == "" {
+				avatarStr = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 			}
 		} else {
-			b.WriteString(nameLine + "\n")
+			avatarStr = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 		}
-	} else {
-		b.WriteString(nameLine + "\n")
 	}
 
 	// Content with facets (rich text), wrapped to account for left border width
+	bodyLines := []string{}
 	if post.Post.Record != nil && post.Post.Record.Val != nil {
 		if record, ok := post.Post.Record.Val.(*bsky.FeedPost); ok {
 			segments := bluesky.ParseFacets(record.Text, record.Facets)
@@ -161,8 +162,33 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorText).Render(seg.Text))
 				}
 			}
-			contentWidth := max(10, width-2)
-			b.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(body.String()))
+			if avatarStr != "" {
+				avatarContentWidth := max(10, width-2-shared.AvatarCols-1)
+				bodyLines = strings.Split(lipgloss.NewStyle().Width(avatarContentWidth).Render(body.String()), "\n")
+			} else {
+				bodyLines = strings.Split(lipgloss.NewStyle().Width(contentWidth).Render(body.String()), "\n")
+			}
+		}
+	}
+
+	if avatarStr != "" {
+		nameAndBodyFirstLine := nameLine
+		if len(bodyLines) > 0 {
+			nameAndBodyFirstLine += "\n" + bodyLines[0]
+		} else {
+			nameAndBodyFirstLine += "\n"
+		}
+		b.WriteString(joinHorizontalRaw(avatarStr, nameAndBodyFirstLine, " "))
+		b.WriteString("\n")
+		if len(bodyLines) > 1 {
+			b.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(strings.Join(bodyLines[1:], "\n")))
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString(nameLine)
+		b.WriteString("\n")
+		if len(bodyLines) > 0 {
+			b.WriteString(strings.Join(bodyLines, "\n"))
 			b.WriteString("\n")
 		}
 	}
@@ -204,7 +230,7 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 		"  " + repostStyle.Render(fmt.Sprintf("%s %d", repostIcon, repostCount)) +
 		"  " + theme.StyleMuted.Render(fmt.Sprintf("↩ %d", replyCount))
 	b.WriteString(engLine)
-	b.WriteString("\n")
+	b.WriteString("\n \n")
 
 	return shared.RenderItemWithBorder(b.String(), selected, width)
 }
@@ -226,7 +252,14 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 	case embed.EmbedImages_View != nil:
 		imgs := embed.EmbedImages_View.Images
 		if rendered := renderImages(imgs, width, cache); rendered != "" {
-			return rendered
+			if len(imgs) == 1 {
+				alt := ""
+				if imgs[0].Alt != "" {
+					alt = ": " + truncateStr(imgs[0].Alt, 60)
+				}
+				return rendered + "\n" + embedBoxStyle.Render(fmt.Sprintf("🖼 image%s", alt))
+			}
+			return rendered + "\n" + embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(imgs)))
 		}
 		if len(imgs) == 1 {
 			alt := ""
@@ -290,10 +323,12 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		if rwm.Media != nil {
 			switch {
 			case rwm.Media.EmbedImages_View != nil:
-				if rendered := renderImages(rwm.Media.EmbedImages_View.Images, width, cache); rendered != "" {
+				imgs := rwm.Media.EmbedImages_View.Images
+				if rendered := renderImages(imgs, width, cache); rendered != "" {
 					parts = append(parts, rendered)
+					parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(imgs))))
 				} else {
-					parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(rwm.Media.EmbedImages_View.Images))))
+					parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(imgs))))
 				}
 			case rwm.Media.EmbedExternal_View != nil && rwm.Media.EmbedExternal_View.External != nil:
 				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(rwm.Media.EmbedExternal_View.External.Title, 50))))
@@ -322,60 +357,48 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 }
 
 func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.ImageRenderer) string {
-	if len(imgs) == 0 || cache == nil || !cache.Enabled() {
+	if len(imgs) == 0 {
 		return ""
 	}
 
-	var cached []*bsky.EmbedImages_ViewImage
-	for _, img := range imgs {
-		if cache.IsCached(img.Thumb) {
-			cached = append(cached, img)
+	renderOrPlaceholder := func(url string, cols, rows int) string {
+		if cache != nil && cache.Enabled() && url != "" && cache.IsCached(url) {
+			rendered := strings.TrimRight(cache.RenderImage(url, cols, rows), "\n ")
+			if rendered != "" {
+				return rendered
+			}
 		}
-	}
-	if len(cached) == 0 {
-		return ""
+		return shared.RenderPlaceholder(cols, rows)
 	}
 
-	switch len(cached) {
+	switch len(imgs) {
 	case 1:
 		cols := max(10, width*3/4)
-		rendered := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 16), "\n ")
-		if rendered == "" {
-			return ""
-		}
-		if cached[0].Alt != "" {
-			rendered += "\n" + theme.StyleMuted.Render(truncateStr(cached[0].Alt, 60))
+		rendered := renderOrPlaceholder(imgs[0].Thumb, cols, 16)
+		if imgs[0].Alt != "" {
+			rendered += "\n" + theme.StyleMuted.Render(truncateStr(imgs[0].Alt, 60))
 		}
 		return rendered
 
 	case 2:
 		cols := max(8, (width-2)/2)
-		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 10), "\n ")
-		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 10), "\n ")
-		if img1 == "" || img2 == "" {
-			return ""
-		}
+		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 10)
+		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 10)
 		return joinHorizontalRaw(img1, img2, "  ")
 
 	case 3:
 		cols := max(8, (width-2)/2)
-		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 8), "\n ")
-		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 8), "\n ")
-		img3 := strings.TrimRight(cache.RenderImage(cached[2].Thumb, cols, 8), "\n ")
-		if img1 == "" || img2 == "" || img3 == "" {
-			return ""
-		}
+		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
+		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
+		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
 		return joinHorizontalRaw(img1, img2, "  ") + "\n" + img3
 
 	default:
 		cols := max(8, (width-2)/2)
-		img1 := strings.TrimRight(cache.RenderImage(cached[0].Thumb, cols, 8), "\n ")
-		img2 := strings.TrimRight(cache.RenderImage(cached[1].Thumb, cols, 8), "\n ")
-		img3 := strings.TrimRight(cache.RenderImage(cached[2].Thumb, cols, 8), "\n ")
-		img4 := strings.TrimRight(cache.RenderImage(cached[3].Thumb, cols, 8), "\n ")
-		if img1 == "" || img2 == "" || img3 == "" || img4 == "" {
-			return ""
-		}
+		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
+		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
+		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
+		img4 := renderOrPlaceholder(imgs[3].Thumb, cols, 8)
 		return joinHorizontalRaw(img1, img2, "  ") + "\n" + joinHorizontalRaw(img3, img4, "  ")
 	}
 }
