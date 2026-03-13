@@ -149,7 +149,7 @@ func TestRenderLikeNotification(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -177,7 +177,7 @@ func TestRenderRepostNotification(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -203,7 +203,7 @@ func TestRenderFollowNotification(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -229,7 +229,7 @@ func TestRenderMentionNotification(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -255,7 +255,7 @@ func TestRenderReplyNotification(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -280,7 +280,7 @@ func TestRenderQuoteNotification(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -307,7 +307,7 @@ func TestUnreadIndicator(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -331,7 +331,7 @@ func TestMarkAsRead(t *testing.T) {
 		unreadCount: 1,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -355,7 +355,7 @@ func TestNotificationNavigationToPost(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -379,7 +379,7 @@ func TestNotificationNavigationToProfile(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -401,7 +401,7 @@ func TestEmptyNotifications(t *testing.T) {
 		unreadCount:   0,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -428,7 +428,7 @@ func TestNotificationPagination(t *testing.T) {
 		cursor:        "nextpage",
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	m.cursor = "nextpage"
 
 	// Load first batch
@@ -457,7 +457,7 @@ func TestNotificationSelection(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -485,7 +485,7 @@ func TestNotificationsLoadedMsg(t *testing.T) {
 		cursor: "testcursor",
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	// Simulate receiving NotificationsLoadedMsg
 	updated, _ := m.Update(NotificationsLoadedMsg{
@@ -509,7 +509,7 @@ func TestNotificationsErrorMsg(t *testing.T) {
 		err: errors.New("network error"),
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	// Simulate receiving NotificationsErrorMsg
 	testErr := errors.New("failed to load notifications")
@@ -534,7 +534,7 @@ func TestUnreadCountMsg(t *testing.T) {
 		unreadCount: 5,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	// Simulate receiving UnreadCountMsg
 	updated, _ := m.Update(UnreadCountMsg{Count: 5})
@@ -555,7 +555,7 @@ func TestUnreadCountMsg(t *testing.T) {
 func TestWindowSizeMsg(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(NotificationsModel)
@@ -577,7 +577,7 @@ func TestContentPreview(t *testing.T) {
 		},
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: mockClient.notifications,
 	})
@@ -647,7 +647,7 @@ func TestNotificationMouseWheelDownScrolls(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{notifications: notifs}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -668,7 +668,7 @@ func TestNotificationMouseWheelUpScrolls(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{notifications: notifs}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 	m.selected = 6
@@ -689,7 +689,7 @@ func TestNotificationMouseWheelBoundsCheck(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{notifications: notifs}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -710,7 +710,7 @@ func TestNotificationMouseWheelBoundsCheck(t *testing.T) {
 func TestNotificationSpinnerTickDuringLoad(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	_, cmd := m.Update(m.spinner.Tick())
 	if cmd == nil {
@@ -721,7 +721,7 @@ func TestNotificationSpinnerTickDuringLoad(t *testing.T) {
 func TestNotificationSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	m.loading = false
 
 	_, cmd := m.Update(m.spinner.Tick())
@@ -733,7 +733,7 @@ func TestNotificationSpinnerTickIgnoredWhenNotLoading(t *testing.T) {
 func TestNotificationLoadingViewShowsSpinner(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 
 	v := m.View()
 	if !strings.Contains(v.Content, "Loading") {
@@ -748,7 +748,7 @@ func TestInitReturnsCommands(t *testing.T) {
 		unreadCount:   0,
 	}
 
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	cmd := m.Init()
 
 	if cmd == nil {
@@ -769,7 +769,7 @@ func TestGroupingLikesSamePost(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -796,7 +796,7 @@ func TestGroupingRepostsSamePost(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -823,7 +823,7 @@ func TestGroupingMixedTypes(t *testing.T) {
 	notifs[1].ReasonSubject = &subject
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -853,7 +853,7 @@ func TestGroupingIndividualNotifications(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -876,7 +876,7 @@ func TestGroupingPreservesOrder(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -906,7 +906,7 @@ func TestGroupingAllRead(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -930,7 +930,7 @@ func TestGroupingPartiallyRead(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -945,7 +945,7 @@ func TestGroupingPartiallyRead(t *testing.T) {
 func TestGroupingEmptyList(t *testing.T) {
 	t.Parallel()
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{
 		Notifications: []*bsky.NotificationListNotifications_Notification{},
 	})
@@ -969,7 +969,7 @@ func TestGroupRenderOutput(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 
@@ -992,7 +992,7 @@ func TestGroupingNavigationBounds(t *testing.T) {
 	}
 
 	mockClient := &mockBlueskyClient{}
-	m := NewNotificationsModel(mockClient, 80, 24)
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
 

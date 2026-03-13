@@ -86,7 +86,7 @@ func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
 	return *post.Post.Author.Avatar
 }
 
-func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache *images.Cache, avatarOverrides map[string]string) string {
+func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string) string {
 	var b strings.Builder
 
 	if post.Reason != nil && post.Reason.FeedDefs_ReasonRepost != nil {
@@ -191,11 +191,10 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	likeIcon := "♡"
 	likeStyle := theme.StyleMuted
 	if liked {
-		likeIcon = "♥"
 		likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
 	}
 
-	repostIcon := "⟲"
+	repostIcon := "↻"
 	repostStyle := theme.StyleMuted
 	if reposted {
 		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
@@ -203,14 +202,14 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 
 	engLine := likeStyle.Render(fmt.Sprintf("%s %d", likeIcon, likeCount)) +
 		"  " + repostStyle.Render(fmt.Sprintf("%s %d", repostIcon, repostCount)) +
-		"  " + theme.StyleMuted.Render(fmt.Sprintf("💬 %d", replyCount))
+		"  " + theme.StyleMuted.Render(fmt.Sprintf("↩ %d", replyCount))
 	b.WriteString(engLine)
 	b.WriteString("\n")
 
 	return shared.RenderItemWithBorder(b.String(), selected, width)
 }
 
-func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.Cache) string {
+func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.ImageRenderer) string {
 	if embed == nil {
 		return ""
 	}
@@ -322,7 +321,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache *images.C
 	return ""
 }
 
-func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache *images.Cache) string {
+func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.ImageRenderer) string {
 	if len(imgs) == 0 || cache == nil || !cache.Enabled() {
 		return ""
 	}

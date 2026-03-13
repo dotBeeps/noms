@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	voresky "github.com/dotBeeps/noms/internal/api/voresky"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
@@ -66,20 +67,22 @@ type VoreskyModel struct {
 	width           int
 	height          int
 	offset          int
+	imageCache      images.ImageRenderer
 	spinner         spinner.Model
 }
 
-func NewVoreskyModel(client *voresky.VoreskyClient, width, height int) VoreskyModel {
+func NewVoreskyModel(client *voresky.VoreskyClient, width, height int, imageCache images.ImageRenderer) VoreskyModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
 	)
 	return VoreskyModel{
-		client:  client,
-		width:   width,
-		height:  height,
-		loading: true,
-		spinner: sp,
+		client:     client,
+		imageCache: imageCache,
+		width:      width,
+		height:     height,
+		loading:    true,
+		spinner:    sp,
 	}
 }
 
@@ -105,6 +108,9 @@ func (m VoreskyModel) fetchCharactersCmd() tea.Msg {
 // Update implements tea.Model.
 func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case images.ImageFetchedMsg:
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height

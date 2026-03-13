@@ -121,6 +121,12 @@ func FetchAvatar(c *Cache, url string) tea.Cmd {
 	})
 }
 
+func (c *Cache) FetchAvatar(url string) tea.Cmd {
+	return fetchWithTransform(c, url, func(img image.Image) image.Image {
+		return applyRoundedCorners(img, 0.3)
+	})
+}
+
 func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.Image) tea.Cmd {
 	if c == nil || !c.Enabled() || url == "" {
 		debugLog.Printf("Fetch: skip url=%q (nil=%v enabled=%v empty=%v)", truncateURL(url), c == nil, c != nil && c.Enabled(), url == "")

@@ -241,7 +241,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentHeight = 1
 		}
 		m.feedModel = feed.NewFeedModel(m.client, msg.Session.DID, m.width, contentHeight, m.imageCache)
-		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight)
+		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight, m.imageCache)
 		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight, m.imageCache)
 
 		cmds = append(cmds, m.feedModel.Init())
@@ -271,7 +271,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentHeight = 1
 		}
 		m.feedModel = feed.NewFeedModel(m.client, msg.DID, m.width, contentHeight, m.imageCache)
-		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight)
+		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight, m.imageCache)
 		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight, m.imageCache)
 
 		cmds = append(cmds, m.feedModel.Init())
@@ -307,8 +307,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if contentHeight < 1 {
 			contentHeight = 1
 		}
-		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight)
-		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight)
+		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
+		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.voreskyTabInit = false
 		m.vnotifInit = false
 		m.screen = ScreenFeed
@@ -332,8 +332,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if contentHeight < 1 {
 			contentHeight = 1
 		}
-		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight)
-		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight)
+		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
+		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.voreskyTabInit = false
 		m.vnotifInit = false
 		m.screen = m.prevScreen

@@ -168,7 +168,7 @@ func newTestApp(client *mockClient) ui.App {
 		h = 1
 	}
 	app.SetFeedModel(feed.NewFeedModel(client, "", app.Width(), h, nil))
-	app.SetNotifModel(notifications.NewNotificationsModel(client, app.Width(), h))
+	app.SetNotifModel(notifications.NewNotificationsModel(client, app.Width(), h, nil))
 	app.SetSearchModel(search.NewSearchModel(client, app.Width(), h, nil))
 	return app
 }

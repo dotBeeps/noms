@@ -13,6 +13,7 @@ import (
 
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
@@ -116,19 +117,21 @@ type NotificationsModel struct {
 	height        int
 	offset        int
 	client        bluesky.BlueskyClient
+	imageCache    images.ImageRenderer
 	err           error
 	spinner       spinner.Model
 	groups        []notifGroup
 }
 
 // NewNotificationsModel creates a new notifications model
-func NewNotificationsModel(client bluesky.BlueskyClient, width, height int) NotificationsModel {
+func NewNotificationsModel(client bluesky.BlueskyClient, width, height int, imageCache images.ImageRenderer) NotificationsModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
 	)
 	return NotificationsModel{
 		client:        client,
+		imageCache:    imageCache,
 		width:         width,
 		height:        height,
 		notifications: make([]*bsky.NotificationListNotifications_Notification, 0),
@@ -195,6 +198,9 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case images.ImageFetchedMsg:
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height

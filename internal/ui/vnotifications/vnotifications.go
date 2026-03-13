@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	voresky "github.com/dotBeeps/noms/internal/api/voresky"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
@@ -81,16 +82,18 @@ type VNotificationsModel struct {
 	width         int
 	height        int
 	offset        int
+	imageCache    images.ImageRenderer
 	spinner       spinner.Model
 }
 
-func NewVNotificationsModel(client *voresky.VoreskyClient, width, height int) VNotificationsModel {
+func NewVNotificationsModel(client *voresky.VoreskyClient, width, height int, imageCache images.ImageRenderer) VNotificationsModel {
 	sp := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
 	)
 	return VNotificationsModel{
 		client:        client,
+		imageCache:    imageCache,
 		width:         width,
 		height:        height,
 		notifications: make([]voresky.Notification, 0),
@@ -152,6 +155,9 @@ func (m VNotificationsModel) markSelectedReadCmd() tea.Cmd {
 // Update implements tea.Model.
 func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case images.ImageFetchedMsg:
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
