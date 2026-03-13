@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -21,6 +23,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/blacktop/go-termimg"
+	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
 var debugLog *log.Logger
@@ -117,13 +120,13 @@ func Fetch(c *Cache, url string) tea.Cmd {
 // FetchAvatar returns a tea.Cmd that downloads an avatar with rounded corners.
 func FetchAvatar(c *Cache, url string) tea.Cmd {
 	return fetchWithTransform(c, url, func(img image.Image) image.Image {
-		return applyRoundedCorners(img, 0.3)
+		return applyRoundedCorners(img, 0.3, theme.ANSIToRGB(theme.SurfaceCode()))
 	})
 }
 
 func (c *Cache) FetchAvatar(url string) tea.Cmd {
 	return fetchWithTransform(c, url, func(img image.Image) image.Image {
-		return applyRoundedCorners(img, 0.3)
+		return applyRoundedCorners(img, 0.3, theme.ANSIToRGB(theme.SurfaceCode()))
 	})
 }
 
@@ -404,10 +407,11 @@ func (c *Cache) setError(err error) {
 	c.mu.Unlock()
 }
 
-func applyRoundedCorners(src image.Image, radiusPct float64) image.Image {
+func applyRoundedCorners(src image.Image, radiusPct float64, bgColor color.RGBA) image.Image {
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(dst, dst.Bounds(), &image.Uniform{bgColor}, image.Point{}, draw.Src)
 	r := radiusPct * float64(min(w, h))
 
 	for y := 0; y < h; y++ {
