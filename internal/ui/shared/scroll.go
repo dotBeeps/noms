@@ -61,7 +61,7 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 			result.WriteString("\n")
 		}
 		if IsKittyPlaceholderLine(line) {
-			result.WriteString(styledBorder + gap + bgSeq + line)
+			result.WriteString(styledBorder + gap + bgSeq + " " + line + bgSeq + "\x1b[0K")
 		} else {
 			stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
 			stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)

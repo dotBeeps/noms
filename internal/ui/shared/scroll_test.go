@@ -45,7 +45,7 @@ func TestRenderItemWithBorderKittyLines(t *testing.T) {
 	}
 
 	styledBorder, gap, _, bgSeq := borderStyles(false, width)
-	want := styledBorder + gap + bgSeq + kittyLine
+	want := styledBorder + gap + bgSeq + " " + kittyLine + bgSeq + "\x1b[0K"
 	if lines[0] != want {
 		t.Fatalf("kitty line mismatch\nwant: %q\n got: %q", want, lines[0])
 	}
@@ -71,7 +71,7 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 
 	styledBorder, gap, lineStyle, bgSeq := borderStyles(true, width)
 	want0 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal1, bgSeq))
-	want1 := styledBorder + gap + bgSeq + kitty
+	want1 := styledBorder + gap + bgSeq + " " + kitty + bgSeq + "\x1b[0K"
 	want2 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal2, bgSeq))
 
 	if lines[0] != want0 {
