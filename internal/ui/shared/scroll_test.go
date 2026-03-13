@@ -20,10 +20,24 @@ func TestRenderItemWithBorderNormalLines(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d", len(lines))
 	}
 
-	styledBorder, gap, lineStyle, bgSeq := borderStyles(false, width)
+	styledBorder, gap, _, bgSeq := borderStyles(false, width)
 
-	want0 := styledBorder + gap + lineStyle.Render(stabilizeLine("alpha", bgSeq))
-	want1 := styledBorder + gap + lineStyle.Render(stabilizeLine("beta", bgSeq))
+	// Manual padding format: bgSeq + " " + stabilized + bgSeq + spaces
+	contentArea := max(1, width-2)
+
+	// "alpha" has visWidth=5, padRight = 10-1-5 = 4
+	padRight0 := contentArea - 1 - 5
+	if padRight0 < 1 {
+		padRight0 = 1
+	}
+	want0 := styledBorder + gap + bgSeq + " " + stabilizeLine("alpha", bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
+
+	// "beta" has visWidth=4, padRight = 10-1-4 = 5
+	padRight1 := contentArea - 1 - 4
+	if padRight1 < 1 {
+		padRight1 = 1
+	}
+	want1 := styledBorder + gap + bgSeq + " " + stabilizeLine("beta", bgSeq) + bgSeq + strings.Repeat(" ", padRight1)
 
 	if lines[0] != want0 {
 		t.Fatalf("line 0 mismatch\nwant: %q\n got: %q", want0, lines[0])
@@ -75,16 +89,29 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 		t.Fatalf("expected 3 lines, got %d", len(lines))
 	}
 
-	styledBorder, gap, lineStyle, bgSeq := borderStyles(true, width)
-	want0 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal1, bgSeq))
+	styledBorder, gap, _, bgSeq := borderStyles(true, width)
+	contentArea := max(1, width-2)
+
+	// "first" has visWidth=5, padRight = 10-1-5 = 4
+	padRight0 := contentArea - 1 - 5
+	if padRight0 < 1 {
+		padRight0 = 1
+	}
+	want0 := styledBorder + gap + bgSeq + " " + stabilizeLine(normal1, bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
+
 	kw := strings.Count(kitty, "\U0010EEEE")
-	ca := max(1, width-2)
-	pr := ca - 1 - kw
+	pr := contentArea - 1 - kw
 	if pr < 1 {
 		pr = 1
 	}
 	want1 := styledBorder + gap + bgSeq + " " + kitty + bgSeq + strings.Repeat(" ", pr)
-	want2 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal2, bgSeq))
+
+	// "last" has visWidth=4, padRight = 10-1-4 = 5
+	padRight2 := contentArea - 1 - 4
+	if padRight2 < 1 {
+		padRight2 = 1
+	}
+	want2 := styledBorder + gap + bgSeq + " " + stabilizeLine(normal2, bgSeq) + bgSeq + strings.Repeat(" ", padRight2)
 
 	if lines[0] != want0 {
 		t.Fatalf("line 0 mismatch\nwant: %q\n got: %q", want0, lines[0])

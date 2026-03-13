@@ -47,7 +47,6 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	}
 	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
 	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
-	lineStyle := lipgloss.NewStyle().Background(panelBg).Padding(0, 1).Width(max(1, width-2))
 	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
@@ -61,12 +60,24 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 			result.WriteString("\n")
 		}
 		if IsKittyPlaceholderLine(line) {
-			result.WriteString(styledBorder + gap + bgSeq + " " + line + bgSeq + "\x1b[0K")
+			kittyWidth := strings.Count(line, "\U0010EEEE")
+			contentArea := max(1, width-2)
+			padRight := contentArea - 1 - kittyWidth
+			if padRight < 1 {
+				padRight = 1
+			}
+			result.WriteString(styledBorder + gap + bgSeq + " " + line + bgSeq + strings.Repeat(" ", padRight))
 		} else {
+			visWidth := lipgloss.Width(line)
+			contentArea := max(1, width-2)
+			padRight := contentArea - 1 - visWidth
+			if padRight < 1 {
+				padRight = 1
+			}
 			stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
 			stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
 			stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
-			result.WriteString(styledBorder + gap + lineStyle.Render(stabilized))
+			result.WriteString(styledBorder + gap + bgSeq + " " + stabilized + bgSeq + strings.Repeat(" ", padRight))
 		}
 	}
 	result.WriteString("\n\n")
