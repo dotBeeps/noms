@@ -60,10 +60,14 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 		if i > 0 {
 			result.WriteString("\n")
 		}
-		stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
-		stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
-		stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
-		result.WriteString(styledBorder + gap + lineStyle.Render(stabilized))
+		if IsKittyPlaceholderLine(line) {
+			result.WriteString(styledBorder + gap + bgSeq + line)
+		} else {
+			stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
+			stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
+			stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
+			result.WriteString(styledBorder + gap + lineStyle.Render(stabilized))
+		}
 	}
 	result.WriteString("\n\n")
 
