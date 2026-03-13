@@ -237,3 +237,105 @@ func TestParsePayload_AllTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePayload_MalformedJSON(t *testing.T) {
+	raw := json.RawMessage(`{not valid json`)
+	result, err := voresky.ParsePayload(voresky.NotifInteractionProposal, raw)
+	if err == nil {
+		t.Fatal("expected error for malformed JSON, got nil")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result for malformed JSON, got %T", result)
+	}
+	t.Logf("ParsePayload(malformed JSON) → error: %v — graceful error OK", err)
+}
+
+func TestParsePayload_PokeFields(t *testing.T) {
+	raw := json.RawMessage(`{"universe":"Verdant"}`)
+	result, err := voresky.ParsePayload(voresky.NotifPoke, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	payload, ok := result.(*voresky.PokePayload)
+	if !ok {
+		t.Fatalf("expected *PokePayload, got %T", result)
+	}
+	if payload.Universe != "Verdant" {
+		t.Errorf("Universe: got %q, want %q", payload.Universe, "Verdant")
+	}
+	t.Logf("PokePayload.Universe=%q OK", payload.Universe)
+}
+
+func TestParsePayload_InteractionNodeFields(t *testing.T) {
+	raw := json.RawMessage(`{"interactionId":"i-42","newNodeVerbPast":"swallowed","universe":"Verdant"}`)
+	result, err := voresky.ParsePayload(voresky.NotifInteractionNodeChanged, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	payload, ok := result.(*voresky.InteractionNodePayload)
+	if !ok {
+		t.Fatalf("expected *InteractionNodePayload, got %T", result)
+	}
+	if payload.NewNodeVerbPast != "swallowed" {
+		t.Errorf("NewNodeVerbPast: got %q, want %q", payload.NewNodeVerbPast, "swallowed")
+	}
+	if payload.Universe != "Verdant" {
+		t.Errorf("Universe: got %q, want %q", payload.Universe, "Verdant")
+	}
+	t.Logf("InteractionNodePayload: verb=%q universe=%q OK", payload.NewNodeVerbPast, payload.Universe)
+}
+
+func TestParsePayload_InteractionCompletedFields(t *testing.T) {
+	raw := json.RawMessage(`{
+		"interactionId":"i-99",
+		"predatorCharacterName":"Rex",
+		"preyCharacterName":"Pip",
+		"pathName":"Deep Forest",
+		"hasPointOfNoReturn":true,
+		"finalNodeName":"The End",
+		"verbPast":"devoured",
+		"universe":"Verdant"
+	}`)
+	result, err := voresky.ParsePayload(voresky.NotifInteractionCompleted, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	payload, ok := result.(*voresky.InteractionCompletedPayload)
+	if !ok {
+		t.Fatalf("expected *InteractionCompletedPayload, got %T", result)
+	}
+	if payload.FinalNodeName != "The End" {
+		t.Errorf("FinalNodeName: got %q, want %q", payload.FinalNodeName, "The End")
+	}
+	if payload.VerbPast != "devoured" {
+		t.Errorf("VerbPast: got %q, want %q", payload.VerbPast, "devoured")
+	}
+	if payload.Universe != "Verdant" {
+		t.Errorf("Universe: got %q, want %q", payload.Universe, "Verdant")
+	}
+	t.Logf("InteractionCompletedPayload: finalNode=%q verb=%q universe=%q OK",
+		payload.FinalNodeName, payload.VerbPast, payload.Universe)
+}
+
+func TestParsePayload_CollarFields(t *testing.T) {
+	raw := json.RawMessage(`{"ownerCharacterName":"Alpha","petCharacterName":"Biscuit","universe":"Verdant"}`)
+	result, err := voresky.ParsePayload(voresky.NotifCollarOffer, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	payload, ok := result.(*voresky.CollarPayload)
+	if !ok {
+		t.Fatalf("expected *CollarPayload, got %T", result)
+	}
+	if payload.OwnerCharacterName != "Alpha" {
+		t.Errorf("OwnerCharacterName: got %q, want %q", payload.OwnerCharacterName, "Alpha")
+	}
+	if payload.PetCharacterName != "Biscuit" {
+		t.Errorf("PetCharacterName: got %q, want %q", payload.PetCharacterName, "Biscuit")
+	}
+	if payload.Universe != "Verdant" {
+		t.Errorf("Universe: got %q, want %q", payload.Universe, "Verdant")
+	}
+	t.Logf("CollarPayload: owner=%q pet=%q universe=%q OK",
+		payload.OwnerCharacterName, payload.PetCharacterName, payload.Universe)
+}

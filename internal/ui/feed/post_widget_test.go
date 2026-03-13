@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/lex/util"
 )
@@ -323,5 +324,134 @@ func TestTruncateStr(t *testing.T) {
 				t.Errorf("truncateStr(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
 			}
 		})
+	}
+}
+
+type stubImageRenderer struct {
+	enabled  bool
+	isCached func(url string) bool
+	render   func(url string, cols, rows int) string
+}
+
+func (s *stubImageRenderer) Enabled() bool { return s.enabled }
+func (s *stubImageRenderer) IsCached(url string) bool {
+	if s.isCached == nil {
+		return false
+	}
+	return s.isCached(url)
+}
+func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string {
+	if s.render == nil {
+		return ""
+	}
+	return s.render(url, cols, rows)
+}
+func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd { return nil }
+
+func TestRenderPostAvatarLeftWhenCached(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Some post content", "avtest.bsky.social", "AvTestUser", "at://uri_av1", "cid_av1")
+	avatarURL := "https://example.com/avatar_cached.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	const avatarPixels = "XAVT\nXAVT"
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return avatarPixels },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+
+	if !strings.Contains(rendered, "XAVT") {
+		t.Fatal("Expected avatar string 'XAVT' in rendered post when avatar is cached")
+	}
+	if !strings.Contains(rendered, "AvTestUser") {
+		t.Fatal("Expected author display name 'AvTestUser' in rendered post")
+	}
+	avtrIdx := strings.Index(rendered, "XAVT")
+	nameIdx := strings.Index(rendered, "AvTestUser")
+	if avtrIdx >= nameIdx {
+		t.Errorf("Expected avatar (index %d) to appear before author name (index %d) — avatar-left layout broken", avtrIdx, nameIdx)
+	}
+}
+
+func TestRenderPostPlaceholderWhenUncached(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Placeholder post", "pltest.bsky.social", "PlTestUser", "at://uri_pl1", "cid_pl1")
+	avatarURL := "https://example.com/avatar_uncached.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return false },
+		render:   func(url string, cols, rows int) string { return "" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+
+	if !strings.Contains(rendered, "[··]") {
+		t.Errorf("Expected placeholder '[··]' in rendered post when avatar is not cached; got:\n%s", rendered)
+	}
+}
+
+func TestRenderPostTopPadding(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Padding test post", "padtest.bsky.social", "PaddingDisplayName", "at://uri_pad1", "cid_pad1")
+
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+	lines := strings.Split(rendered, "\n")
+
+	nameLineIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, "PaddingDisplayName") {
+			nameLineIdx = i
+			break
+		}
+	}
+	if nameLineIdx <= 0 {
+		t.Errorf("Expected 'PaddingDisplayName' to appear after the first line (1-cell top padding). Got line index %d in:\n%s", nameLineIdx, rendered)
+	}
+}
+
+func TestRenderPostNewFooterIconsPresent(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Footer icon test", "footer.bsky.social", "FooterUser", "at://uri_fi1", "cid_fi1")
+
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+
+	for _, icon := range []string{"♡", "↻", "↩"} {
+		if !strings.Contains(rendered, icon) {
+			t.Errorf("Expected new footer icon %q to be present in rendered post", icon)
+		}
+	}
+}
+
+func TestRenderPostOldFooterIconsAbsent(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Old icon check", "oldicon.bsky.social", "OldIconUser", "at://uri_oi1", "cid_oi1")
+
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+
+	for _, oldIcon := range []string{"⟲", "💬", "♥"} {
+		if strings.Contains(rendered, oldIcon) {
+			t.Errorf("Expected old footer icon %q to be absent in rendered post, but it was found", oldIcon)
+		}
+	}
+}
+
+func TestRenderPostNilCacheFallback(t *testing.T) {
+	t.Parallel()
+	post := createTestPost("Nil cache content here", "nilcache.bsky.social", "NilCacheUser", "at://uri_nc1", "cid_nc1")
+	avatarURL := "https://example.com/avatar.jpg"
+	post.Post.Author.Avatar = &avatarURL
+
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+
+	if !strings.Contains(rendered, "Nil cache content here") {
+		t.Error("Expected post text to appear in rendered output with nil cache")
+	}
+	if !strings.Contains(rendered, "NilCacheUser") {
+		t.Error("Expected author name to appear in rendered output with nil cache")
 	}
 }

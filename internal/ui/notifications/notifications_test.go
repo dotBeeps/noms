@@ -984,6 +984,116 @@ func TestGroupRenderOutput(t *testing.T) {
 	}
 }
 
+type stubImageRenderer struct {
+	enabled bool
+	cached  bool
+	img     string
+}
+
+func (s *stubImageRenderer) Enabled() bool                                 { return s.enabled }
+func (s *stubImageRenderer) IsCached(url string) bool                      { return s.cached }
+func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string { return s.img }
+func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd                { return nil }
+
+func createTestNotificationWithAvatar(reason, handle, did string, isRead bool, indexedAt string, avatarURL string) *bsky.NotificationListNotifications_Notification {
+	notif := createTestNotification(reason, handle, did, isRead, indexedAt)
+	notif.Author.Avatar = strPtr(avatarURL)
+	return notif
+}
+
+func TestAvatarRenderedWhenCachedAndEnabled(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "AVATAR_IMG"}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithAvatar("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				"https://cdn.bsky.app/img/avatar/alice.jpg"),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "AVATAR_IMG") {
+		t.Errorf("Expected cached avatar 'AVATAR_IMG' in notification view, got: %s", content)
+	}
+}
+
+func TestAvatarPlaceholderWhenUncached(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: false, img: ""}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithAvatar("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				"https://cdn.bsky.app/img/avatar/alice.jpg"),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "[··]") {
+		t.Errorf("Expected placeholder '[··]' for uncached avatar, got: %s", content)
+	}
+}
+
+func TestNoAvatarWhenNilAvatarURL(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: "SHOULD_NOT_APPEAR"}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotification("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if strings.Contains(content, "SHOULD_NOT_APPEAR") {
+		t.Error("Expected no avatar image when Author.Avatar is nil")
+	}
+	if !strings.Contains(content, "liked your post") {
+		t.Error("Expected notification action text even without an avatar")
+	}
+}
+
+func TestNoAvatarWhenImageCacheNil(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithAvatar("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				"https://cdn.bsky.app/img/avatar/alice.jpg"),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "liked your post") {
+		t.Errorf("Expected notification text with nil imageCache, got: %s", content)
+	}
+}
+
 func TestGroupingNavigationBounds(t *testing.T) {
 	t.Parallel()
 	notifs := []*bsky.NotificationListNotifications_Notification{
