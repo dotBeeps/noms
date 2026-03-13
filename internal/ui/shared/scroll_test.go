@@ -45,7 +45,13 @@ func TestRenderItemWithBorderKittyLines(t *testing.T) {
 	}
 
 	styledBorder, gap, _, bgSeq := borderStyles(false, width)
-	want := styledBorder + gap + bgSeq + " " + kittyLine + bgSeq + "\x1b[0K"
+	kittyWidth := strings.Count(kittyLine, "\U0010EEEE")
+	contentArea := max(1, width-2)
+	padRight := contentArea - 1 - kittyWidth
+	if padRight < 1 {
+		padRight = 1
+	}
+	want := styledBorder + gap + bgSeq + " " + kittyLine + bgSeq + strings.Repeat(" ", padRight)
 	if lines[0] != want {
 		t.Fatalf("kitty line mismatch\nwant: %q\n got: %q", want, lines[0])
 	}
@@ -71,7 +77,13 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 
 	styledBorder, gap, lineStyle, bgSeq := borderStyles(true, width)
 	want0 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal1, bgSeq))
-	want1 := styledBorder + gap + bgSeq + " " + kitty + bgSeq + "\x1b[0K"
+	kw := strings.Count(kitty, "\U0010EEEE")
+	ca := max(1, width-2)
+	pr := ca - 1 - kw
+	if pr < 1 {
+		pr = 1
+	}
+	want1 := styledBorder + gap + bgSeq + " " + kitty + bgSeq + strings.Repeat(" ", pr)
 	want2 := styledBorder + gap + lineStyle.Render(stabilizeLine(normal2, bgSeq))
 
 	if lines[0] != want0 {
@@ -108,4 +120,24 @@ func stabilizeLine(line, bgSeq string) string {
 	stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
 	stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
 	return stabilized
+}
+
+func TestRenderItemWithBorderANSIWidth(t *testing.T) {
+	t.Parallel()
+
+	// Simulate avatar ANSI + separator + content ANSI (the exact bug pattern)
+	ansiLine := "\x1b[38;5;242m[····]\x1b[0m \x1b[38;5;7mHello world\x1b[0m"
+	content := ansiLine + "\nplain line\n" + ansiLine
+	width := 60
+
+	for _, selected := range []bool{false, true} {
+		got := RenderItemWithBorder(content, selected, width)
+		lines := strings.Split(strings.TrimSuffix(got, "\n\n"), "\n")
+		for i, line := range lines {
+			w := lipgloss.Width(line)
+			if w != width {
+				t.Errorf("selected=%v line %d: got width %d, want %d\nline: %q", selected, i, w, width, line)
+			}
+		}
+	}
 }
