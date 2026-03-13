@@ -14,17 +14,17 @@ func stripAnsi(s string) string {
 
 func TestRenderPlaceholderAvatarSize(t *testing.T) {
 	t.Parallel()
-	result := RenderPlaceholder(4, 2)
+	result := RenderPlaceholder(6, 3)
 	stripped := stripAnsi(result)
 	lines := strings.Split(stripped, "\n")
-	if len(lines) != 2 {
-		t.Errorf("RenderPlaceholder(4, 2) expected 2 lines, got %d: %q", len(lines), stripped)
+	if len(lines) != 3 {
+		t.Errorf("RenderPlaceholder(6, 3) expected 3 lines, got %d: %q", len(lines), stripped)
 		return
 	}
 	for i, line := range lines {
 		w := len([]rune(line))
-		if w != 4 {
-			t.Errorf("RenderPlaceholder(4, 2) line %d: expected 4 visible columns, got %d: %q", i, w, line)
+		if w != 6 {
+			t.Errorf("RenderPlaceholder(6, 3) line %d: expected 6 visible columns, got %d: %q", i, w, line)
 		}
 	}
 }

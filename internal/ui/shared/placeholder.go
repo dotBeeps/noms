@@ -8,8 +8,8 @@ import (
 
 // Avatar placeholder dimensions
 const (
-	AvatarCols = 4
-	AvatarRows = 2
+	AvatarCols = 6
+	AvatarRows = 3
 )
 
 // RenderPlaceholder returns a static loading placeholder of exactly cols columns wide
@@ -20,9 +20,9 @@ func RenderPlaceholder(cols, rows int) string {
 		return ""
 	}
 
-	// For avatar-sized placeholders (4x2), use compact format
-	if cols == 4 && rows == 2 {
-		return theme.StyleMuted.Render("[··]") + "\n" + theme.StyleMuted.Render("[··]")
+	// For avatar-sized placeholders (6x3), use compact format
+	if cols == 6 && rows == 3 {
+		return theme.StyleMuted.Render("[····]") + "\n" + theme.StyleMuted.Render("[····]") + "\n" + theme.StyleMuted.Render("[····]")
 	}
 
 	// For larger placeholders, render a box with ⋯ centered

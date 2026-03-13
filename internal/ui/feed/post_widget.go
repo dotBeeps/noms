@@ -178,7 +178,7 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 		} else {
 			nameAndBodyFirstLine += "\n"
 		}
-		b.WriteString(joinHorizontalRaw(avatarStr, nameAndBodyFirstLine, " "))
+		b.WriteString(shared.JoinHorizontalRaw(avatarStr, nameAndBodyFirstLine, " "))
 		b.WriteString("\n")
 		if len(bodyLines) > 1 {
 			b.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(strings.Join(bodyLines[1:], "\n")))
@@ -384,14 +384,14 @@ func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.Im
 		cols := max(8, (width-2)/2)
 		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 10)
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 10)
-		return joinHorizontalRaw(img1, img2, "  ")
+		return shared.JoinHorizontalRaw(img1, img2, "  ")
 
 	case 3:
 		cols := max(8, (width-2)/2)
 		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
 		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
-		return joinHorizontalRaw(img1, img2, "  ") + "\n" + img3
+		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + img3
 
 	default:
 		cols := max(8, (width-2)/2)
@@ -399,41 +399,8 @@ func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.Im
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
 		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
 		img4 := renderOrPlaceholder(imgs[3].Thumb, cols, 8)
-		return joinHorizontalRaw(img1, img2, "  ") + "\n" + joinHorizontalRaw(img3, img4, "  ")
+		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + shared.JoinHorizontalRaw(img3, img4, "  ")
 	}
-}
-
-// joinHorizontalRaw joins two multi-line strings side-by-side with a separator.
-// Unlike lipgloss.JoinHorizontal, this does NOT pad lines to equal width,
-// avoiding width miscalculation with Kitty Unicode placeholder characters.
-func joinHorizontalRaw(left, right, sep string) string {
-	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
-	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
-
-	maxLines := len(leftLines)
-	if len(rightLines) > maxLines {
-		maxLines = len(rightLines)
-	}
-
-	var result strings.Builder
-	for i := 0; i < maxLines; i++ {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		l, r := "", ""
-		if i < len(leftLines) {
-			l = leftLines[i]
-		}
-		if i < len(rightLines) {
-			r = rightLines[i]
-		}
-		result.WriteString(l)
-		if r != "" {
-			result.WriteString(sep)
-			result.WriteString(r)
-		}
-	}
-	return result.String()
 }
 
 func truncateStr(s string, maxLen int) string {

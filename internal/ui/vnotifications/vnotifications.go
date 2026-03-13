@@ -407,7 +407,7 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 		}
 
 		if sourceAv != "" && targetAv != "" {
-			avatarBlock = joinHorizontalRaw(sourceAv, targetAv, " ")
+			avatarBlock = shared.JoinHorizontalRaw(sourceAv, targetAv, " ")
 		} else if sourceAv != "" {
 			avatarBlock = sourceAv
 		} else if targetAv != "" {
@@ -416,7 +416,7 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 	}
 
 	if avatarBlock != "" {
-		contentStr = joinHorizontalRaw(avatarBlock, contentStr, " ")
+		contentStr = shared.JoinHorizontalRaw(avatarBlock, contentStr, " ")
 	}
 
 	return shared.RenderItemWithBorder(contentStr, selected, m.width)
@@ -809,34 +809,4 @@ func formatNotification(notif *voresky.Notification) string {
 	default:
 		return fmt.Sprintf("%s → %s", sourceName, targetName)
 	}
-}
-
-func joinHorizontalRaw(left, right, sep string) string {
-	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
-	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
-
-	maxLines := len(leftLines)
-	if len(rightLines) > maxLines {
-		maxLines = len(rightLines)
-	}
-
-	var result strings.Builder
-	for i := 0; i < maxLines; i++ {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		l, r := "", ""
-		if i < len(leftLines) {
-			l = leftLines[i]
-		}
-		if i < len(rightLines) {
-			r = rightLines[i]
-		}
-		result.WriteString(l)
-		if r != "" {
-			result.WriteString(sep)
-			result.WriteString(r)
-		}
-	}
-	return result.String()
 }
