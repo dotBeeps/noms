@@ -8,34 +8,6 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
-// EnsureSelectedVisible returns the scroll offset needed to keep selectedIndex
-// visible. renderItem returns the rendered string for height calculation.
-func EnsureSelectedVisible(itemCount, selectedIndex, offset, height int, renderItem func(index int) string) int {
-	if itemCount == 0 {
-		return 0
-	}
-	if selectedIndex < offset {
-		return selectedIndex
-	}
-
-	totalHeight := 0
-	heights := make([]int, 0, selectedIndex-offset+1)
-	for i := offset; i <= selectedIndex && i < itemCount; i++ {
-		h := strings.Count(renderItem(i), "\n")
-		heights = append(heights, h)
-		totalHeight += h
-	}
-
-	const margin = 2
-	for totalHeight+margin > height && offset < selectedIndex {
-		totalHeight -= heights[0]
-		heights = heights[1:]
-		offset++
-	}
-
-	return offset
-}
-
 func RenderItemWithBorder(content string, selected bool, width int) string {
 	borderColor := theme.ColorBorder
 	panelBg := theme.ColorSurface
@@ -47,6 +19,10 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	}
 	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
 	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
+	// NOTE: This uses ANSI-256 escape syntax directly. All terminals that
+	// support Bubble Tea + Kitty graphics also support 256 colors, so this
+	// is safe in practice. If noms ever needs 16-color terminal support,
+	// this should be rendered through lipgloss's color profile system.
 	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
@@ -59,26 +35,23 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 		if i > 0 {
 			result.WriteString("\n")
 		}
+		// Calculate visible width: for lines with kitty placeholders, measure
+		// kitty chars separately (they may confuse lipgloss.Width in some contexts),
+		// then add the visible width of the remaining text portion.
+		var visWidth int
 		if IsKittyPlaceholderLine(line) {
 			kittyWidth := strings.Count(line, "\U0010EEEE")
-			contentArea := max(1, width-2)
-			padRight := contentArea - 1 - kittyWidth
-			if padRight < 1 {
-				padRight = 1
-			}
-			result.WriteString(styledBorder + gap + bgSeq + " " + line + bgSeq + strings.Repeat(" ", padRight))
+			nonKitty := strings.ReplaceAll(line, "\U0010EEEE", "")
+			visWidth = kittyWidth + lipgloss.Width(nonKitty)
 		} else {
-			visWidth := lipgloss.Width(line)
-			contentArea := max(1, width-2)
-			padRight := contentArea - 1 - visWidth
-			if padRight < 1 {
-				padRight = 1
-			}
-			stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
-			stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
-			stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
-			result.WriteString(styledBorder + gap + bgSeq + " " + stabilized + bgSeq + strings.Repeat(" ", padRight))
+			visWidth = lipgloss.Width(line)
 		}
+		contentArea := max(1, width-2)
+		padRight := max(0, contentArea-1-visWidth)
+		// Re-apply background color after any SGR sequence that resets the
+		// background (full reset, combined reset+set, or explicit \x1b[49m).
+		stabilized := StabilizeBg(line, bgSeq)
+		result.WriteString(styledBorder + gap + bgSeq + " " + stabilized + bgSeq + strings.Repeat(" ", padRight))
 	}
 	result.WriteString("\n\n")
 

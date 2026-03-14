@@ -1,21 +1,16 @@
 package shared
 
 import (
-	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
-
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func stripAnsi(s string) string {
-	return ansiRe.ReplaceAllString(s, "")
-}
 
 func TestRenderPlaceholderAvatarSize(t *testing.T) {
 	t.Parallel()
 	result := RenderPlaceholder(6, 3)
-	stripped := stripAnsi(result)
+	stripped := ansi.Strip(result)
 	lines := strings.Split(stripped, "\n")
 	if len(lines) != 3 {
 		t.Errorf("RenderPlaceholder(6, 3) expected 3 lines, got %d: %q", len(lines), stripped)
@@ -32,7 +27,7 @@ func TestRenderPlaceholderAvatarSize(t *testing.T) {
 func TestRenderPlaceholderLargeSize(t *testing.T) {
 	t.Parallel()
 	result := RenderPlaceholder(20, 5)
-	stripped := stripAnsi(result)
+	stripped := ansi.Strip(result)
 	lines := strings.Split(stripped, "\n")
 	if len(lines) != 5 {
 		t.Errorf("RenderPlaceholder(20, 5) expected 5 lines, got %d: %q", len(lines), stripped)

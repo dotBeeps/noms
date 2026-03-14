@@ -20,24 +20,14 @@ func TestRenderItemWithBorderNormalLines(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d", len(lines))
 	}
 
-	styledBorder, gap, _, bgSeq := borderStyles(false, width)
-
-	// Manual padding format: bgSeq + " " + stabilized + bgSeq + spaces
+	styledBorder, gap, bgSeq := borderStyles(false, width)
 	contentArea := max(1, width-2)
 
-	// "alpha" has visWidth=5, padRight = 10-1-5 = 4
-	padRight0 := contentArea - 1 - 5
-	if padRight0 < 1 {
-		padRight0 = 1
-	}
-	want0 := styledBorder + gap + bgSeq + " " + stabilizeLine("alpha", bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
+	padRight0 := max(0, contentArea-1-5) // "alpha" visWidth=5
+	want0 := styledBorder + gap + bgSeq + " " + StabilizeBg("alpha", bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
 
-	// "beta" has visWidth=4, padRight = 10-1-4 = 5
-	padRight1 := contentArea - 1 - 4
-	if padRight1 < 1 {
-		padRight1 = 1
-	}
-	want1 := styledBorder + gap + bgSeq + " " + stabilizeLine("beta", bgSeq) + bgSeq + strings.Repeat(" ", padRight1)
+	padRight1 := max(0, contentArea-1-4) // "beta" visWidth=4
+	want1 := styledBorder + gap + bgSeq + " " + StabilizeBg("beta", bgSeq) + bgSeq + strings.Repeat(" ", padRight1)
 
 	if lines[0] != want0 {
 		t.Fatalf("line 0 mismatch\nwant: %q\n got: %q", want0, lines[0])
@@ -58,14 +48,13 @@ func TestRenderItemWithBorderKittyLines(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(lines))
 	}
 
-	styledBorder, gap, _, bgSeq := borderStyles(false, width)
+	styledBorder, gap, bgSeq := borderStyles(false, width)
 	kittyWidth := strings.Count(kittyLine, "\U0010EEEE")
+	nonKitty := strings.ReplaceAll(kittyLine, "\U0010EEEE", "")
+	visWidth := kittyWidth + lipgloss.Width(nonKitty)
 	contentArea := max(1, width-2)
-	padRight := contentArea - 1 - kittyWidth
-	if padRight < 1 {
-		padRight = 1
-	}
-	want := styledBorder + gap + bgSeq + " " + kittyLine + bgSeq + strings.Repeat(" ", padRight)
+	padRight := max(0, contentArea-1-visWidth)
+	want := styledBorder + gap + bgSeq + " " + StabilizeBg(kittyLine, bgSeq) + bgSeq + strings.Repeat(" ", padRight)
 	if lines[0] != want {
 		t.Fatalf("kitty line mismatch\nwant: %q\n got: %q", want, lines[0])
 	}
@@ -89,29 +78,20 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 		t.Fatalf("expected 3 lines, got %d", len(lines))
 	}
 
-	styledBorder, gap, _, bgSeq := borderStyles(true, width)
+	styledBorder, gap, bgSeq := borderStyles(true, width)
 	contentArea := max(1, width-2)
 
-	// "first" has visWidth=5, padRight = 10-1-5 = 4
-	padRight0 := contentArea - 1 - 5
-	if padRight0 < 1 {
-		padRight0 = 1
-	}
-	want0 := styledBorder + gap + bgSeq + " " + stabilizeLine(normal1, bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
+	padRight0 := max(0, contentArea-1-5) // "first" visWidth=5
+	want0 := styledBorder + gap + bgSeq + " " + StabilizeBg(normal1, bgSeq) + bgSeq + strings.Repeat(" ", padRight0)
 
 	kw := strings.Count(kitty, "\U0010EEEE")
-	pr := contentArea - 1 - kw
-	if pr < 1 {
-		pr = 1
-	}
-	want1 := styledBorder + gap + bgSeq + " " + kitty + bgSeq + strings.Repeat(" ", pr)
+	nonKitty := strings.ReplaceAll(kitty, "\U0010EEEE", "")
+	kittyVisWidth := kw + lipgloss.Width(nonKitty)
+	pr := max(0, contentArea-1-kittyVisWidth)
+	want1 := styledBorder + gap + bgSeq + " " + StabilizeBg(kitty, bgSeq) + bgSeq + strings.Repeat(" ", pr)
 
-	// "last" has visWidth=4, padRight = 10-1-4 = 5
-	padRight2 := contentArea - 1 - 4
-	if padRight2 < 1 {
-		padRight2 = 1
-	}
-	want2 := styledBorder + gap + bgSeq + " " + stabilizeLine(normal2, bgSeq) + bgSeq + strings.Repeat(" ", padRight2)
+	padRight2 := max(0, contentArea-1-4) // "last" visWidth=4
+	want2 := styledBorder + gap + bgSeq + " " + StabilizeBg(normal2, bgSeq) + bgSeq + strings.Repeat(" ", padRight2)
 
 	if lines[0] != want0 {
 		t.Fatalf("line 0 mismatch\nwant: %q\n got: %q", want0, lines[0])
@@ -124,7 +104,7 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 	}
 }
 
-func borderStyles(selected bool, width int) (string, string, lipgloss.Style, string) {
+func borderStyles(selected bool, width int) (styledBorder, gap, bgSeq string) {
 	borderColor := theme.ColorBorder
 	panelBg := theme.ColorSurface
 	panelBgCode := theme.SurfaceCode()
@@ -134,19 +114,10 @@ func borderStyles(selected bool, width int) (string, string, lipgloss.Style, str
 		panelBgCode = theme.SurfaceAltCode()
 	}
 
-	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
-	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
-	lineStyle := lipgloss.NewStyle().Background(panelBg).Padding(0, 1).Width(max(1, width-2))
-	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
-
-	return styledBorder, gap, lineStyle, bgSeq
-}
-
-func stabilizeLine(line, bgSeq string) string {
-	stabilized := strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+bgSeq)
-	stabilized = strings.ReplaceAll(stabilized, "\x1b[m", "\x1b[m"+bgSeq)
-	stabilized = strings.ReplaceAll(stabilized, "\x1b[49m", "\x1b[49m"+bgSeq)
-	return stabilized
+	styledBorder = lipgloss.NewStyle().Foreground(borderColor).Render("▎")
+	gap = lipgloss.NewStyle().Background(panelBg).Render(" ")
+	bgSeq = fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
+	return
 }
 
 func TestRenderItemWithBorderANSIWidth(t *testing.T) {
@@ -168,3 +139,120 @@ func TestRenderItemWithBorderANSIWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderItemWithBorderExactFit(t *testing.T) {
+	t.Parallel()
+
+	// Content that exactly fills the available width should have padRight=0
+	// (no overflow). contentArea = width-2 = 10, leading space = 1,
+	// so content filling 9 chars → padRight = 10-1-9 = 0.
+	content := "123456789"
+	width := 12
+	got := RenderItemWithBorder(content, false, width)
+	lines := strings.Split(strings.TrimSuffix(got, "\n\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	w := lipgloss.Width(lines[0])
+	if w != width {
+		t.Errorf("exact-fit: got width %d, want %d\nline: %q", w, width, lines[0])
+	}
+}
+
+func TestRenderItemWithBorderCombinedSGR(t *testing.T) {
+	t.Parallel()
+
+	// Combined SGR sequence: reset + set foreground in one sequence.
+	// The old literal string replacement would miss this; the regex catches it.
+	combinedLine := "\x1b[0;38;5;240msome text\x1b[0m"
+	width := 40
+	got := RenderItemWithBorder(combinedLine, false, width)
+
+	_, _, bgSeq := borderStyles(false, width)
+
+	// The combined reset \x1b[0;38;5;240m should be followed by bgSeq
+	if !strings.Contains(got, "\x1b[0;38;5;240m"+bgSeq) {
+		t.Errorf("expected bgSeq after combined SGR reset\ngot: %q", got)
+	}
+}
+
+func TestRenderItemWithBorderNarrowTerminal(t *testing.T) {
+	t.Parallel()
+
+	// On a very narrow terminal, visWidth may exceed contentArea, making
+	// padRight negative. max(0, ...) must clamp it — strings.Repeat with a
+	// negative count returns "" silently, but the visual output is wrong.
+	content := "this is a very long line that overflows"
+	width := 4 // extremely narrow: contentArea=2, leading space=1, so any content overflows
+	got := RenderItemWithBorder(content, false, width)
+	lines := strings.Split(strings.TrimSuffix(got, "\n\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	// Should not panic and must not contain a negative repeat artifact.
+	// The line must still start with the border + gap sequence.
+	styledBorder, gap, bgSeq := borderStyles(false, width)
+	prefix := styledBorder + gap + bgSeq + " "
+	if !strings.HasPrefix(lines[0], prefix) {
+		t.Errorf("narrow: line missing expected prefix\nwant prefix: %q\n got line:   %q", prefix, lines[0])
+	}
+}
+
+func TestStabilizeBgCombinedSequences(t *testing.T) {
+	t.Parallel()
+
+	bgSeq := "\x1b[48;5;236m"
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "full reset",
+			input: "\x1b[0m",
+			want:  "\x1b[0m" + bgSeq,
+		},
+		{
+			name:  "implicit reset",
+			input: "\x1b[m",
+			want:  "\x1b[m" + bgSeq,
+		},
+		{
+			name:  "default bg",
+			input: "\x1b[49m",
+			want:  "\x1b[49m" + bgSeq,
+		},
+		{
+			name:  "combined reset+fg",
+			input: "\x1b[0;38;5;240m",
+			want:  "\x1b[0;38;5;240m" + bgSeq,
+		},
+		{
+			name:  "double-zero reset",
+			input: "\x1b[00m",
+			want:  "\x1b[00m" + bgSeq,
+		},
+		{
+			name:  "fg-only no reset",
+			input: "\x1b[38;5;240m",
+			want:  "\x1b[38;5;240m",
+		},
+		{
+			name:  "bold no reset",
+			input: "\x1b[1m",
+			want:  "\x1b[1m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := StabilizeBg(tt.input, bgSeq)
+			if got != tt.want {
+				t.Errorf("StabilizeBg(%q, bgSeq)\n got: %q\nwant: %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
