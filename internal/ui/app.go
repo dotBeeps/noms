@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -98,7 +100,7 @@ type App struct {
 	// Chrome
 	statusBar components.StatusBar
 	tabBar    components.TabBar
-	help      components.HelpModel
+	help      help.Model
 	showHelp  bool
 
 	showThemePicker  bool
@@ -121,7 +123,7 @@ func NewApp() App {
 		login:      login.NewLoginModel(),
 		statusBar:  components.NewStatusBar(),
 		tabBar:     components.NewTabBar(),
-		help:       components.NewHelpModel(),
+		help:       help.New(),
 		imageCache: images.New(),
 		tokenStore: config.NewTokenStore(),
 		cfg:        cfg,
@@ -129,10 +131,13 @@ func NewApp() App {
 }
 
 func (m App) Init() tea.Cmd {
+	cmds := []tea.Cmd{tea.RequestBackgroundColor}
 	if m.cfg != nil && m.cfg.DefaultAccount != "" {
-		return m.tryRestoreSession
+		cmds = append(cmds, m.tryRestoreSession)
+	} else {
+		cmds = append(cmds, m.login.Init())
 	}
-	return m.login.Init()
+	return tea.Batch(cmds...)
 }
 
 type sessionRestoreFailedMsg struct{}
@@ -150,6 +155,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		theme.SetDarkMode(msg.IsDark())
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -157,7 +166,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.login, _ = updateLogin(m.login, msg)
 		m.tabBar, _ = updateTabBar(m.tabBar, msg)
 		m.statusBar, _ = updateStatusBar(m.statusBar, msg)
-		m.help, _ = updateHelp(m.help, msg)
+		m.help.SetWidth(msg.Width - 8)
 
 		contentHeight := msg.Height - theme.TabBarHeight - theme.StatusBarHeight
 		if contentHeight < 1 {
@@ -312,7 +321,6 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.voreskyTabInit = false
 		m.vnotifInit = false
 		m.screen = ScreenFeed
-		m.help.SetContext(components.HelpContextFeed)
 		m.updateTabBarForScreen()
 		cmds = append(cmds, m.fetchMainCharacter())
 		return m, tea.Batch(cmds...)
@@ -368,7 +376,6 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case vsetup.SkipMsg:
 		m.screen = m.prevScreen
-		m.help.SetContext(components.HelpContextFeed)
 		m.updateTabBarForScreen()
 		return m, nil
 
@@ -738,7 +745,7 @@ func (m App) navigateToThread(uri string) (App, tea.Cmd) {
 	}
 	m.threadModel = thread.NewThreadModel(m.client, uri, ownDID, m.width, contentHeight, m.imageCache)
 	m.threadModel.SetAvatarOverrides(m.buildAvatarOverrides())
-	m.help.SetContext(components.HelpContextThread)
+
 	return m, m.threadModel.Init()
 }
 
@@ -755,7 +762,7 @@ func (m App) navigateToProfile(did string) (App, tea.Cmd) {
 	}
 	m.profileModel = profile.NewProfileModel(m.client, did, ownDID, m.width, contentHeight, m.imageCache)
 	m.profileModel.SetAvatarOverrides(m.buildAvatarOverrides())
-	m.help.SetContext(components.HelpContextProfile)
+
 	return m, m.profileModel.Init()
 }
 
@@ -768,7 +775,7 @@ func (m App) navigateToCompose(mode compose.ComposeMode, parentPost interface{})
 	}
 	m.composeModel = compose.NewComposeModel(m.client, mode, nil, m.width, contentHeight)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
-	m.help.SetContext(components.HelpContextCompose)
+
 	return m, m.composeModel.Init()
 }
 
@@ -782,7 +789,7 @@ func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
 	client := m.client
 	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
-	m.help.SetContext(components.HelpContextCompose)
+
 	return m, func() tea.Msg {
 		post, err := client.GetPost(context.Background(), uri)
 		if err != nil {
@@ -796,39 +803,31 @@ func (m *App) updateTabBarForScreen() {
 	switch m.screen {
 	case ScreenFeed:
 		m.tabBar.SetActiveTab(components.TabFeed)
-		m.help.SetContext(components.HelpContextFeed)
 	case ScreenNotifications:
 		m.tabBar.SetActiveTab(components.TabNotifications)
-		m.help.SetContext(components.HelpContextNotifications)
 	case ScreenProfile:
 		m.tabBar.SetActiveTab(components.TabProfile)
-		m.help.SetContext(components.HelpContextProfile)
 	case ScreenSearch:
 		m.tabBar.SetActiveTab(components.TabSearch)
-		m.help.SetContext(components.HelpContextSearch)
 	case ScreenVoresky:
 		m.tabBar.SetActiveTab(components.TabVoresky)
-		m.help.SetContext(components.HelpContextVoresky)
 	case ScreenVoreskyNotifications:
 		m.tabBar.SetActiveTab(components.TabVoreskyNotifications)
-		m.help.SetContext(components.HelpContextVoreskyNotifications)
-	case ScreenThread:
-		m.help.SetContext(components.HelpContextThread)
-	case ScreenCompose:
-		m.help.SetContext(components.HelpContextCompose)
 	}
 }
 
 func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
+	gk := globalKeys
+	k := msg.String()
 
-	if key == "?" && m.screen != ScreenCompose && !m.showThemePicker {
+	if key.Matches(msg, gk.Help) && m.screen != ScreenCompose && !m.showThemePicker {
 		m.showHelp = !m.showHelp
 		return m, nil
 	}
 
 	if m.showHelp {
-		if key == "esc" || key == "q" || key == "?" {
+		k := msg.String()
+		if k == "esc" || k == "q" || k == "?" {
 			m.showHelp = false
 		}
 		return m, nil
@@ -841,7 +840,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		switch key {
+		switch k {
 		case "ctrl+c":
 			m.imageCache.Close()
 			return m, tea.Quit
@@ -887,7 +886,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.screen == ScreenLogin {
-		if key == "ctrl+c" || key == "q" {
+		if k =="ctrl+c" || k == "q" {
 			m.imageCache.Close()
 			return m, tea.Quit
 		}
@@ -897,7 +896,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.screen == ScreenVoreskySetup {
-		if key == "ctrl+c" {
+		if k =="ctrl+c" {
 			m.imageCache.Close()
 			return m, tea.Quit
 		}
@@ -906,7 +905,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	if key == "ctrl+c" || key == "q" {
+	if k =="ctrl+c" || k == "q" {
 		m.imageCache.Close()
 		return m, tea.Quit
 	}
@@ -918,7 +917,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.loggedIn && m.screen != ScreenLogin && m.screen != ScreenVoreskySetup && m.screen != ScreenCompose {
-		switch key {
+		switch k {
 		case "[":
 			m.cycleTheme(-1)
 			return m, nil
@@ -940,16 +939,16 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Tab switching takes priority (from main screens, not thread/compose)
 	if m.loggedIn && m.screen != ScreenThread && m.screen != ScreenCompose {
 		var cmds []tea.Cmd
-		switch key {
+		switch k {
 		case "1":
 			m.screen = ScreenFeed
 			m.tabBar.SetActiveTab(components.TabFeed)
-			m.help.SetContext(components.HelpContextFeed)
+
 			return m, nil
 		case "2":
 			m.screen = ScreenNotifications
 			m.tabBar.SetActiveTab(components.TabNotifications)
-			m.help.SetContext(components.HelpContextNotifications)
+
 			if m.client != nil && !m.notifInitialized {
 				m.notifInitialized = true
 				cmds = append(cmds, m.notifModel.Init())
@@ -958,7 +957,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "3":
 			m.screen = ScreenProfile
 			m.tabBar.SetActiveTab(components.TabProfile)
-			m.help.SetContext(components.HelpContextProfile)
+		
 			if m.client != nil && !m.selfProfileCreated {
 				m.selfProfileCreated = true
 				contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
@@ -973,7 +972,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "4":
 			m.screen = ScreenSearch
 			m.tabBar.SetActiveTab(components.TabSearch)
-			m.help.SetContext(components.HelpContextSearch)
+
 			return m, nil
 		case "5":
 			if m.voreskyClient != nil {
@@ -1004,7 +1003,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Esc in overlay screens: go back
-	if key == "esc" && m.loggedIn {
+	if k =="esc" && m.loggedIn {
 		if m.screen == ScreenThread || m.screen == ScreenProfile {
 			m.screen = m.prevScreen
 			m.prevScreen = ScreenFeed
@@ -1152,22 +1151,54 @@ func (m App) renderMainContent(height int) string {
 	}
 }
 
-func (m App) renderHelpOverlay(baseView tea.View) tea.View {
-	m.help.Visible = true
-	helpView := m.help.View()
+func (m App) activeKeyMap() help.KeyMap {
+	switch m.screen {
+	case ScreenFeed:
+		return m.feedModel.Keys()
+	case ScreenNotifications:
+		return m.notifModel.Keys()
+	case ScreenProfile:
+		return m.profileModel.Keys()
+	case ScreenThread:
+		return m.threadModel.Keys()
+	case ScreenSearch:
+		return m.searchModel.Keys()
+	case ScreenCompose:
+		return compose.DefaultKeyMap
+	case ScreenVoresky:
+		return m.voreskyTabModel.Keys()
+	case ScreenVoreskyNotifications:
+		return m.vnotifModel.Keys()
+	case ScreenLogin:
+		return login.DefaultKeyMap
+	default:
+		return globalKeys
+	}
+}
 
-	helpContent := helpView.Content
-	helpWidth := lipgloss.Width(helpContent)
-	helpHeight := lipgloss.Height(helpContent)
+func (m App) renderHelpOverlay(baseView tea.View) tea.View {
+	h := m.help
+	h.ShowAll = true
+	h.Styles = help.Styles{
+		ShortKey:       lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
+		ShortDesc:      lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		ShortSeparator: lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		FullKey:        lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
+		FullDesc:       lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		FullSeparator:  lipgloss.NewStyle().Foreground(theme.ColorMuted),
+	}
+	h.SetWidth(m.width - 8)
+
+	helpContent := h.View(m.activeKeyMap())
 
 	overlayStyle := lipgloss.NewStyle().
 		Foreground(theme.ColorText).
-		Background(theme.ColorSurface)
+		Background(theme.ColorSurface).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ColorPrimary)
 
-	overlay := overlayStyle.
-		Width(helpWidth).
-		Height(helpHeight).
-		Render(helpContent)
+	overlay := overlayStyle.Render(helpContent)
 
 	whitespaceStyle := lipgloss.NewStyle().Foreground(theme.ColorSurface)
 	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(whitespaceStyle)))
@@ -1279,10 +1310,7 @@ func updateStatusBar(m components.StatusBar, msg tea.Msg) (components.StatusBar,
 	return updated.(components.StatusBar), cmd
 }
 
-func updateHelp(m components.HelpModel, msg tea.Msg) (components.HelpModel, tea.Cmd) {
-	updated, cmd := m.Update(msg)
-	return updated.(components.HelpModel), cmd
-}
+
 
 func oauthSetup() (string, *auth.DPoPSigner, error) {
 	if err := config.EnsureDirs(); err != nil {

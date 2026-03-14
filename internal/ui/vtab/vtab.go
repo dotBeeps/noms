@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -31,51 +32,38 @@ type NavigateToCharacterMsg struct {
 	CharacterID string
 }
 
-var (
-	nameStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary).
-			Bold(true)
-
-	selectedNameStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorAccent).
-				Bold(true)
-
-	mainCharacterStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorAccent)
-
-	statusActiveStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorSuccess)
-
-	statusInactiveStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted)
-
-	universeStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorSecondary)
-
-	descriptionStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted)
-)
+func nameStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true)
+}
+func selectedNameStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true)
+}
+func mainCharacterStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorAccent) }
+func statusActiveStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorSuccess) }
+func statusInactiveStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted)
+}
+func universeStyle() lipgloss.Style     { return lipgloss.NewStyle().Foreground(theme.ColorSecondary) }
+func descriptionStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorMuted) }
 
 // VoreskyModel is the BubbleTea model for the Voresky character list tab.
 type VoreskyModel struct {
 	client          *voresky.VoreskyClient
 	characters      []voresky.Character
 	mainCharacterID string
-	selectedIndex   int
 	loading         bool
 	err             error
 	width           int
 	height          int
-	offset          int
 	imageCache      images.ImageRenderer
 	spinner         spinner.Model
+	keys            KeyMap
+	viewport        shared.ItemViewport
 }
 
 func NewVoreskyModel(client *voresky.VoreskyClient, width, height int, imageCache images.ImageRenderer) VoreskyModel {
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
+	headerHeight := 1
 	return VoreskyModel{
 		client:     client,
 		imageCache: imageCache,
@@ -83,6 +71,8 @@ func NewVoreskyModel(client *voresky.VoreskyClient, width, height int, imageCach
 		height:     height,
 		loading:    true,
 		spinner:    sp,
+		keys:       DefaultKeyMap,
+		viewport:   shared.NewItemViewport(width, max(1, height-headerHeight)),
 	}
 }
 
@@ -109,18 +99,21 @@ func (m VoreskyModel) fetchCharactersCmd() tea.Msg {
 func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.ensureSelectedVisible()
+		m.viewport.SetSize(msg.Width, max(1, msg.Height-1))
+		m.rebuildViewport()
 		return m, nil
 
 	case CharactersLoadedMsg:
 		m.loading = false
 		m.characters = msg.Characters
 		m.mainCharacterID = msg.MainCharacterID
+		m.rebuildViewport()
 		var cmds []tea.Cmd
 		if m.imageCache != nil && m.imageCache.Enabled() {
 			for _, char := range m.characters {
@@ -151,13 +144,16 @@ func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.characters) == 0 {
 			return m, nil
 		}
+		moved := false
 		switch msg.Button {
 		case tea.MouseWheelDown:
-			m.selectedIndex = min(m.selectedIndex+3, len(m.characters)-1)
+			moved = m.viewport.MoveDownN(3)
 		case tea.MouseWheelUp:
-			m.selectedIndex = max(m.selectedIndex-3, 0)
+			moved = m.viewport.MoveUpN(3)
 		}
-		m.ensureSelectedVisible()
+		if moved {
+			m.rebuildViewport()
+		}
 		return m, nil
 	}
 
@@ -165,38 +161,42 @@ func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m VoreskyModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
-		if m.selectedIndex < len(m.characters)-1 {
-			m.selectedIndex++
-			m.ensureSelectedVisible()
+	km := m.keys
+	switch {
+	case key.Matches(msg, km.Down):
+		if m.viewport.MoveDown() {
+			m.rebuildViewport()
 		}
 		return m, nil
 
-	case "k", "up":
-		if m.selectedIndex > 0 {
-			m.selectedIndex--
-			m.ensureSelectedVisible()
+	case key.Matches(msg, km.Up):
+		if m.viewport.MoveUp() {
+			m.rebuildViewport()
 		}
 		return m, nil
 
-	case "enter":
-		if m.selectedIndex < len(m.characters) {
-			id := m.characters[m.selectedIndex].ID
+	case key.Matches(msg, km.Open):
+		idx := m.viewport.SelectedIndex()
+		if idx < len(m.characters) {
+			id := m.characters[idx].ID
 			return m, func() tea.Msg { return NavigateToCharacterMsg{CharacterID: id} }
 		}
 		return m, nil
 
-	case "r":
+	case msg.String() == "r":
 		m.loading = true
 		m.characters = nil
-		m.selectedIndex = 0
-		m.offset = 0
 		m.err = nil
+		m.viewport.Reset()
 		return m, tea.Batch(m.fetchCharactersCmd, m.spinner.Tick)
 	}
 
 	return m, nil
+}
+
+// Keys returns the vtab key map for help rendering.
+func (m VoreskyModel) Keys() KeyMap {
+	return m.keys
 }
 
 // View implements tea.Model.
@@ -247,17 +247,7 @@ func (m VoreskyModel) View() tea.View {
 		return v
 	}
 
-	var rendered string
-	linesUsed := 0
-	for i := m.offset; i < len(m.characters); i++ {
-		char := m.renderCharacter(i, i == m.selectedIndex)
-		rendered += char
-		linesUsed += strings.Count(char, "\n")
-		if linesUsed >= availableHeight {
-			break
-		}
-	}
-	content.WriteString(rendered)
+	content.WriteString(m.viewport.View())
 
 	v := tea.NewView(content.String())
 	v.MouseMode = tea.MouseModeCellMotion
@@ -271,22 +261,22 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 	isMain := c.ID == m.mainCharacterID
 	mainIndicator := ""
 	if isMain {
-		mainIndicator = " " + mainCharacterStyle.Render("★")
+		mainIndicator = " " + mainCharacterStyle().Render("★")
 	}
 
 	var nameStr string
 	if selected {
-		nameStr = selectedNameStyle.Render(c.Name)
+		nameStr = selectedNameStyle().Render(c.Name)
 	} else {
-		nameStr = nameStyle.Render(c.Name)
+		nameStr = nameStyle().Render(c.Name)
 	}
 
 	var statusStr string
 	switch c.Status {
 	case "active":
-		statusStr = statusActiveStyle.Render("● active")
+		statusStr = statusActiveStyle().Render("● active")
 	default:
-		statusStr = statusInactiveStyle.Render("○ " + c.Status)
+		statusStr = statusInactiveStyle().Render("○ " + c.Status)
 	}
 
 	var avatarBlock string
@@ -306,12 +296,12 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 	_, _ = fmt.Fprintf(&b, "%s%s  %s\n", nameStr, mainIndicator, statusStr)
 
 	if c.FeaturedUniverse != "" {
-		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle.Render(c.FeaturedUniverse))
+		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle().Render(c.FeaturedUniverse))
 	}
 
 	if c.Description != "" {
 		desc := truncateText(c.Description, contentWidth)
-		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle.Render(desc))
+		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle().Render(desc))
 	}
 
 	if avatarBlock != "" {
@@ -321,10 +311,9 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 	return shared.RenderItemWithBorder(b.String(), selected, m.width)
 }
 
-func (m *VoreskyModel) ensureSelectedVisible() {
-	headerHeight := 1
-	m.offset = shared.EnsureSelectedVisible(len(m.characters), m.selectedIndex, m.offset, m.height-headerHeight, func(index int) string {
-		return m.renderCharacter(index, false)
+func (m *VoreskyModel) rebuildViewport() {
+	m.viewport.SetItems(len(m.characters), func(index int, selected bool) string {
+		return m.renderCharacter(index, selected)
 	})
 }
 

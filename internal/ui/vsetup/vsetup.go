@@ -38,68 +38,28 @@ const (
 	stateError
 )
 
-var (
-	titleStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary).
-			Bold(true).
-			Padding(1, 0)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	instructionStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted).
-				Padding(0, 2)
-
-	stepStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorText).
-			Padding(0, 4)
-
-	inputLabelStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorText).
-			Padding(0, 2)
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorError).
-			Bold(true).
-			Padding(1, 2)
-
-	loadingStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorAccent).
-			Padding(1, 2)
-
-	hintStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Padding(0, 2)
-)
-
-func syncStyles() {
-	titleStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorPrimary).
-		Bold(true).
-		Padding(1, 0)
-
-	instructionStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Padding(0, 2)
-
-	stepStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorText).
-		Padding(0, 4)
-
-	inputLabelStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorText).
-		Padding(0, 2)
-
-	errorStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorError).
-		Bold(true).
-		Padding(1, 2)
-
-	loadingStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorAccent).
-		Padding(1, 2)
-
-	hintStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Padding(0, 2)
+func titleStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(1, 0)
+}
+func instructionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 2)
+}
+func stepStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorText).Padding(0, 4)
+}
+func inputLabelStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorText).Padding(0, 2)
+}
+func errorStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorError).Bold(true).Padding(1, 2)
+}
+func loadingStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Padding(1, 2)
+}
+func hintStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 2)
 }
 
 // Model is the BubbleTea model for the Voresky cookie setup screen.
@@ -206,40 +166,38 @@ func (m Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	syncStyles()
-
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Voresky Connection"))
+	b.WriteString(titleStyle().Render("Voresky Connection"))
 	b.WriteString("\n\n")
 
 	switch m.state {
 	case stateInput, stateError:
-		b.WriteString(instructionStyle.Render("Paste your Voresky session cookie to connect."))
+		b.WriteString(instructionStyle().Render("Paste your Voresky session cookie to connect."))
 		b.WriteString("\n\n")
-		b.WriteString(stepStyle.Render("1. Open voresky.app in your browser and log in"))
+		b.WriteString(stepStyle().Render("1. Open voresky.app in your browser and log in"))
 		b.WriteString("\n")
-		b.WriteString(stepStyle.Render("2. Open DevTools (F12) → Application → Cookies"))
+		b.WriteString(stepStyle().Render("2. Open DevTools (F12) → Application → Cookies"))
 		b.WriteString("\n")
-		b.WriteString(stepStyle.Render("3. Copy the value of \"__Host-voresky_session\""))
+		b.WriteString(stepStyle().Render("3. Copy the value of \"__Host-voresky_session\""))
 		b.WriteString("\n\n")
 
 		if m.state == stateError && m.err != nil {
-			b.WriteString(errorStyle.Render("Error: " + m.err.Error()))
+			b.WriteString(errorStyle().Render("Error: " + m.err.Error()))
 			b.WriteString("\n\n")
-			b.WriteString(hintStyle.Render("Press Enter to try again, Esc to skip"))
+			b.WriteString(hintStyle().Render("Press Enter to try again, Esc to skip"))
 		} else {
-			b.WriteString(inputLabelStyle.Render("Cookie:"))
+			b.WriteString(inputLabelStyle().Render("Cookie:"))
 			b.WriteString("\n")
 			b.WriteString("  " + m.cookieInput.View())
 			b.WriteString("\n\n")
-			b.WriteString(hintStyle.Render("Press Enter to connect, Esc to skip"))
+			b.WriteString(hintStyle().Render("Press Enter to connect, Esc to skip"))
 		}
 
 	case stateValidating:
-		b.WriteString(loadingStyle.Render("Validating cookie..."))
+		b.WriteString(loadingStyle().Render("Validating cookie..."))
 		b.WriteString("\n")
-		b.WriteString(hintStyle.Render("Checking session with Voresky server"))
+		b.WriteString(hintStyle().Render("Checking session with Voresky server"))
 	}
 
 	return tea.NewView(b.String())

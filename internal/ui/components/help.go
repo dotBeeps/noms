@@ -10,44 +10,24 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
-var (
-	helpOverlayStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorText).
-				Background(theme.ColorSurface).
-				Padding(1, 2).
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(theme.ColorPrimary)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorAccent).
-			Bold(true)
-
-	helpDescStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted)
-
-	helpSectionStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted).
-				Italic(true)
-)
-
-func syncHelpStyles() {
-	helpOverlayStyle = lipgloss.NewStyle().
+func helpOverlayStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
 		Foreground(theme.ColorText).
 		Background(theme.ColorSurface).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.ColorPrimary)
-
-	helpKeyStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorAccent).
-		Bold(true)
-
-	helpDescStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted)
-
-	helpSectionStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Italic(true)
+}
+func helpKeyStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true)
+}
+func helpDescStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted)
+}
+func helpSectionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Italic(true)
 }
 
 type KeyBinding struct {
@@ -157,8 +137,6 @@ func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m HelpModel) View() tea.View {
-	syncHelpStyles()
-
 	if !m.Visible {
 		return tea.NewView("")
 	}
@@ -229,24 +207,24 @@ func (m HelpModel) View() tea.View {
 	lines = append(lines, "")
 
 	for _, kb := range viewBindings {
-		key := helpKeyStyle.Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
-		desc := helpDescStyle.Render(kb.Description)
+		key := helpKeyStyle().Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
+		desc := helpDescStyle().Render(kb.Description)
 		lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
 	}
 
 	if len(globals) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, helpSectionStyle.Render("  ── Global ──"))
+		lines = append(lines, helpSectionStyle().Render("  ── Global ──"))
 		lines = append(lines, "")
 		for _, kb := range globals {
-			key := helpKeyStyle.Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
-			desc := helpDescStyle.Render(kb.Description)
+			key := helpKeyStyle().Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
+			desc := helpDescStyle().Render(kb.Description)
 			lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
 		}
 	}
 
 	content := strings.Join(lines, "\n")
-	rendered := helpOverlayStyle.Render(content)
+	rendered := helpOverlayStyle().Render(content)
 
 	return tea.NewView(rendered)
 }

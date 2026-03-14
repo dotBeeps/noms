@@ -13,64 +13,25 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
-var (
-	titleStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary).
-			Bold(true).
-			Padding(1, 0)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	inputStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorText).
-			Padding(0, 1)
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorError).
-			Bold(true).
-			Padding(1, 0)
-
-	optionStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Padding(0, 2)
-
-	selectedOptionStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorOnPrimary).
-				Background(theme.ColorPrimary).
-				Bold(true).
-				Padding(0, 2)
-
-	loadingStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorAccent).
-			Padding(1, 0)
-)
-
-func syncStyles() {
-	titleStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorPrimary).
-		Bold(true).
-		Padding(1, 0)
-
-	inputStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorText).
-		Padding(0, 1)
-
-	errorStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorError).
-		Bold(true).
-		Padding(1, 0)
-
-	optionStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Padding(0, 2)
-
-	selectedOptionStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorOnPrimary).
-		Background(theme.ColorPrimary).
-		Bold(true).
-		Padding(0, 2)
-
-	loadingStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorAccent).
-		Padding(1, 0)
+func titleStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(1, 0)
+}
+func inputStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorText).Padding(0, 1)
+}
+func errorStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorError).Bold(true).Padding(1, 0)
+}
+func optionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 2)
+}
+func selectedOptionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true).Padding(0, 2)
+}
+func loadingStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Padding(1, 0)
 }
 
 type LoginState int
@@ -287,63 +248,62 @@ func (m LoginModel) handleErrorState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m LoginModel) View() tea.View {
-	syncStyles()
 
 	var content strings.Builder
 
-	content.WriteString(titleStyle.Render("noms - atproto + voresky TUI client"))
+	content.WriteString(titleStyle().Render("noms - atproto + voresky TUI client"))
 	content.WriteString("\n\n")
 
 	switch m.state {
 	case LoginStateInput, LoginStateChoosing:
-		content.WriteString(inputStyle.Render("Handle:"))
+		content.WriteString(inputStyle().Render("Handle:"))
 		content.WriteString("\n")
 		content.WriteString(m.handleInput.View())
 		content.WriteString("\n\n")
 
 		if m.state == LoginStateChoosing {
-			content.WriteString(optionStyle.Render("Choose authentication method:"))
+			content.WriteString(optionStyle().Render("Choose authentication method:"))
 			content.WriteString("\n")
 
 			options := []string{"Login with Browser (OAuth)", "Login with App Password"}
 			for i, opt := range options {
-				style := optionStyle
+				style := optionStyle()
 				if i == m.selectedOption {
-					style = selectedOptionStyle
+					style = selectedOptionStyle()
 				}
 				content.WriteString(style.Render(fmt.Sprintf("  %s", opt)))
 				content.WriteString("\n")
 			}
 			content.WriteString("\n")
-			content.WriteString(optionStyle.Render("Press Enter to select, Esc to go back"))
+			content.WriteString(optionStyle().Render("Press Enter to select, Esc to go back"))
 		} else {
-			content.WriteString(optionStyle.Render("Press Enter to continue or Tab to choose auth method"))
+			content.WriteString(optionStyle().Render("Press Enter to continue or Tab to choose auth method"))
 		}
 
 	case LoginStatePassword:
-		content.WriteString(inputStyle.Render("Handle:"))
+		content.WriteString(inputStyle().Render("Handle:"))
 		content.WriteString("\n")
-		content.WriteString(optionStyle.Render(fmt.Sprintf("  %s", m.handleInput.Value())))
+		content.WriteString(optionStyle().Render(fmt.Sprintf("  %s", m.handleInput.Value())))
 		content.WriteString("\n\n")
-		content.WriteString(inputStyle.Render("App Password:"))
+		content.WriteString(inputStyle().Render("App Password:"))
 		content.WriteString("\n")
 		content.WriteString(m.passwordInput.View())
 		content.WriteString("\n\n")
-		content.WriteString(optionStyle.Render("Press Enter to login, Esc to go back"))
+		content.WriteString(optionStyle().Render("Press Enter to login, Esc to go back"))
 
 	case LoginStateLoading:
-		content.WriteString(loadingStyle.Render("Authenticating..."))
+		content.WriteString(loadingStyle().Render("Authenticating..."))
 		content.WriteString("\n")
-		content.WriteString(optionStyle.Render("Please wait while we log you in."))
+		content.WriteString(optionStyle().Render("Please wait while we log you in."))
 
 	case LoginStateError:
 		errMsg := "An error occurred"
 		if m.err != nil {
 			errMsg = m.err.Error()
 		}
-		content.WriteString(errorStyle.Render(fmt.Sprintf("Error: %s", errMsg)))
+		content.WriteString(errorStyle().Render(fmt.Sprintf("Error: %s", errMsg)))
 		content.WriteString("\n\n")
-		content.WriteString(optionStyle.Render("Press Enter to try again"))
+		content.WriteString(optionStyle().Render("Press Enter to try again"))
 	}
 
 	return tea.NewView(content.String())

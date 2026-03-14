@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -117,18 +118,17 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		// Handle special keys before passing to textarea
-		switch msg.String() {
-		case "ctrl+enter":
+		km := DefaultKeyMap
+		switch {
+		case key.Matches(msg, km.Submit):
 			if m.loading {
 				return m, nil
 			}
 			m.loading = true
 			return m, m.submitPost()
 
-		case "esc":
+		case key.Matches(msg, km.Cancel):
 			if m.err != nil {
-				// Clear error on esc
 				m.err = nil
 				return m, nil
 			}

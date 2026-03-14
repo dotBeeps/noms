@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -10,30 +9,13 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
-var (
-	tabActiveStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorOnPrimary).
-			Background(theme.ColorPrimary).
-			Bold(true).
-			Padding(0, 2)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	tabInactiveStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted).
-				Background(theme.ColorSurfaceAlt).
-				Padding(0, 2)
-)
-
-func syncTabStyles() {
-	tabActiveStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorOnPrimary).
-		Background(theme.ColorPrimary).
-		Bold(true).
-		Padding(0, 2)
-
-	tabInactiveStyle = lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Background(theme.ColorSurfaceAlt).
-		Padding(0, 2)
+func tabActiveStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true).Padding(0, 2)
+}
+func tabInactiveStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Background(theme.ColorSurfaceAlt).Padding(0, 2)
 }
 
 type Tab int
@@ -82,8 +64,6 @@ func (m TabBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m TabBar) View() tea.View {
-	syncTabStyles()
-
 	var tabs []string
 
 	for i := Tab(0); i < TabCount; i++ {
@@ -95,22 +75,17 @@ func (m TabBar) View() tea.View {
 
 		var rendered string
 		if i == m.ActiveTab {
-			rendered = tabActiveStyle.Render(key + " " + name)
+			rendered = tabActiveStyle().Render(key + " " + name)
 		} else {
-			rendered = tabInactiveStyle.Render(key + " " + name)
+			rendered = tabInactiveStyle().Render(key + " " + name)
 		}
 		tabs = append(tabs, rendered)
 	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 
-	remaining := m.Width - lipgloss.Width(row)
-	if remaining > 0 {
-		filler := lipgloss.NewStyle().
-			Background(theme.ColorSurfaceAlt).
-			Render(strings.Repeat(" ", remaining))
-		row = row + filler
-	}
+	row = lipgloss.Place(m.Width, 1, lipgloss.Left, lipgloss.Top, row,
+		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(theme.ColorSurfaceAlt)))
 
 	return tea.NewView(row)
 }

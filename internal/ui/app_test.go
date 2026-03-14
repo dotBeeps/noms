@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/dotBeeps/noms/internal/auth"
-	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/login"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 	"github.com/dotBeeps/noms/internal/ui/vsetup"
@@ -184,12 +183,13 @@ func TestStatusBarIntegration(t *testing.T) {
 	}
 }
 
-func TestHelpContextChange(t *testing.T) {
+func TestHelpKeyMapChangesWithScreen(t *testing.T) {
 	t.Parallel()
 	app := NewApp()
 
-	if app.help.Context != components.HelpContextLogin {
-		t.Errorf("Expected help context to be Login initially, got %v", app.help.Context)
+	// On login screen, activeKeyMap returns login keys
+	if app.screen != ScreenLogin {
+		t.Errorf("Expected screen to be Login initially, got %v", app.screen)
 	}
 
 	session := &auth.Session{
@@ -204,8 +204,8 @@ func TestHelpContextChange(t *testing.T) {
 	updated, _ = app.Update(vsetup.SkipMsg{})
 	app = updated.(App)
 
-	if app.help.Context != components.HelpContextFeed {
-		t.Errorf("Expected help context to be Feed after voresky skip, got %v", app.help.Context)
+	if app.screen != ScreenFeed {
+		t.Errorf("Expected screen to be Feed after voresky skip, got %v", app.screen)
 	}
 }
 
