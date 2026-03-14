@@ -6,9 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 
 	"github.com/dotBeeps/noms/internal/api/bluesky"
@@ -50,52 +53,18 @@ type NavigateToProfileMsg struct {
 	DID string
 }
 
-// Styles for notification rendering
-var (
-	unreadDotStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorAccent)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	likeStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorAccent)
-
-	repostStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorSuccess)
-
-	followStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary)
-
-	mentionStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMention)
-
-	replyStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorHighlight)
-
-	quoteStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorTag)
-
-	authorStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorPrimary).
-			Bold(true)
-
-	contentPreviewStyle = lipgloss.NewStyle().
-				Foreground(theme.ColorMuted)
-
-	timeStyle = lipgloss.NewStyle().
-			Foreground(theme.ColorMuted)
-)
-
-func syncStyles() {
-	unreadDotStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
-	likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
-	repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
-	followStyle = lipgloss.NewStyle().Foreground(theme.ColorPrimary)
-	mentionStyle = lipgloss.NewStyle().Foreground(theme.ColorMention)
-	replyStyle = lipgloss.NewStyle().Foreground(theme.ColorHighlight)
-	quoteStyle = lipgloss.NewStyle().Foreground(theme.ColorTag)
-	authorStyle = lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true)
-	contentPreviewStyle = lipgloss.NewStyle().Foreground(theme.ColorMuted)
-	timeStyle = lipgloss.NewStyle().Foreground(theme.ColorMuted)
+func likeStyle() lipgloss.Style    { return lipgloss.NewStyle().Foreground(theme.ColorAccent) }
+func repostStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorSuccess) }
+func followStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorPrimary) }
+func mentionStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorMention) }
+func replyStyle() lipgloss.Style   { return lipgloss.NewStyle().Foreground(theme.ColorHighlight) }
+func quoteStyle() lipgloss.Style   { return lipgloss.NewStyle().Foreground(theme.ColorTag) }
+func authorStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true)
 }
+func contentPreviewStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorMuted) }
 
 type notifGroup struct {
 	reason  string
@@ -109,26 +78,24 @@ type notifGroup struct {
 
 type NotificationsModel struct {
 	notifications []*bsky.NotificationListNotifications_Notification
-	selected      int
 	cursor        string
 	loading       bool
 	unreadCount   int
 	width         int
 	height        int
-	offset        int
 	client        bluesky.BlueskyClient
 	imageCache    images.ImageRenderer
 	err           error
 	spinner       spinner.Model
 	groups        []notifGroup
+	keys          KeyMap
+	viewport      shared.ItemViewport
 }
 
 // NewNotificationsModel creates a new notifications model
 func NewNotificationsModel(client bluesky.BlueskyClient, width, height int, imageCache images.ImageRenderer) NotificationsModel {
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
+	headerHeight := 2
 	return NotificationsModel{
 		client:        client,
 		imageCache:    imageCache,
@@ -137,45 +104,47 @@ func NewNotificationsModel(client bluesky.BlueskyClient, width, height int, imag
 		notifications: make([]*bsky.NotificationListNotifications_Notification, 0),
 		loading:       true,
 		spinner:       sp,
+		keys:          DefaultKeyMap,
+		viewport:      shared.NewItemViewport(width, max(1, height-headerHeight)),
 	}
 }
 
 // Init implements tea.Model
 func (m NotificationsModel) Init() tea.Cmd {
 	return tea.Batch(
-		m.fetchNotificationsCmd,
-		m.fetchUnreadCountCmd,
+		m.fetchNotificationsCmd(),
+		m.fetchUnreadCountCmd(),
 		m.spinner.Tick,
 	)
 }
 
-func (m NotificationsModel) fetchNotificationsCmd() tea.Msg {
-	if m.client == nil {
-		return NotificationsErrorMsg{Err: fmt.Errorf("client not initialized")}
-	}
-
-	notifications, cursor, err := m.client.ListNotifications(context.Background(), m.cursor, 50)
-	if err != nil {
-		return NotificationsErrorMsg{Err: err}
-	}
-
-	return NotificationsLoadedMsg{
-		Notifications: notifications,
-		Cursor:        cursor,
+func (m NotificationsModel) fetchNotificationsCmd() tea.Cmd {
+	return func() tea.Msg {
+		if m.client == nil {
+			return NotificationsErrorMsg{Err: fmt.Errorf("client not initialized")}
+		}
+		notifications, cursor, err := m.client.ListNotifications(context.Background(), m.cursor, 50)
+		if err != nil {
+			return NotificationsErrorMsg{Err: err}
+		}
+		return NotificationsLoadedMsg{
+			Notifications: notifications,
+			Cursor:        cursor,
+		}
 	}
 }
 
-func (m NotificationsModel) fetchUnreadCountCmd() tea.Msg {
-	if m.client == nil {
-		return UnreadCountMsg{Count: 0}
+func (m NotificationsModel) fetchUnreadCountCmd() tea.Cmd {
+	return func() tea.Msg {
+		if m.client == nil {
+			return UnreadCountMsg{Count: 0}
+		}
+		count, err := m.client.GetUnreadCount(context.Background())
+		if err != nil {
+			return UnreadCountMsg{Count: 0}
+		}
+		return UnreadCountMsg{Count: count}
 	}
-
-	count, err := m.client.GetUnreadCount(context.Background())
-	if err != nil {
-		return UnreadCountMsg{Count: 0}
-	}
-
-	return UnreadCountMsg{Count: count}
 }
 
 func (m NotificationsModel) markAsReadCmd() tea.Cmd {
@@ -199,11 +168,14 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.SetSize(msg.Width, max(1, msg.Height-2))
+		m.rebuildViewport()
 		return m, nil
 
 	case NotificationsLoadedMsg:
@@ -215,6 +187,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notifications = append(m.notifications, msg.Notifications...)
 		}
 		m.buildGroups()
+		m.rebuildViewport()
 		if m.imageCache != nil && m.imageCache.Enabled() {
 			for _, notif := range msg.Notifications {
 				if notif.Author != nil && notif.Author.Avatar != nil {
@@ -245,23 +218,17 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
-			for range 3 {
-				if m.selected < len(m.groups)-1 {
-					m.selected++
-				}
+			if m.viewport.MoveDownN(3) {
+				m.rebuildViewport()
 			}
-			m.ensureSelectedVisible()
-			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
+			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
+				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick)
 			}
 		case tea.MouseWheelUp:
-			for range 3 {
-				if m.selected > 0 {
-					m.selected--
-				}
+			if m.viewport.MoveUpN(3) {
+				m.rebuildViewport()
 			}
-			m.ensureSelectedVisible()
 		}
 		return m, nil
 
@@ -273,37 +240,35 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
-		if m.selected < len(m.groups)-1 {
-			m.selected++
-			m.ensureSelectedVisible()
-			if m.selected >= len(m.groups)-3 && m.cursor != "" && !m.loading {
+	km := m.keys
+	switch {
+	case key.Matches(msg, km.Down):
+		if m.viewport.MoveDown() {
+			m.rebuildViewport()
+			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd, m.spinner.Tick)
+				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick)
 			}
 		}
 		return m, nil
 
-	case "k", "up":
-		if m.selected > 0 {
-			m.selected--
-			m.ensureSelectedVisible()
+	case key.Matches(msg, km.Up):
+		if m.viewport.MoveUp() {
+			m.rebuildViewport()
 		}
 		return m, nil
 
-	case "enter":
+	case key.Matches(msg, km.Open):
 		return m.handleNavigation()
 
-	case "r":
+	case key.Matches(msg, km.Refresh):
 		m.loading = true
 		m.cursor = ""
 		m.notifications = nil
 		m.groups = nil
-		m.selected = 0
-		m.offset = 0
+		m.viewport.Reset()
 		return m, tea.Batch(
-			m.fetchNotificationsCmd,
+			m.fetchNotificationsCmd(),
 			m.markAsReadCmd(),
 			m.spinner.Tick,
 		)
@@ -312,12 +277,16 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	return m, nil
 }
 
+// Keys returns the key map for this model.
+func (m NotificationsModel) Keys() KeyMap { return m.keys }
+
 func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
-	if len(m.groups) == 0 || m.selected >= len(m.groups) {
+	idx := m.viewport.SelectedIndex()
+	if len(m.groups) == 0 || idx >= len(m.groups) {
 		return m, nil
 	}
 
-	g := m.groups[m.selected]
+	g := m.groups[idx]
 
 	if g.reason == ReasonFollow && g.notif != nil && g.notif.Author != nil {
 		return m, func() tea.Msg {
@@ -342,7 +311,6 @@ func (m NotificationsModel) handleNavigation() (tea.Model, tea.Cmd) {
 }
 
 func (m NotificationsModel) View() tea.View {
-	syncStyles()
 
 	var content strings.Builder
 
@@ -376,18 +344,7 @@ func (m NotificationsModel) View() tea.View {
 		return mouseView(content.String())
 	}
 
-	availableHeight := max(0, m.height-headerHeight)
-	var rendered string
-	linesUsed := 0
-	for i := m.offset; i < len(m.groups); i++ {
-		group := m.renderGroup(i, i == m.selected)
-		rendered += group
-		linesUsed += strings.Count(group, "\n")
-		if linesUsed >= availableHeight {
-			break
-		}
-	}
-	content.WriteString(rendered)
+	content.WriteString(m.viewport.View())
 
 	if m.loading {
 		content.WriteString("\n")
@@ -397,10 +354,9 @@ func (m NotificationsModel) View() tea.View {
 	return mouseView(content.String())
 }
 
-func (m *NotificationsModel) ensureSelectedVisible() {
-	headerHeight := 2 // header line + blank line
-	m.offset = shared.EnsureSelectedVisible(len(m.groups), m.selected, m.offset, m.height-headerHeight, func(index int) string {
-		return m.renderGroup(index, false)
+func (m *NotificationsModel) rebuildViewport() {
+	m.viewport.SetItems(len(m.groups), func(index int, selected bool) string {
+		return m.renderGroup(index, selected)
 	})
 }
 
@@ -417,7 +373,7 @@ func (m *NotificationsModel) buildGroups() {
 				if notif.Author != nil {
 					name := notif.Author.Handle
 					if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
-						name = *notif.Author.DisplayName
+						name = ansi.Strip(*notif.Author.DisplayName)
 					}
 					g.authors = append(g.authors, name)
 				}
@@ -432,7 +388,7 @@ func (m *NotificationsModel) buildGroups() {
 		if notif.Author != nil {
 			authorName = notif.Author.Handle
 			if notif.Author.DisplayName != nil && *notif.Author.DisplayName != "" {
-				authorName = *notif.Author.DisplayName
+				authorName = ansi.Strip(*notif.Author.DisplayName)
 			}
 		}
 
@@ -465,7 +421,7 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 
 	unreadDot := ""
 	if !g.allRead {
-		unreadDot = unreadDotStyle.Render("●") + " "
+		unreadDot = theme.NotifUnreadDotStyle().Render("●") + " "
 	}
 
 	icon, action, style := getNotificationStyle(g.reason)
@@ -478,12 +434,12 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 		authorDisplay = fmt.Sprintf("%s and %d others", authorDisplay, g.count-1)
 	}
 
-	authorStyled := authorStyle.Render(authorDisplay)
+	authorStyled := authorStyle().Render(authorDisplay)
 	actionLine := fmt.Sprintf("%s%s %s", unreadDot, style.Render(icon), action)
 	_, _ = fmt.Fprintf(&b, "%s %s\n", authorStyled, actionLine)
 
 	if g.preview != "" {
-		_, _ = fmt.Fprintf(&b, "  %s\n", contentPreviewStyle.Render(g.preview))
+		_, _ = fmt.Fprintf(&b, "  %s\n", contentPreviewStyle().Render(g.preview))
 	}
 
 	var timeStr string
@@ -494,7 +450,7 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 			timeStr = g.notif.IndexedAt
 		}
 	}
-	_, _ = fmt.Fprintf(&b, "  %s", timeStyle.Render(timeStr))
+	_, _ = fmt.Fprintf(&b, "  %s", theme.StyleMuted.Render(timeStr))
 
 	contentStr := b.String()
 
@@ -523,17 +479,17 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 func getNotificationStyle(reason string) (icon, action string, style lipgloss.Style) {
 	switch reason {
 	case ReasonLike:
-		return "♡", "liked your post", likeStyle
+		return "♡", "liked your post", likeStyle()
 	case ReasonRepost:
-		return "⟲", "reposted your post", repostStyle
+		return "⟲", "reposted your post", repostStyle()
 	case ReasonFollow:
-		return "+", "followed you", followStyle
+		return "+", "followed you", followStyle()
 	case ReasonMention:
-		return "@", "mentioned you", mentionStyle
+		return "@", "mentioned you", mentionStyle()
 	case ReasonReply:
-		return "💬", "replied to your post", replyStyle
+		return "💬", "replied to your post", replyStyle()
 	case ReasonQuote:
-		return "❝", "quoted your post", quoteStyle
+		return "❝", "quoted your post", quoteStyle()
 	default:
 		return "•", reason, theme.StyleMuted
 	}
@@ -548,7 +504,7 @@ func getContentPreview(notif *bsky.NotificationListNotifications_Notification) s
 	// Type assert to different record types
 	switch record := notif.Record.Val.(type) {
 	case *bsky.FeedPost:
-		return truncateText(record.Text, 50)
+		return truncateText(ansi.Strip(record.Text), 50)
 	}
 
 	return ""

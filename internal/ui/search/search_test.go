@@ -357,51 +357,52 @@ func TestSearchResultNavigation(t *testing.T) {
 	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = client.searchPosts
+	m.rebuildViewport()
 	m.input.Blur() // Unfocus input to enable navigation
 
 	// Initially at index 0
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected initial selectedIndex to be 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected initial selectedIndex to be 0, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'j' to move down
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after 'j', got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after 'j', got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'down' arrow
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "down"})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex to be 2 after 'down', got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex to be 2 after 'down', got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'k' to move up
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after 'k', got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after 'k', got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'up' arrow
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "up"})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 after 'up', got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be 0 after 'up', got %d", m.viewport.SelectedIndex())
 	}
 
 	// Try to go above top - should stay at 0
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to stay at 0 at top, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0 at top, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -475,11 +476,12 @@ func TestSearchPagination(t *testing.T) {
 	m.mode = ModePosts
 	m.query = "test"
 	m.postResults = firstPage
+	m.rebuildViewport()
 	m.cursor = "next-page-cursor"
 	m.input.Blur()
 
 	// Move to the last item to trigger pagination
-	m.selectedIndex = len(firstPage) - 1
+	m.viewport.SetSelectedIndex(len(firstPage) - 1)
 
 	// Update mock for second page
 	client.searchPosts = secondPage
@@ -521,6 +523,7 @@ func TestSearchEnterNavigation(t *testing.T) {
 		m := NewSearchModel(client, 80, 24, nil)
 		m.mode = ModePosts
 		m.postResults = client.searchPosts
+		m.rebuildViewport()
 		m.input.Blur()
 
 		updated, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
@@ -548,6 +551,7 @@ func TestSearchEnterNavigation(t *testing.T) {
 		m := NewSearchModel(client, 80, 24, nil)
 		m.mode = ModePeople
 		m.actorResults = client.searchActors
+		m.rebuildViewport()
 		m.input.Blur()
 
 		updated, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
@@ -716,6 +720,7 @@ func TestSearchStatusBar(t *testing.T) {
 			createTestPostView("Test", "test.bsky.social", "Test", "at://1", "c1"),
 			createTestPostView("Test2", "test2.bsky.social", "Test2", "at://2", "c2"),
 		}
+		m.rebuildViewport()
 
 		v := m.View()
 		if !strings.Contains(v.Content, "2 results") {
@@ -734,13 +739,14 @@ func TestSearchMouseWheelDownScrolls(t *testing.T) {
 	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
+	m.rebuildViewport()
 	m.input.Blur()
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 3 {
-		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -754,14 +760,15 @@ func TestSearchMouseWheelUpScrolls(t *testing.T) {
 	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
+	m.rebuildViewport()
 	m.input.Blur()
-	m.selectedIndex = 5
+	m.viewport.SetSelectedIndex(5)
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(SearchModel)
 
-	if m.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -775,19 +782,20 @@ func TestSearchMouseWheelBoundsCheck(t *testing.T) {
 	m := NewSearchModel(client, 80, 24, nil)
 	m.mode = ModePosts
 	m.postResults = posts
+	m.rebuildViewport()
 	m.input.Blur()
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(SearchModel)
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex capped at 1, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex capped at 1, got %d", m.viewport.SelectedIndex())
 	}
 
-	m.selectedIndex = 0
+	m.viewport.SetSelectedIndex(0)
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(SearchModel)
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 

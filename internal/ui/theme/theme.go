@@ -292,6 +292,7 @@ var paletteAliases = map[string]string{
 }
 
 var activePalette = palettes["default"]
+var isDark = true // assume dark until terminal reports otherwise
 
 // Color palette constants
 var (
@@ -371,6 +372,18 @@ func AvailableThemes() []string {
 
 func ActiveTheme() string {
 	return activePalette.Name
+}
+
+// IsDark reports whether the terminal has a dark background.
+func IsDark() bool {
+	return isDark
+}
+
+// SetDarkMode stores the terminal background darkness and re-applies the
+// active theme so that any LightDark-aware colors are updated.
+func SetDarkMode(dark bool) string {
+	isDark = dark
+	return Apply(activePalette.Name)
 }
 
 func SurfaceCode() string {

@@ -471,8 +471,8 @@ func TestNotificationSelection(t *testing.T) {
 	})
 	m = updated.(NotificationsModel)
 
-	if m.selected != 0 {
-		t.Errorf("Expected initial selection at 0, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected initial selection at 0, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'j' to move down
@@ -662,8 +662,8 @@ func TestNotificationMouseWheelDownScrolls(t *testing.T) {
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(NotificationsModel)
 
-	if m.selected != 3 {
-		t.Errorf("Expected selected=3 after mouse wheel down, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selected=3 after mouse wheel down, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -679,13 +679,13 @@ func TestNotificationMouseWheelUpScrolls(t *testing.T) {
 	m := NewNotificationsModel(mockClient, 80, 24, nil)
 	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
 	m = updated.(NotificationsModel)
-	m.selected = 6
+	m.viewport.SetSelectedIndex(6)
 
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(NotificationsModel)
 
-	if m.selected != 3 {
-		t.Errorf("Expected selected=3 after mouse wheel up from 6, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selected=3 after mouse wheel up from 6, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -703,15 +703,15 @@ func TestNotificationMouseWheelBoundsCheck(t *testing.T) {
 
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(NotificationsModel)
-	if m.selected != 1 {
-		t.Errorf("Expected selected capped at 1, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selected capped at 1, got %d", m.viewport.SelectedIndex())
 	}
 
-	m.selected = 0
+	m.viewport.SetSelectedIndex(0)
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(NotificationsModel)
-	if m.selected != 0 {
-		t.Errorf("Expected selected to stay at 0, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selected to stay at 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -1120,26 +1120,26 @@ func TestGroupingNavigationBounds(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "j"})
 	m = updated.(NotificationsModel)
-	if m.selected != 1 {
-		t.Errorf("Expected selected to be 1 after j, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selected to be 1 after j, got %d", m.viewport.SelectedIndex())
 	}
 
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "j"})
 	m = updated.(NotificationsModel)
-	if m.selected != 1 {
-		t.Errorf("Expected selected to stay at 1 at end, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selected to stay at 1 at end, got %d", m.viewport.SelectedIndex())
 	}
 
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(NotificationsModel)
-	if m.selected != 0 {
-		t.Errorf("Expected selected to be 0 after k, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selected to be 0 after k, got %d", m.viewport.SelectedIndex())
 	}
 
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(NotificationsModel)
-	if m.selected != 0 {
-		t.Errorf("Expected selected to stay at 0 at start, got %d", m.selected)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selected to stay at 0 at start, got %d", m.viewport.SelectedIndex())
 	}
 }
 

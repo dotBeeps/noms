@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -56,7 +57,6 @@ type SearchModel struct {
 	mode            SearchMode
 	postResults     []*bsky.FeedDefs_PostView
 	actorResults    []*bsky.ActorDefs_ProfileView
-	selectedIndex   int
 	cursor          string
 	loading         bool
 	lastKeystroke   time.Time
@@ -64,10 +64,11 @@ type SearchModel struct {
 	height          int
 	query           string
 	err             error
-	offset          int // For scrolling
 	spinner         spinner.Model
 	imageCache      *images.Cache
 	avatarOverrides map[string]string
+	keys            KeyMap
+	viewport        shared.ItemViewport
 }
 
 func NewSearchModel(client bluesky.BlueskyClient, width, height int, cache *images.Cache) SearchModel {
@@ -76,29 +77,30 @@ func NewSearchModel(client bluesky.BlueskyClient, width, height int, cache *imag
 	ti.Focus()
 	ti.Prompt = "🔍 "
 
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
 
+	contentHeight := max(1, height-5)
 	return SearchModel{
-		client:        client,
-		input:         ti,
-		mode:          ModePosts,
-		postResults:   []*bsky.FeedDefs_PostView{},
-		actorResults:  []*bsky.ActorDefs_ProfileView{},
-		selectedIndex: 0,
-		loading:       false,
-		width:         width,
-		height:        height,
-		spinner:       sp,
-		imageCache:    cache,
+		client:       client,
+		input:        ti,
+		mode:         ModePosts,
+		postResults:  []*bsky.FeedDefs_PostView{},
+		actorResults: []*bsky.ActorDefs_ProfileView{},
+		loading:      false,
+		width:        width,
+		height:       height,
+		spinner:      sp,
+		imageCache:   cache,
+		keys:         DefaultKeyMap,
+		viewport:     shared.NewItemViewport(width, contentHeight),
 	}
 }
 
 func (m *SearchModel) SetAvatarOverrides(overrides map[string]string) {
 	m.avatarOverrides = overrides
 }
+
+func (m SearchModel) Keys() KeyMap { return m.keys }
 
 func (m SearchModel) Init() tea.Cmd {
 	return textinput.Blink
@@ -112,38 +114,39 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.input.SetWidth(m.width - 4)
+		m.viewport.SetSize(m.width, max(1, m.height-5))
+		m.rebuildViewport()
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "esc":
+		km := m.keys
+		switch {
+		case msg.String() == "esc":
 			if m.input.Focused() {
 				m.input.Blur()
 			} else {
-				// Clear search
 				m.input.SetValue("")
 				m.query = ""
 				m.postResults = nil
 				m.actorResults = nil
 				m.cursor = ""
-				m.selectedIndex = 0
+				m.viewport.Reset()
 				m.err = nil
 			}
 			return m, nil
 
-		case "/":
+		case key.Matches(msg, km.Focus):
 			if !m.input.Focused() {
 				m.input.Focus()
 				return m, textinput.Blink
 			}
 
-		case "tab":
+		case key.Matches(msg, km.Toggle):
 			if m.mode == ModePosts {
 				m.mode = ModePeople
 			} else {
 				m.mode = ModePosts
 			}
-			m.selectedIndex = 0
-			m.offset = 0
+			m.viewport.Reset()
 			m.cursor = ""
 			m.postResults = nil
 			m.actorResults = nil
@@ -153,42 +156,37 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "enter":
+		case key.Matches(msg, km.Open):
 			if m.input.Focused() {
 				m.input.Blur()
 				return m, nil
 			}
-			// Navigate to selected
-			if m.mode == ModePosts && len(m.postResults) > 0 && m.selectedIndex < len(m.postResults) {
-				post := m.postResults[m.selectedIndex]
+			idx := m.viewport.SelectedIndex()
+			if m.mode == ModePosts && len(m.postResults) > 0 && idx < len(m.postResults) {
+				post := m.postResults[idx]
 				return m, func() tea.Msg { return feed.ViewThreadMsg{URI: post.Uri} }
-			} else if m.mode == ModePeople && len(m.actorResults) > 0 && m.selectedIndex < len(m.actorResults) {
-				actor := m.actorResults[m.selectedIndex]
+			} else if m.mode == ModePeople && len(m.actorResults) > 0 && idx < len(m.actorResults) {
+				actor := m.actorResults[idx]
 				return m, func() tea.Msg { return ViewProfileMsg{DID: actor.Did} }
 			}
 
-		case "up", "k":
+		case key.Matches(msg, km.Up):
 			if !m.input.Focused() {
-				if m.selectedIndex > 0 {
-					m.selectedIndex--
+				if m.viewport.MoveUp() {
+					m.rebuildViewport()
 				}
-				m.ensureSelectedVisible()
 				return m, nil
 			}
 
-		case "down", "j":
+		case key.Matches(msg, km.Down):
 			if !m.input.Focused() {
-				limit := len(m.postResults)
-				if m.mode == ModePeople {
-					limit = len(m.actorResults)
+				if m.viewport.MoveDown() {
+					m.rebuildViewport()
 				}
-				if m.selectedIndex < limit-1 {
-					m.selectedIndex++
-				} else if m.cursor != "" && !m.loading {
+				if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 					m.loading = true
 					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
 				}
-				m.ensureSelectedVisible()
 				return m, nil
 			}
 		}
@@ -204,29 +202,19 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		if !m.input.Focused() {
 			mouse := msg.Mouse()
-			limit := len(m.postResults)
-			if m.mode == ModePeople {
-				limit = len(m.actorResults)
-			}
 			switch mouse.Button {
 			case tea.MouseWheelDown:
-				for range 3 {
-					if m.selectedIndex < limit-1 {
-						m.selectedIndex++
-					}
+				if m.viewport.MoveDownN(3) {
+					m.rebuildViewport()
 				}
-				m.ensureSelectedVisible()
-				if m.selectedIndex >= limit-3 && m.cursor != "" && !m.loading {
+				if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 					m.loading = true
 					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
 				}
 			case tea.MouseWheelUp:
-				for range 3 {
-					if m.selectedIndex > 0 {
-						m.selectedIndex--
-					}
+				if m.viewport.MoveUpN(3) {
+					m.rebuildViewport()
 				}
-				m.ensureSelectedVisible()
 			}
 			return m, nil
 		}
@@ -237,8 +225,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if q != m.query {
 				m.query = q
 				m.cursor = ""
-				m.selectedIndex = 0
-				m.offset = 0
+				m.viewport.Reset()
 				m.postResults = nil
 				m.actorResults = nil
 				if q != "" {
@@ -285,12 +272,13 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.ensureSelectedVisible()
+		m.rebuildViewport()
 		if len(fetchCmds) > 0 {
 			return m, tea.Batch(fetchCmds...)
 		}
 
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case SearchErrorMsg:
@@ -337,12 +325,20 @@ func (m SearchModel) performSearch(query, cursor string, mode SearchMode, append
 	}
 }
 
-func (m *SearchModel) contentHeight() int {
-	availableHeight := m.height - 5
-	if availableHeight < 1 {
-		return 1
+func (m *SearchModel) rebuildViewport() {
+	if m.mode == ModePosts {
+		m.viewport.SetItems(len(m.postResults), func(index int, selected bool) string {
+			if index < 0 || index >= len(m.postResults) {
+				return ""
+			}
+			fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[index]}
+			return feed.RenderPost(fvp, m.width, selected, m.imageCache, m.avatarOverrides)
+		})
+	} else {
+		m.viewport.SetItems(len(m.actorResults), func(index int, selected bool) string {
+			return m.renderPerson(index, selected)
+		})
 	}
-	return availableHeight
 }
 
 func (m SearchModel) renderPerson(index int, selected bool) string {
@@ -372,29 +368,6 @@ func (m SearchModel) renderPerson(index int, selected bool) string {
 	return shared.RenderItemWithBorder(line, selected, m.width)
 }
 
-func (m *SearchModel) ensureSelectedVisible() {
-	var itemCount int
-	var renderFn func(int) string
-
-	if m.mode == ModePosts {
-		itemCount = len(m.postResults)
-		renderFn = func(i int) string {
-			if i < 0 || i >= len(m.postResults) {
-				return ""
-			}
-			fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[i]}
-			return feed.RenderPost(fvp, m.width, false, m.imageCache, m.avatarOverrides)
-		}
-	} else {
-		itemCount = len(m.actorResults)
-		renderFn = func(i int) string {
-			return m.renderPerson(i, false)
-		}
-	}
-
-	m.offset = shared.EnsureSelectedVisible(itemCount, m.selectedIndex, m.offset, m.contentHeight(), renderFn)
-}
-
 func (m SearchModel) View() tea.View {
 	var b strings.Builder
 
@@ -413,7 +386,7 @@ func (m SearchModel) View() tea.View {
 		peopleTab = theme.StyleTabActive.Render(peopleTab)
 	}
 	_, _ = fmt.Fprintf(&b, "%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab)
-	availableHeight := m.contentHeight()
+	availableHeight := max(1, m.height-5)
 
 	// Content area
 	if m.err != nil {
@@ -427,33 +400,7 @@ func (m SearchModel) View() tea.View {
 	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
 		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query))))
 	} else {
-		// List results
-		if m.mode == ModePosts {
-			var rendered string
-			linesUsed := 0
-			for i := m.offset; i < len(m.postResults); i++ {
-				fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[i]}
-				item := feed.RenderPost(fvp, m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
-				rendered += item
-				linesUsed += strings.Count(item, "\n")
-				if linesUsed >= availableHeight {
-					break
-				}
-			}
-			b.WriteString(rendered)
-		} else {
-			var rendered string
-			linesUsed := 0
-			for i := m.offset; i < len(m.actorResults); i++ {
-				item := m.renderPerson(i, i == m.selectedIndex)
-				rendered += item
-				linesUsed += strings.Count(item, "\n")
-				if linesUsed >= availableHeight {
-					break
-				}
-			}
-			b.WriteString(rendered)
-		}
+		b.WriteString(m.viewport.View())
 	}
 
 	b.WriteString("\n")

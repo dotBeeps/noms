@@ -147,6 +147,7 @@ func TestFeedRenderSinglePost(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 
 	v := m.View()
@@ -176,6 +177,7 @@ func TestFeedRenderMultiplePosts(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 
 	v := m.View()
@@ -332,26 +334,27 @@ func TestScrollDown(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected initial selectedIndex to be 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected initial selectedIndex to be 0, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'j' to scroll down
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after j, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after j, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'down' arrow
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "down"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex to be 2 after down, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex to be 2 after down, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -368,31 +371,32 @@ func TestScrollUp(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
-	m.selectedIndex = 2
+	m.rebuildViewport()
+	m.viewport.SetSelectedIndex(2)
 	m.loading = false
 
 	// Press 'k' to scroll up
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after k, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after k, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press 'up' arrow
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "up"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 after up, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be 0 after up, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Try to scroll up at top - should stay at 0
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to stay at 0 at top, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0 at top, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -412,11 +416,12 @@ func TestScrollPagination(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts[:20]
+	m.rebuildViewport()
 	m.cursor = "next-page-cursor"
 	m.loading = false
 
 	// Scroll to near bottom (position 17, which is 20-3)
-	m.selectedIndex = 17
+	m.viewport.SetSelectedIndex(17)
 
 	// Press down to trigger pagination (selectedIndex becomes 18, which is >= 20-3)
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
@@ -437,6 +442,7 @@ func TestEmptyFeed(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = nil
+	m.rebuildViewport()
 	m.loading = false
 
 	v := m.View()
@@ -475,6 +481,7 @@ func TestPostSelection(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 
 	// First post should be selected (accent-colored left border)
@@ -488,16 +495,16 @@ func TestPostSelection(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Move selection up
 	updated, _ = m.Update(tea.KeyPressMsg{Text: "k"})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -512,6 +519,7 @@ func TestPostActionKeybinds(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 
 	// Test 'enter' - ViewThreadMsg
@@ -588,9 +596,9 @@ func TestFeedRefresh(t *testing.T) {
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("Old post", "old.bsky.social", "Old", "at://old", "oldcid"),
 	}
-	m.selectedIndex = 5
-	m.offset = 3
+	m.rebuildViewport()
 	m.loading = false
+	m.err = errors.New("stale") // 'r' triggers refresh only when err != nil
 
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
 	m = updated.(FeedModel)
@@ -606,11 +614,8 @@ func TestFeedRefresh(t *testing.T) {
 	updated, _ = m.Update(FeedRefreshMsg{})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be reset to 0, got %d", m.selectedIndex)
-	}
-	if m.offset != 0 {
-		t.Errorf("Expected offset to be reset to 0, got %d", m.offset)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be reset to 0, got %d", m.viewport.SelectedIndex())
 	}
 	if !m.loading {
 		t.Error("Expected loading to be true during refresh")
@@ -770,6 +775,7 @@ func TestFeedLoadedMsgAppend(t *testing.T) {
 	m.posts = []*bsky.FeedDefs_FeedViewPost{
 		createTestPost("First", "a.bsky.social", "A", "at://1", "c1"),
 	}
+	m.rebuildViewport()
 	m.cursor = "existing"
 
 	newPosts := []*bsky.FeedDefs_FeedViewPost{
@@ -797,6 +803,7 @@ func TestDeleteFirstDPress(t *testing.T) {
 
 	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 	// Ensure post author DID matches ownDID
 	m.posts[0].Post.Author.Did = "did:plc:testuser"
@@ -828,6 +835,7 @@ func TestDeleteSecondDPress(t *testing.T) {
 
 	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:testuser"
 
@@ -865,6 +873,7 @@ func TestDeleteCancelOnOtherKey(t *testing.T) {
 
 	m := NewFeedModel(client, "did:plc:testuser", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:testuser"
 
@@ -895,6 +904,7 @@ func TestDeleteNotOwnPost(t *testing.T) {
 
 	m := NewFeedModel(client, "did:plc:me", 80, 24, nil)
 	m.posts = client.timelinePosts
+	m.rebuildViewport()
 	m.loading = false
 	m.posts[0].Post.Author.Did = "did:plc:other"
 
@@ -920,8 +930,9 @@ func TestDeletePostResultRemovesPost(t *testing.T) {
 		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
 		createTestPost("Post 3", "c.bsky.social", "C", "at://post3", "c3"),
 	}
+	m.rebuildViewport()
 	m.loading = false
-	m.selectedIndex = 1
+	m.viewport.SetSelectedIndex(1)
 
 	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
 	m = updated.(FeedModel)
@@ -947,8 +958,9 @@ func TestDeletePostResultAdjustsIndex(t *testing.T) {
 		createTestPost("Post 1", "a.bsky.social", "A", "at://post1", "c1"),
 		createTestPost("Post 2", "b.bsky.social", "B", "at://post2", "c2"),
 	}
+	m.rebuildViewport()
 	m.loading = false
-	m.selectedIndex = 1 // On the last post
+	m.viewport.SetSelectedIndex(1) // On the last post
 
 	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
 	m = updated.(FeedModel)
@@ -956,8 +968,8 @@ func TestDeletePostResultAdjustsIndex(t *testing.T) {
 	if len(m.posts) != 1 {
 		t.Fatalf("Expected 1 post after delete, got %d", len(m.posts))
 	}
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex adjusted to 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex adjusted to 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -973,13 +985,14 @@ func TestFeedMouseWheelDownScrolls(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
+	m.rebuildViewport()
 	m.loading = false
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 3 {
-		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -993,14 +1006,15 @@ func TestFeedMouseWheelUpScrolls(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
+	m.rebuildViewport()
 	m.loading = false
-	m.selectedIndex = 5
+	m.viewport.SetSelectedIndex(5)
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(FeedModel)
 
-	if m.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -1014,21 +1028,22 @@ func TestFeedMouseWheelBoundsCheck(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
+	m.rebuildViewport()
 	m.loading = false
 
 	// Scroll down — should cap at last post (index 1)
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(FeedModel)
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex capped at 1, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex capped at 1, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Scroll up from 0 — should stay at 0
-	m.selectedIndex = 0
+	m.viewport.SetSelectedIndex(0)
 	updated, _ = m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(FeedModel)
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 

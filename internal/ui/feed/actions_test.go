@@ -66,6 +66,7 @@ func TestLikePost(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "l"})
@@ -114,6 +115,7 @@ func TestUnlikePost(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "l"})
@@ -159,6 +161,7 @@ func TestRepostFromFeed(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "t"})
@@ -198,6 +201,7 @@ func TestUnRepostFromFeed(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "t"})
@@ -239,8 +243,9 @@ func TestReplyOpensCompose(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
-	m.selectedIndex = 0
+	m.viewport.SetSelectedIndex(0)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
 	if cmd == nil {
@@ -270,6 +275,7 @@ func TestOptimisticUpdate(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "l"})
@@ -297,6 +303,7 @@ func TestOptimisticRevertOnError(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "l"})
@@ -333,8 +340,9 @@ func TestViewThreadNavigation(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = posts
+	m.rebuildViewport()
 	m.loading = false
-	m.selectedIndex = 1
+	m.viewport.SetSelectedIndex(1)
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
 	if cmd == nil {
@@ -360,6 +368,7 @@ func TestLikeResultMsgUpdatesRealURI(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "l"})
@@ -388,6 +397,7 @@ func TestRepostResultMsgUpdatesRealURI(t *testing.T) {
 
 	m := NewFeedModel(client, "", 80, 24, nil)
 	m.posts = []*bsky.FeedDefs_FeedViewPost{post}
+	m.rebuildViewport()
 	m.loading = false
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "t"})

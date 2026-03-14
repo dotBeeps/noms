@@ -6,12 +6,22 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
+
+// Style factory functions for facet segment rendering in the hot post render path.
+func mentionSegStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorMention) }
+func linkSegStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Underline(true).Foreground(theme.ColorLink)
+}
+func tagSegStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorTag) }
+func textSegStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorText) }
 
 // FormatRelativeTime converts a timestamp to a human-readable relative time string.
 // Returns formats like "2m", "1h", "3d", or "Jan 5" for older dates.
@@ -109,7 +119,7 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 	displayName := post.Post.Author.Handle
 	if post.Post.Author.DisplayName != nil && *post.Post.Author.DisplayName != "" {
-		displayName = *post.Post.Author.DisplayName
+		displayName = ansi.Strip(*post.Post.Author.DisplayName)
 	}
 	authorName := theme.StyleHeader.Render(displayName)
 	handle := theme.StyleMuted.Render("@" + post.Post.Author.Handle)
@@ -151,15 +161,16 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 			segments := bluesky.ParseFacets(record.Text, record.Facets)
 			var body strings.Builder
 			for _, seg := range segments {
+				segText := ansi.Strip(seg.Text)
 				switch seg.Type {
 				case bluesky.SegmentMention:
-					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorMention).Render(seg.Text))
+					body.WriteString(mentionSegStyle().Render(segText))
 				case bluesky.SegmentLink:
-					body.WriteString(lipgloss.NewStyle().Underline(true).Foreground(theme.ColorLink).Render(seg.Text))
+					body.WriteString(linkSegStyle().Render(segText))
 				case bluesky.SegmentTag:
-					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorTag).Render(seg.Text))
+					body.WriteString(tagSegStyle().Render(segText))
 				default:
-					body.WriteString(lipgloss.NewStyle().Foreground(theme.ColorText).Render(seg.Text))
+					body.WriteString(textSegStyle().Render(segText))
 				}
 			}
 			if avatarStr != "" {
@@ -172,7 +183,9 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 
 	if avatarStr != "" {
-		completeContent := nameLine + "\n" + strings.Join(bodyLines, "\n")
+		avatarContentWidth := max(10, width-2-shared.AvatarCols-1)
+		paddedNameLine := lipgloss.NewStyle().Width(avatarContentWidth).Render(nameLine)
+		completeContent := paddedNameLine + "\n" + strings.Join(bodyLines, "\n")
 		b.WriteString(shared.JoinWithGutter(avatarStr, completeContent, " ", shared.AvatarCols))
 		b.WriteString("\n")
 	} else {
@@ -299,7 +312,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		text := ""
 		if vr.Value != nil {
 			if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
-				text = truncateStr(fp.Text, 80)
+				text = truncateStr(ansi.Strip(fp.Text), 80)
 			}
 		}
 		return embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text))
@@ -340,7 +353,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 			text := ""
 			if vr.Value != nil {
 				if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
-					text = truncateStr(fp.Text, 80)
+					text = truncateStr(ansi.Strip(fp.Text), 80)
 				}
 			}
 			parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text)))

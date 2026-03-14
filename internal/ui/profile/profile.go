@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -28,8 +29,6 @@ type ProfileModel struct {
 	authorFeed []*bsky.FeedDefs_FeedViewPost
 	cursor     string
 
-	selectedIndex   int
-	offset          int
 	loading         bool
 	loadingFeed     bool
 	err             error
@@ -39,14 +38,13 @@ type ProfileModel struct {
 	confirmDelete   int // -1 = none
 	imageCache      *images.Cache
 	avatarOverrides map[string]string
+	keys            KeyMap
+	viewport        shared.ItemViewport
 }
 
 // NewProfileModel creates a new profile model.
 func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width, height int, cache *images.Cache) ProfileModel {
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
 	return ProfileModel{
 		client:        client,
 		viewDID:       viewDID,
@@ -56,10 +54,11 @@ func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width
 		height:        height,
 		loading:       true,
 		loadingFeed:   true,
-		selectedIndex: 0,
 		spinner:       sp,
 		confirmDelete: -1,
 		imageCache:    cache,
+		keys:          DefaultKeyMap,
+		viewport:      shared.NewItemViewport(width, height),
 	}
 }
 
@@ -167,10 +166,13 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.SetSize(msg.Width, msg.Height)
+		m.rebuildViewport()
 
 	case ProfileLoadedMsg:
 		m.profile = msg.Profile
 		m.loading = false
+		m.rebuildViewport() // header height changed
 
 	case AuthorFeedLoadedMsg:
 		m.loadingFeed = false
@@ -194,11 +196,13 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.rebuildViewport()
 		if len(fetchCmds) > 0 {
 			return m, tea.Batch(fetchCmds...)
 		}
 
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case ProfileErrorMsg:
@@ -275,39 +279,32 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, p := range m.authorFeed {
 			if p.Post != nil && p.Post.Uri == msg.URI {
 				m.authorFeed = append(m.authorFeed[:i], m.authorFeed[i+1:]...)
-				if m.selectedIndex >= len(m.authorFeed) && m.selectedIndex > 0 {
-					m.selectedIndex--
-				}
-				if m.offset > 0 && m.offset >= len(m.authorFeed) {
-					m.offset = max(0, len(m.authorFeed)-1)
+				idx := m.viewport.SelectedIndex()
+				if idx >= len(m.authorFeed) && idx > 0 {
+					m.viewport.SetSelectedIndex(len(m.authorFeed) - 1)
 				}
 				break
 			}
 		}
 		m.confirmDelete = -1
+		m.rebuildViewport()
 		return m, nil
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
-			for range 3 {
-				if m.selectedIndex < len(m.authorFeed)-1 {
-					m.selectedIndex++
-				}
+			if m.viewport.MoveDownN(3) {
+				m.rebuildViewport()
 			}
-			m.ensureSelectedVisible()
-			if m.selectedIndex >= len(m.authorFeed)-3 && m.cursor != "" && !m.loadingFeed {
+			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loadingFeed {
 				m.loadingFeed = true
 				return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
 			}
 		case tea.MouseWheelUp:
-			for range 3 {
-				if m.selectedIndex > 0 {
-					m.selectedIndex--
-				}
+			if m.viewport.MoveUpN(3) {
+				m.rebuildViewport()
 			}
-			m.ensureSelectedVisible()
 		}
 		return m, nil
 
@@ -319,45 +316,44 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
+	km := m.keys
 
-	if key != "d" {
+	if !key.Matches(msg, km.Delete) {
 		m.confirmDelete = -1
 	}
 
-	switch key {
-	case "j", "down":
-		if m.selectedIndex < len(m.authorFeed)-1 {
-			m.selectedIndex++
-			m.ensureSelectedVisible()
-		} else if m.cursor != "" && !m.loadingFeed {
+	idx := m.viewport.SelectedIndex()
+	switch {
+	case key.Matches(msg, km.Down):
+		if m.viewport.MoveDown() {
+			m.rebuildViewport()
+		}
+		if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loadingFeed {
 			m.loadingFeed = true
 			return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
 		}
 
-	case "k", "up":
-		if m.selectedIndex > 0 {
-			m.selectedIndex--
-			m.ensureSelectedVisible()
+	case key.Matches(msg, km.Up):
+		if m.viewport.MoveUp() {
+			m.rebuildViewport()
 		}
 
-	case "f":
+	case key.Matches(msg, km.Follow):
 		if !m.isOwnProfile && m.profile != nil {
 			return m, m.toggleFollow()
 		}
 
-	case "r":
+	case key.Matches(msg, km.Refresh):
 		m.loading = true
 		m.loadingFeed = true
 		m.cursor = ""
-		m.selectedIndex = 0
-		m.offset = 0
 		m.authorFeed = nil
+		m.viewport.Reset()
 		return m, tea.Batch(m.fetchProfile(), m.fetchAuthorFeed(""), m.spinner.Tick)
 
-	case "enter":
-		if m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
-			post := m.authorFeed[m.selectedIndex]
+	case key.Matches(msg, km.Open):
+		if idx < len(m.authorFeed) {
+			post := m.authorFeed[idx]
 			if post.Post != nil {
 				return m, func() tea.Msg {
 					return ViewThreadMsg{URI: post.Post.Uri}
@@ -365,21 +361,23 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case "d":
-		if m.selectedIndex >= 0 && m.selectedIndex < len(m.authorFeed) {
-			post := m.authorFeed[m.selectedIndex]
-			if post.Post != nil && post.Post.Author != nil && post.Post.Author.Did == m.ownDID {
-				if m.confirmDelete == m.selectedIndex {
-					uri := post.Post.Uri
-					m.confirmDelete = -1
+	case key.Matches(msg, km.Delete):
+		if idx < len(m.authorFeed) {
+			post := m.authorFeed[idx]
+			if post.Post != nil && post.Post.Author != nil {
+				res := shared.CheckConfirmDelete(m.confirmDelete, idx, post.Post.Author.Did, m.ownDID, post.Post.Uri)
+				m.confirmDelete = res.ConfirmDelete
+				if res.Confirmed {
+					uri := res.URI
 					return m, func() tea.Msg { return feed.DeletePostMsg{URI: uri} }
 				}
-				m.confirmDelete = m.selectedIndex
-				return m, nil
+				if res.URI == "" && res.ConfirmDelete == idx {
+					return m, nil
+				}
 			}
 		}
 
-	case "esc", "backspace":
+	case key.Matches(msg, km.Back):
 		return m, func() tea.Msg {
 			return BackMsg{}
 		}
@@ -387,6 +385,9 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
+
+// Keys returns the current key map.
+func (m ProfileModel) Keys() KeyMap { return m.keys }
 
 // View renders the profile screen.
 func (m ProfileModel) View() tea.View {
@@ -435,7 +436,7 @@ func (m ProfileModel) View() tea.View {
 			Render("No posts yet")
 		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, emptyText))
 	} else {
-		m.renderFeed(&b, availableHeight)
+		b.WriteString(m.viewport.View())
 	}
 
 	if m.loadingFeed {
@@ -569,31 +570,18 @@ func (m ProfileModel) renderFollowButton(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-func (m *ProfileModel) ensureSelectedVisible() {
-	contentHeight := m.height
+func (m *ProfileModel) rebuildViewport() {
+	// Adjust viewport height for the header
+	headerHeight := 0
 	if m.profile != nil {
 		var b strings.Builder
 		m.renderHeader(&b)
-		headerHeight := strings.Count(b.String(), "\n") + 1
-		contentHeight = max(1, m.height-headerHeight)
+		headerHeight = strings.Count(b.String(), "\n") + 1
 	}
-	m.offset = shared.EnsureSelectedVisible(len(m.authorFeed), m.selectedIndex, m.offset, contentHeight, func(index int) string {
-		return feed.RenderPost(m.authorFeed[index], m.width, false, m.imageCache, m.avatarOverrides)
+	m.viewport.SetSize(m.width, max(1, m.height-headerHeight))
+	m.viewport.SetItems(len(m.authorFeed), func(index int, selected bool) string {
+		return feed.RenderPost(m.authorFeed[index], m.width, selected, m.imageCache, m.avatarOverrides)
 	})
-}
-
-func (m ProfileModel) renderFeed(b *strings.Builder, availableHeight int) {
-	var rendered string
-	linesUsed := 0
-	for i := m.offset; i < len(m.authorFeed); i++ {
-		post := feed.RenderPost(m.authorFeed[i], m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
-		rendered += post
-		linesUsed += strings.Count(post, "\n")
-		if linesUsed >= availableHeight {
-			break
-		}
-	}
-	b.WriteString(rendered)
 }
 
 // formatCount formats large numbers with K/M suffixes.

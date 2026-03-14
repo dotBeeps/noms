@@ -524,8 +524,8 @@ func TestRefreshProfile(t *testing.T) {
 		t.Error("Expected loading to be true after refresh")
 	}
 
-	if model.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 after refresh, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be 0 after refresh, got %d", model.viewport.SelectedIndex())
 	}
 
 	if model.cursor != "" {
@@ -551,50 +551,50 @@ func TestNavigateFeed(t *testing.T) {
 	model = updated.(ProfileModel)
 
 	// Initial selection should be 0
-	if model.selectedIndex != 0 {
-		t.Errorf("Expected initial selectedIndex to be 0, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected initial selectedIndex to be 0, got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'j' to move down
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "j"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after 'j', got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after 'j', got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'down' to move down again
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "down"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex to be 2 after 'down', got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex to be 2 after 'down', got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'j' at end - should stay at end
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "j"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex to stay at 2 at end, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex to stay at 2 at end, got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'k' to move up
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "k"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex to be 1 after 'k', got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex to be 1 after 'k', got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'up' to move up again
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "up"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be 0 after 'up', got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be 0 after 'up', got %d", model.viewport.SelectedIndex())
 	}
 
 	// Press 'k' at start - should stay at start
 	updated, _ = model.Update(tea.KeyPressMsg{Text: "k"})
 	model = updated.(ProfileModel)
-	if model.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to stay at 0 at start, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to stay at 0 at start, got %d", model.viewport.SelectedIndex())
 	}
 }
 
@@ -704,7 +704,7 @@ func TestProfileDeletePostResultRemovesPost(t *testing.T) {
 		makeTestPost("alice.bsky.social", "Alice", "Post 1", "at://post1", 0, 0, 0),
 		makeTestPost("alice.bsky.social", "Alice", "Post 2", "at://post2", 0, 0, 0),
 	}
-	model.selectedIndex = 1
+	model.viewport.SetSelectedIndex(1)
 
 	updated, _ = model.Update(feed.DeletePostResultMsg{URI: "at://post2", Err: nil})
 	model = updated.(ProfileModel)
@@ -712,8 +712,8 @@ func TestProfileDeletePostResultRemovesPost(t *testing.T) {
 	if len(model.authorFeed) != 1 {
 		t.Errorf("Expected 1 post after delete, got %d", len(model.authorFeed))
 	}
-	if model.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex adjusted to 0, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex adjusted to 0, got %d", model.viewport.SelectedIndex())
 	}
 }
 
@@ -736,8 +736,8 @@ func TestProfileMouseWheelDownScrolls(t *testing.T) {
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(ProfileModel)
 
-	if model.selectedIndex != 3 {
-		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", model.viewport.SelectedIndex())
 	}
 }
 
@@ -756,13 +756,13 @@ func TestProfileMouseWheelUpScrolls(t *testing.T) {
 	model = updated.(ProfileModel)
 	updated, _ = model.Update(AuthorFeedLoadedMsg{Posts: posts, Cursor: ""})
 	model = updated.(ProfileModel)
-	model.selectedIndex = 5
+	model.viewport.SetSelectedIndex(5)
 
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(ProfileModel)
 
-	if model.selectedIndex != 2 {
-		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", model.selectedIndex)
+	if model.viewport.SelectedIndex() != 2 {
+		t.Errorf("Expected selectedIndex=2 after mouse wheel up from 5, got %d", model.viewport.SelectedIndex())
 	}
 }
 

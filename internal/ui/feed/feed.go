@@ -2,14 +2,15 @@ package feed
 
 import (
 	"context"
-	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/images"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -29,22 +30,19 @@ type FeedModel struct {
 	ownDID          string
 	avatarOverrides map[string]string
 	posts           []*bsky.FeedDefs_FeedViewPost
-	selectedIndex   int
 	cursor          string
 	loading         bool
 	width, height   int
 	err             error
-	offset          int
 	spinner         spinner.Model
 	confirmDelete   int // index of post pending delete confirmation, -1 = none
 	imageCache      *images.Cache
+	keys            KeyMap
+	viewport        shared.ItemViewport
 }
 
 func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int, cache *images.Cache) FeedModel {
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
 	return FeedModel{
 		client:        client,
 		ownDID:        ownDID,
@@ -54,6 +52,8 @@ func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int
 		spinner:       sp,
 		confirmDelete: -1,
 		imageCache:    cache,
+		keys:          DefaultKeyMap,
+		viewport:      shared.NewItemViewport(width, height),
 	}
 }
 
@@ -76,6 +76,8 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.SetSize(msg.Width, msg.Height)
+		m.rebuildViewport()
 		return m, nil
 
 	case FeedLoadedMsg:
@@ -105,6 +107,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.rebuildViewport()
 		if len(fetchCmds) > 0 {
 			return m, tea.Batch(fetchCmds...)
 		}
@@ -116,6 +119,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case spinner.TickMsg:
@@ -130,10 +134,9 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.posts = nil
 		m.cursor = ""
-		m.selectedIndex = 0
-		m.offset = 0
 		m.err = nil
 		m.confirmDelete = -1
+		m.viewport.Reset()
 		return m, tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 
 	case LikePostMsg:
@@ -210,110 +213,103 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, p := range m.posts {
 			if p.Post != nil && p.Post.Uri == msg.URI {
 				m.posts = append(m.posts[:i], m.posts[i+1:]...)
-				if m.selectedIndex >= len(m.posts) && m.selectedIndex > 0 {
-					m.selectedIndex--
-				}
-				if m.offset > 0 && m.offset >= len(m.posts) {
-					m.offset = max(0, len(m.posts)-1)
+				idx := m.viewport.SelectedIndex()
+				if idx >= len(m.posts) && idx > 0 {
+					m.viewport.SetSelectedIndex(len(m.posts) - 1)
 				}
 				break
 			}
 		}
 		m.confirmDelete = -1
+		m.rebuildViewport()
 		return m, nil
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
-			for range 3 {
-				if m.selectedIndex < len(m.posts)-1 {
-					m.selectedIndex++
-				}
+			if m.viewport.MoveDownN(3) {
+				m.rebuildViewport()
 			}
-			m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
-			if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
+			if m.viewport.NearBottom(shared.PaginationThreshold) && !m.loading && m.cursor != "" {
 				m.loading = true
 				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
 			}
 		case tea.MouseWheelUp:
-			for range 3 {
-				if m.selectedIndex > 0 {
-					m.selectedIndex--
-				}
+			if m.viewport.MoveUpN(3) {
+				m.rebuildViewport()
 			}
-			m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
 		}
 		return m, nil
 
 	case tea.KeyPressMsg:
-		if msg.String() != "d" {
+		km := m.keys
+		if !key.Matches(msg, km.Delete) {
 			m.confirmDelete = -1
 		}
 
-		if m.err != nil && msg.String() == "r" {
+		if m.err != nil && key.Matches(msg, km.Reply) {
 			return m, func() tea.Msg { return FeedRefreshMsg{} }
 		}
 
-		switch msg.String() {
-		case "j", "down":
-			if m.selectedIndex < len(m.posts)-1 {
-				m.selectedIndex++
-				m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
-				if m.selectedIndex >= len(m.posts)-3 && !m.loading && m.cursor != "" {
-					m.loading = true
-					return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
-				}
+		idx := m.viewport.SelectedIndex()
+		switch {
+		case key.Matches(msg, km.Down):
+			if m.viewport.MoveDown() {
+				m.rebuildViewport()
 			}
-		case "k", "up":
-			if m.selectedIndex > 0 {
-				m.selectedIndex--
-				m.offset = ensureSelectedVisible(m.posts, m.selectedIndex, m.offset, m.width, m.height, m.imageCache, m.avatarOverrides)
+			if m.viewport.NearBottom(shared.PaginationThreshold) && !m.loading && m.cursor != "" {
+				m.loading = true
+				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
 			}
-		case "r":
-			if m.selectedIndex < len(m.posts) {
-				post := m.posts[m.selectedIndex].Post
+		case key.Matches(msg, km.Up):
+			if m.viewport.MoveUp() {
+				m.rebuildViewport()
+			}
+		case key.Matches(msg, km.Reply):
+			if idx < len(m.posts) {
+				post := m.posts[idx].Post
 				if post != nil {
 					return m, func() tea.Msg { return ComposeReplyMsg{URI: post.Uri, CID: post.Cid} }
 				}
 			}
 			return m, func() tea.Msg { return FeedRefreshMsg{} }
-		case "enter":
-			if m.selectedIndex < len(m.posts) {
-				post := m.posts[m.selectedIndex].Post
+		case key.Matches(msg, km.Open):
+			if idx < len(m.posts) {
+				post := m.posts[idx].Post
 				if post != nil {
 					return m, func() tea.Msg { return ViewThreadMsg{URI: post.Uri} }
 				}
 			}
-		case "l":
-			if m.selectedIndex < len(m.posts) {
-				post := m.posts[m.selectedIndex].Post
+		case key.Matches(msg, km.Like):
+			if idx < len(m.posts) {
+				post := m.posts[idx].Post
 				if post != nil {
 					return m, func() tea.Msg { return LikePostMsg{URI: post.Uri, CID: post.Cid} }
 				}
 			}
-		case "t":
-			if m.selectedIndex < len(m.posts) {
-				post := m.posts[m.selectedIndex].Post
+		case key.Matches(msg, km.Repost):
+			if idx < len(m.posts) {
+				post := m.posts[idx].Post
 				if post != nil {
 					return m, func() tea.Msg { return RepostMsg{URI: post.Uri, CID: post.Cid} }
 				}
 			}
-		case "c":
+		case key.Matches(msg, km.Compose):
 			return m, func() tea.Msg { return ComposeMsg{} }
-		case "d":
-			if m.selectedIndex < len(m.posts) {
-				post := m.posts[m.selectedIndex]
-				if post.Post != nil && post.Post.Author != nil && post.Post.Author.Did == m.ownDID {
-					if m.confirmDelete == m.selectedIndex {
-						// Second press — confirm delete
-						uri := post.Post.Uri
-						m.confirmDelete = -1
+		case key.Matches(msg, km.Delete):
+			if idx < len(m.posts) {
+				post := m.posts[idx]
+				if post.Post != nil && post.Post.Author != nil {
+					res := shared.CheckConfirmDelete(m.confirmDelete, idx, post.Post.Author.Did, m.ownDID, post.Post.Uri)
+					m.confirmDelete = res.ConfirmDelete
+					if res.Confirmed {
+						uri := res.URI
 						return m, func() tea.Msg { return DeletePostMsg{URI: uri} }
 					}
-					// First press — enter confirmation
-					m.confirmDelete = m.selectedIndex
-					return m, nil
+					if res.URI == "" && res.ConfirmDelete == idx {
+						return m, nil
+					}
 				}
 			}
 		}
@@ -321,30 +317,10 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func ensureSelectedVisible(posts []*bsky.FeedDefs_FeedViewPost, selectedIndex, offset, width, height int, cache *images.Cache, avatarOverrides map[string]string) int {
-	if len(posts) == 0 {
-		return 0
-	}
-	if selectedIndex < offset {
-		return selectedIndex
-	}
-
-	totalHeight := 0
-	heights := make([]int, 0, selectedIndex-offset+1)
-	for i := offset; i <= selectedIndex && i < len(posts); i++ {
-		h := strings.Count(RenderPost(posts[i], width, false, cache, avatarOverrides), "\n")
-		heights = append(heights, h)
-		totalHeight += h
-	}
-
-	const margin = 2
-	for totalHeight+margin > height && offset < selectedIndex {
-		totalHeight -= heights[0]
-		heights = heights[1:]
-		offset++
-	}
-
-	return offset
+func (m *FeedModel) rebuildViewport() {
+	m.viewport.SetItems(len(m.posts), func(index int, selected bool) string {
+		return RenderPost(m.posts[index], m.width, selected, m.imageCache, m.avatarOverrides)
+	})
 }
 
 func (m FeedModel) View() tea.View {
@@ -360,16 +336,7 @@ func (m FeedModel) View() tea.View {
 			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts yet")
 		}
 	} else {
-		var rendered string
-		linesUsed := 0
-		for i := m.offset; i < len(m.posts); i++ {
-			post := RenderPost(m.posts[i], m.width, i == m.selectedIndex, m.imageCache, m.avatarOverrides)
-			rendered += post
-			linesUsed += strings.Count(post, "\n")
-			if linesUsed >= m.height {
-				break
-			}
-		}
+		rendered := m.viewport.View()
 		if m.loading {
 			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading more...")
 		}
@@ -390,4 +357,9 @@ func (m FeedModel) View() tea.View {
 
 func (m *FeedModel) SetAvatarOverrides(overrides map[string]string) {
 	m.avatarOverrides = overrides
+}
+
+// Keys returns the feed key map for help rendering.
+func (m FeedModel) Keys() KeyMap {
+	return m.keys
 }
