@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -11,10 +12,9 @@ import (
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
 	"github.com/dotBeeps/noms/internal/ui/images"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
-
-const scrollPad = 2
 
 type ThreadLoadedMsg struct {
 	Thread *bsky.FeedGetPostThread_Output
@@ -37,25 +37,22 @@ type ThreadPost struct {
 
 type ThreadModel struct {
 	threadPosts     []ThreadPost
-	selectedIndex   int
 	loading         bool
 	width, height   int
 	client          bluesky.BlueskyClient
 	ownDID          string
 	targetURI       string
 	err             error
-	offset          int
 	spinner         spinner.Model
 	confirmDelete   int // -1 = none
 	imageCache      *images.Cache
 	avatarOverrides map[string]string
+	keys            KeyMap
+	viewport        shared.ItemViewport
 }
 
 func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int, cache *images.Cache) ThreadModel {
-	sp := spinner.New(
-		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(theme.ColorAccent)),
-	)
+	sp := shared.NewSpinner()
 	return ThreadModel{
 		client:        client,
 		targetURI:     uri,
@@ -66,12 +63,16 @@ func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, hei
 		spinner:       sp,
 		confirmDelete: -1,
 		imageCache:    cache,
+		keys:          DefaultKeyMap,
+		viewport:      shared.NewItemViewport(width, height),
 	}
 }
 
 func (m *ThreadModel) SetAvatarOverrides(overrides map[string]string) {
 	m.avatarOverrides = overrides
 }
+
+func (m ThreadModel) Keys() KeyMap { return m.keys }
 
 func (m ThreadModel) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
@@ -88,6 +89,8 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.SetSize(msg.Width, msg.Height)
+		m.rebuildViewport()
 		return m, nil
 
 	case ThreadLoadedMsg:
@@ -96,12 +99,12 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.threadPosts = flattenThread(msg.Thread.Thread)
 			for i, p := range m.threadPosts {
 				if p.IsTarget {
-					m.selectedIndex = i
-					m.offset = max(0, i-2)
+					m.viewport.SetSelectedIndex(i)
 					break
 				}
 			}
 		}
+		m.rebuildViewport()
 		var fetchCmds []tea.Cmd
 		for _, tp := range m.threadPosts {
 			if tp.Post != nil && tp.Post.Embed != nil {
@@ -119,6 +122,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case images.ImageFetchedMsg:
+		m.rebuildViewport()
 		return m, nil
 
 	case ThreadErrorMsg:
@@ -224,91 +228,90 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, p := range m.threadPosts {
 			if p.Post != nil && p.Post.Uri == msg.URI {
 				m.threadPosts = append(m.threadPosts[:i], m.threadPosts[i+1:]...)
-				if m.selectedIndex >= len(m.threadPosts) && m.selectedIndex > 0 {
-					m.selectedIndex--
+				idx := m.viewport.SelectedIndex()
+				if idx >= len(m.threadPosts) && idx > 0 {
+					m.viewport.SetSelectedIndex(len(m.threadPosts) - 1)
 				}
 				break
 			}
 		}
 		m.confirmDelete = -1
+		m.rebuildViewport()
 		return m, nil
 
 	case tea.KeyPressMsg:
+		km := m.keys
 		if m.err != nil {
-			if msg.String() == "esc" || msg.String() == "backspace" {
+			if key.Matches(msg, km.Back) {
 				return m, func() tea.Msg { return BackMsg{} }
 			}
 			return m, nil
 		}
 
-		if msg.String() != "d" {
+		if !key.Matches(msg, km.Delete) {
 			m.confirmDelete = -1
 		}
 
-		switch msg.String() {
-		case "esc", "backspace":
+		idx := m.viewport.SelectedIndex()
+		switch {
+		case key.Matches(msg, km.Back):
 			return m, func() tea.Msg { return BackMsg{} }
-		case "j", "down":
-			if m.selectedIndex < len(m.threadPosts)-1 {
-				m.selectedIndex++
-				vc := m.visibleCount()
-				if m.selectedIndex > m.offset+vc-1-scrollPad {
-					m.offset = max(m.offset, m.selectedIndex-vc+1+scrollPad)
-				}
+		case key.Matches(msg, km.Down):
+			if m.viewport.MoveDown() {
+				m.rebuildViewport()
 			}
-		case "k", "up":
-			if m.selectedIndex > 0 {
-				m.selectedIndex--
-				if m.selectedIndex < m.offset+scrollPad {
-					m.offset = max(0, m.selectedIndex-scrollPad)
-				}
+		case key.Matches(msg, km.Up):
+			if m.viewport.MoveUp() {
+				m.rebuildViewport()
 			}
-		case "enter":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
+		case key.Matches(msg, km.Open):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
 				if p.Post != nil && p.Depth > 0 {
 					return m, func() tea.Msg { return feed.ViewThreadMsg{URI: p.Post.Uri} }
 				}
 			}
-		case "l":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
+		case key.Matches(msg, km.Like):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
 				if p.Post != nil {
 					return m, func() tea.Msg { return feed.LikePostMsg{URI: p.Post.Uri, CID: p.Post.Cid} }
 				}
 			}
-		case "t":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
+		case key.Matches(msg, km.Repost):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
 				if p.Post != nil {
 					return m, func() tea.Msg { return feed.RepostMsg{URI: p.Post.Uri, CID: p.Post.Cid} }
 				}
 			}
-		case "r":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
+		case key.Matches(msg, km.Reply):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
 				if p.Post != nil {
 					return m, func() tea.Msg { return ComposeReplyMsg{URI: p.Post.Uri, CID: p.Post.Cid} }
 				}
 			}
-		case "p":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
+		case key.Matches(msg, km.Profile):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
 				if p.Post != nil && p.Post.Author != nil {
 					return m, func() tea.Msg { return ViewProfileMsg{DID: p.Post.Author.Did} }
 				}
 			}
-		case "d":
-			if m.selectedIndex >= 0 && m.selectedIndex < len(m.threadPosts) {
-				p := m.threadPosts[m.selectedIndex]
-				if p.Post != nil && p.Post.Author != nil && p.Post.Author.Did == m.ownDID {
-					if m.confirmDelete == m.selectedIndex {
-						uri := p.Post.Uri
-						m.confirmDelete = -1
+		case key.Matches(msg, km.Delete):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
+				if p.Post != nil && p.Post.Author != nil {
+					res := shared.CheckConfirmDelete(m.confirmDelete, idx, p.Post.Author.Did, m.ownDID, p.Post.Uri)
+					m.confirmDelete = res.ConfirmDelete
+					if res.Confirmed {
+						uri := res.URI
 						return m, func() tea.Msg { return feed.DeletePostMsg{URI: uri} }
 					}
-					m.confirmDelete = m.selectedIndex
-					return m, nil
+					if res.URI == "" && res.ConfirmDelete == idx {
+						return m, nil
+					}
 				}
 			}
 		}
@@ -317,23 +320,12 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
-			for range 3 {
-				if m.selectedIndex < len(m.threadPosts)-1 {
-					m.selectedIndex++
-				}
-			}
-			vc := m.visibleCount()
-			if m.selectedIndex > m.offset+vc-1-scrollPad {
-				m.offset = max(m.offset, m.selectedIndex-vc+1+scrollPad)
+			if m.viewport.MoveDownN(3) {
+				m.rebuildViewport()
 			}
 		case tea.MouseWheelUp:
-			for range 3 {
-				if m.selectedIndex > 0 {
-					m.selectedIndex--
-				}
-			}
-			if m.selectedIndex < m.offset+scrollPad {
-				m.offset = max(0, m.selectedIndex-scrollPad)
+			if m.viewport.MoveUpN(3) {
+				m.rebuildViewport()
 			}
 		}
 		return m, nil
@@ -341,8 +333,79 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m ThreadModel) visibleCount() int {
-	return max(1, m.height/6)
+func (m *ThreadModel) rebuildViewport() {
+	m.viewport.SetItems(len(m.threadPosts), func(index int, selected bool) string {
+		return m.renderThreadPost(index, selected)
+	})
+}
+
+func (m ThreadModel) renderThreadPost(index int, selected bool) string {
+	tp := m.threadPosts[index]
+
+	if tp.NotFound {
+		content := "[Deleted post]"
+		if selected {
+			return theme.StyleSelected.Render("▶ "+content) + "\n\n"
+		}
+		return theme.StyleMuted.Render("  "+content) + "\n\n"
+	}
+
+	if tp.Blocked {
+		content := "[Blocked post]"
+		if selected {
+			return theme.StyleSelected.Render("▶ "+content) + "\n\n"
+		}
+		return theme.StyleMuted.Render("  "+content) + "\n\n"
+	}
+
+	if tp.Post == nil {
+		return ""
+	}
+
+	fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
+
+	postWidth := m.width
+	indent := ""
+
+	if tp.IsParent {
+		indent = "│ "
+		postWidth -= 2
+	} else if tp.Depth > 0 {
+		spaces := strings.Repeat("  ", tp.Depth)
+		indent = spaces
+		postWidth -= len(spaces)
+	}
+
+	if postWidth < 20 {
+		postWidth = 20
+	}
+
+	postStr := feed.RenderPost(fvp, postWidth, selected, m.imageCache, m.avatarOverrides)
+
+	lines := strings.Split(postStr, "\n")
+	for j, line := range lines {
+		if line == "" {
+			continue
+		}
+		if tp.IsParent {
+			lines[j] = theme.StyleMuted.Render(indent) + line
+		} else {
+			lines[j] = indent + line
+		}
+	}
+
+	finalStr := strings.Join(lines, "\n")
+
+	if tp.IsTarget {
+		style := lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(theme.ColorPrimary).
+			Padding(0, 1).
+			Width(m.width - 4)
+		finalStr = style.Render(finalStr)
+	}
+
+	return finalStr + "\n"
 }
 
 func (m ThreadModel) View() tea.View {
@@ -365,98 +428,17 @@ func (m ThreadModel) View() tea.View {
 		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts found"))
 	}
 
-	var rendered strings.Builder
-	for i := m.offset; i < len(m.threadPosts) && i < m.offset+m.visibleCount(); i++ {
-		tp := m.threadPosts[i]
-		isSelected := (i == m.selectedIndex)
-
-		if tp.NotFound {
-			content := "[Deleted post]"
-			if isSelected {
-				rendered.WriteString(theme.StyleSelected.Render("▶ " + content))
-			} else {
-				rendered.WriteString(theme.StyleMuted.Render("  " + content))
-			}
-			rendered.WriteString("\n\n")
-			continue
-		}
-
-		if tp.Blocked {
-			content := "[Blocked post]"
-			if isSelected {
-				rendered.WriteString(theme.StyleSelected.Render("▶ " + content))
-			} else {
-				rendered.WriteString(theme.StyleMuted.Render("  " + content))
-			}
-			rendered.WriteString("\n\n")
-			continue
-		}
-
-		if tp.Post == nil {
-			continue
-		}
-
-		fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
-
-		// Apply indentation/styling based on depth/parent
-		postWidth := m.width
-		indent := ""
-
-		if tp.IsParent {
-			indent = "│ "
-			postWidth -= 2
-		} else if tp.Depth > 0 {
-			spaces := strings.Repeat("  ", tp.Depth)
-			indent = spaces
-			postWidth -= len(spaces)
-		}
-
-		if postWidth < 20 {
-			postWidth = 20
-		}
-
-		postStr := feed.RenderPost(fvp, postWidth, isSelected, m.imageCache, m.avatarOverrides)
-
-		// Apply indent line by line
-		lines := strings.Split(postStr, "\n")
-		for j, line := range lines {
-			if line == "" {
-				continue
-			}
-			if tp.IsParent {
-				lines[j] = theme.StyleMuted.Render(indent) + line
-			} else {
-				lines[j] = indent + line
-			}
-		}
-
-		finalStr := strings.Join(lines, "\n")
-
-		// Highlight target post
-		if tp.IsTarget {
-			// Apply a border or some styling to the whole block if desired,
-			// but we will just wrap it with an accent border.
-			style := lipgloss.NewStyle().
-				Border(lipgloss.DoubleBorder()).
-				BorderForeground(theme.ColorPrimary).
-				Padding(0, 1).
-				Width(m.width - 4)
-			finalStr = style.Render(finalStr)
-		}
-
-		rendered.WriteString(finalStr)
-		rendered.WriteString("\n")
-	}
+	content := m.viewport.View()
 
 	if m.confirmDelete >= 0 {
 		confirmStyle := lipgloss.NewStyle().
 			Foreground(theme.ColorWarning).
 			Bold(true)
-		rendered.WriteString("\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
-			confirmStyle.Render("Press d to confirm delete, any other key to cancel")))
+		content += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
+			confirmStyle.Render("Press d to confirm delete, any other key to cancel"))
 	}
 
-	return mouseView(rendered.String())
+	return mouseView(content)
 }
 
 func flattenThread(root *bsky.FeedGetPostThread_Output_Thread) []ThreadPost {

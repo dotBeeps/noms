@@ -261,8 +261,8 @@ func TestThreadTargetPostHighlighted(t *testing.T) {
 	if !m.threadPosts[0].IsTarget {
 		t.Errorf("Expected first post to be marked as target")
 	}
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex to be set to target, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex to be set to target, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -288,14 +288,14 @@ func TestThreadScrollNavigation(t *testing.T) {
 	// Currently at index 0
 	// Move down
 	m = doUpdate(m, tea.KeyPressMsg{Text: "j"})
-	if m.selectedIndex != 1 {
-		t.Errorf("Expected selectedIndex 1, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Errorf("Expected selectedIndex 1, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Move up
 	m = doUpdate(m, tea.KeyPressMsg{Text: "k"})
-	if m.selectedIndex != 0 {
-		t.Errorf("Expected selectedIndex 0, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 0 {
+		t.Errorf("Expected selectedIndex 0, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -462,8 +462,8 @@ func TestThreadEnterOnReply(t *testing.T) {
 
 	// Move to the reply (index 1)
 	m = doUpdate(m, tea.KeyPressMsg{Text: "j"})
-	if m.selectedIndex != 1 {
-		t.Fatalf("Expected selectedIndex 1, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 1 {
+		t.Fatalf("Expected selectedIndex 1, got %d", m.viewport.SelectedIndex())
 	}
 
 	// Press enter - should emit ViewThreadMsg for the reply
@@ -666,8 +666,8 @@ func TestThreadMouseWheelDownScrolls(t *testing.T) {
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(ThreadModel)
 
-	if m.selectedIndex != 3 {
-		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel down, got %d", m.viewport.SelectedIndex())
 	}
 }
 
@@ -694,13 +694,13 @@ func TestThreadMouseWheelUpScrolls(t *testing.T) {
 	}
 	m := NewThreadModel(client, "at://target", "", 80, 24, nil)
 	m = doUpdate(m, m.Init()())
-	m.selectedIndex = 6
+	m.viewport.SetSelectedIndex(6)
 
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(ThreadModel)
 
-	if m.selectedIndex != 3 {
-		t.Errorf("Expected selectedIndex=3 after mouse wheel up from 6, got %d", m.selectedIndex)
+	if m.viewport.SelectedIndex() != 3 {
+		t.Errorf("Expected selectedIndex=3 after mouse wheel up from 6, got %d", m.viewport.SelectedIndex())
 	}
 }
 
