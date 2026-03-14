@@ -28,6 +28,8 @@ import (
 
 var debugLog *log.Logger
 
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 func init() {
 	f, err := os.OpenFile("/tmp/noms-images-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
@@ -149,8 +151,7 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 	return func() tea.Msg {
 		defer c.pending.Delete(url)
 
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Get(url)
+		resp, err := httpClient.Get(url)
 		if err != nil {
 			debugLog.Printf("Fetch: HTTP error url=%s err=%v", truncateURL(url), err)
 			c.setError(fmt.Errorf("fetch %s: %w", truncateURL(url), err))
