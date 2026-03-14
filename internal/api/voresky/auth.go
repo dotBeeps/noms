@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -118,6 +119,7 @@ func (a *VoreskyAuth) ValidateSession(ctx context.Context) (*SessionInfo, error)
 		return nil, fmt.Errorf("session request: %w", err)
 	}
 	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
 
