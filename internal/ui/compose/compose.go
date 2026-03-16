@@ -17,6 +17,7 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/feed"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
+	"github.com/rivo/uniseg"
 )
 
 // ComposeMode represents the type of compose action
@@ -249,7 +250,7 @@ func (m ComposeModel) View() tea.View {
 
 	// Character counter
 	text := m.textarea.Value()
-	charCount := len([]rune(text))
+	charCount := uniseg.GraphemeClusterCount(text)
 	counterStyle := theme.StyleMuted()
 	if charCount > maxPostChars {
 		counterStyle = theme.StyleError()
@@ -304,7 +305,7 @@ func (m ComposeModel) Text() string {
 
 // CharCount returns the current character count (Unicode-aware)
 func (m ComposeModel) CharCount() int {
-	return len([]rune(m.textarea.Value()))
+	return uniseg.GraphemeClusterCount(m.textarea.Value())
 }
 
 // Mode returns the current compose mode

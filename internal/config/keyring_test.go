@@ -77,6 +77,17 @@ func TestKeyringListAccounts(t *testing.T) {
 	}
 }
 
+func TestNewFileStore_ErrorsWithoutKeyAndNoHomeDir(t *testing.T) {
+	t.Setenv("NOMS_TOKEN_KEY", "")
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir()) // avoid data dir error masking the home dir error
+
+	_, err := config.NewFileStore()
+	if err == nil {
+		t.Fatal("NewFileStore() expected error when HOME and NOMS_TOKEN_KEY are both unset, got nil")
+	}
+}
+
 // --- FileStore tests ---
 
 func TestFileFallbackStore(t *testing.T) {

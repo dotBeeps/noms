@@ -204,9 +204,13 @@ func (m Model) View() tea.View {
 }
 
 // NormalizeCookie converts various cookie input formats into the Cookie
-// header value expected by the Voresky API.
+// header value expected by the Voresky API. Returns an empty string if the
+// input does not contain a usable cookie value.
 func NormalizeCookie(raw string) string {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
 
 	// Strip "Cookie: " prefix if someone copied from request headers.
 	for _, prefix := range []string{"Cookie: ", "cookie: ", "Cookie:", "cookie:"} {
@@ -216,9 +220,16 @@ func NormalizeCookie(raw string) string {
 		}
 	}
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
 
-	// If it already contains a cookie name, use as-is.
+	// If it already contains a cookie name, validate the value part is non-empty.
 	if strings.Contains(raw, "voresky_session=") {
+		parts := strings.SplitN(raw, "voresky_session=", 2)
+		if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+			return ""
+		}
 		return raw
 	}
 

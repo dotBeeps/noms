@@ -162,12 +162,7 @@ func (m LoginModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m LoginModel) handleInputState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "enter":
-		if strings.TrimSpace(m.handleInput.Value()) != "" {
-			m.state = LoginStateChoosing
-			return m, nil
-		}
-	case "tab":
+	case "enter", "tab":
 		if strings.TrimSpace(m.handleInput.Value()) != "" {
 			m.state = LoginStateChoosing
 			return m, nil

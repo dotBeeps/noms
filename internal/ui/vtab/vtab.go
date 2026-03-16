@@ -57,6 +57,7 @@ type VoreskyModel struct {
 	width           int
 	height          int
 	imageCache      images.ImageRenderer
+	lazyRenderer    *images.LazyRenderer
 	spinner         spinner.Model
 	keys            KeyMap
 	viewport        shared.ItemViewport
@@ -66,14 +67,15 @@ func NewVoreskyModel(client *voresky.VoreskyClient, width, height int, imageCach
 	sp := shared.NewSpinner()
 	headerHeight := 1
 	return VoreskyModel{
-		client:     client,
-		imageCache: imageCache,
-		width:      width,
-		height:     height,
-		loading:    true,
-		spinner:    sp,
-		keys:       DefaultKeyMap,
-		viewport:   shared.NewItemViewport(width, max(1, height-headerHeight)),
+		client:       client,
+		imageCache:   imageCache,
+		lazyRenderer: &images.LazyRenderer{Inner: imageCache},
+		width:        width,
+		height:       height,
+		loading:      true,
+		spinner:      sp,
+		keys:         DefaultKeyMap,
+		viewport:     shared.NewItemViewport(width, max(1, height-headerHeight)),
 	}
 }
 
@@ -318,9 +320,8 @@ func (m VoreskyModel) renderCharacter(index int, selected bool, renderer images.
 }
 
 func (m *VoreskyModel) rebuildViewport() {
-	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.characters), func(index int, selected bool) string {
-		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
-		return m.renderCharacter(index, selected, lazy)
+		m.lazyRenderer.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return m.renderCharacter(index, selected, m.lazyRenderer)
 	})
 }

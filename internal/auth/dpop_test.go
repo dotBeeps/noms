@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -115,6 +116,38 @@ func TestDPoPNonceRotation(t *testing.T) {
 	if claims2["nonce"] != "nonce-456" {
 		t.Errorf("Expected nonce nonce-456, got %v", claims2["nonce"])
 	}
+}
+
+func TestDPoPSigner_CorruptKeyFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "dpop.key")
+
+	if err := os.WriteFile(keyPath, []byte("this is not a valid PEM key file\n"), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := NewDPoPSigner(keyPath)
+	if err == nil {
+		t.Fatal("NewDPoPSigner() expected error for corrupt key file, got nil")
+	}
+	// Error message should mention corruption so users can diagnose.
+	if !containsAny(err.Error(), "corrupt", "unreadable") {
+		t.Errorf("error %q does not mention corruption", err.Error())
+	}
+}
+
+func containsAny(s string, substrings ...string) bool {
+	for _, sub := range substrings {
+		if len(s) >= len(sub) {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func TestDPoPKeyPersistence(t *testing.T) {

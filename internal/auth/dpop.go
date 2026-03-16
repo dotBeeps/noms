@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -53,6 +54,13 @@ func (s *DPoPSigner) loadOrGenerateKey() error {
 					return nil
 				}
 			}
+			// File exists but is not a valid EC private key — surface the error
+			// rather than silently generating a new key. Presenting a new public
+			// key to an authorization server that already registered the old one
+			// causes opaque auth failures.
+			return fmt.Errorf("corrupt DPoP key at %s: unreadable PEM or wrong block type", s.keyPath)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("reading DPoP key %s: %w", s.keyPath, err)
 		}
 	}
 

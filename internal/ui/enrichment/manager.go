@@ -118,24 +118,20 @@ type PendingSnapshot struct {
 	CurrentNodeID string
 }
 
-// PendingSnapshots returns caught users who need snapshot resolution.
+// PendingSnapshots returns caught users whose snapshot blobs have not yet been
+// fetched. It is a pure query — it does not mutate any state. Call
+// ResolveSnapshots first to resolve users whose blobs are already cached.
 func (m *Manager) PendingSnapshots() []PendingSnapshot {
 	var pending []PendingSnapshot
 	for did, state := range m.cache {
 		if state == nil || state.BlobHash == "" {
 			continue
 		}
-		// Already resolved?
 		if _, ok := m.resolvedAvatars[did]; ok {
 			continue
 		}
-		// Already have the snapshot blob? Resolve immediately.
-		if blob, ok := m.snapshots[state.BlobHash]; ok {
-			url := voresky.ResolveNodeAvatar(blob, state.CurrentNodeID)
-			if url != "" {
-				m.resolvedAvatars[did] = url
-			}
-			continue
+		if _, ok := m.snapshots[state.BlobHash]; ok {
+			continue // blob cached but not yet resolved; caller should call ResolveSnapshots
 		}
 		pending = append(pending, PendingSnapshot{
 			DID:           did,

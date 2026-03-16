@@ -172,7 +172,9 @@ func TestPendingSnapshots_ReturnsCaughtWithoutBlob(t *testing.T) {
 	}
 }
 
-func TestPendingSnapshots_ResolvesFromCachedBlob(t *testing.T) {
+func TestPendingSnapshots_SkipsCachedBlobPendingResolve(t *testing.T) {
+	// PendingSnapshots is a pure query — it skips DIDs whose blobs are cached
+	// but does not mutate resolvedAvatars. Caller must call ResolveSnapshots.
 	m := New()
 	m.cache["did:plc:aaa"] = &voresky.CaughtState{
 		BlobHash:      "hash1",
@@ -184,12 +186,34 @@ func TestPendingSnapshots_ResolvesFromCachedBlob(t *testing.T) {
 		},
 	})
 
+	// Before ResolveSnapshots, PendingSnapshots returns 0 (blob cached, not yet resolved).
 	pending := m.PendingSnapshots()
 	if len(pending) != 0 {
-		t.Fatalf("expected 0 pending (should auto-resolve), got %d", len(pending))
+		t.Fatalf("expected 0 pending (blob cached), got %d", len(pending))
 	}
+	// PendingSnapshots must NOT mutate resolvedAvatars.
+	if _, ok := m.resolvedAvatars["did:plc:aaa"]; ok {
+		t.Fatal("PendingSnapshots should not write to resolvedAvatars (pure query)")
+	}
+
+	// Calling ResolveSnapshots afterward resolves the avatar.
+	m.ResolveSnapshots()
 	if m.resolvedAvatars["did:plc:aaa"] != "https://resolved.png" {
-		t.Fatal("should have resolved avatar from cached blob")
+		t.Fatal("ResolveSnapshots should populate resolvedAvatars from cached blob")
+	}
+}
+
+func TestPendingSnapshots_Idempotent(t *testing.T) {
+	m := New()
+	m.cache["did:plc:aaa"] = &voresky.CaughtState{BlobHash: "hash1", CurrentNodeID: "n1"}
+
+	first := m.PendingSnapshots()
+	second := m.PendingSnapshots()
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("expected 1 pending each call, got %d then %d", len(first), len(second))
+	}
+	if first[0].DID != second[0].DID {
+		t.Fatal("PendingSnapshots should return same results on repeated calls (idempotent)")
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 const (
 	saltSize        = 32
+	gcmNonceSize    = 12 // AES-GCM standard nonce size
 	legacyFixedSalt = "noms-filestore-salt-v1"
 	// legacyPassphrase is the hardcoded passphrase used by the original v1
 	// FileStore before per-machine key derivation was introduced. Must not
@@ -119,13 +120,17 @@ type FileStore struct {
 
 // NewFileStore creates a FileStore, deriving key material from the
 // NOMS_TOKEN_KEY environment variable (or a per-machine derived fallback).
-// TODO: set NOMS_TOKEN_KEY env var for stronger encryption
+// Returns an error if NOMS_TOKEN_KEY is unset and the home directory cannot
+// be determined — that combination would produce a predictable, machine-wide key.
 func NewFileStore() (*FileStore, error) {
 	rawKey := os.Getenv("NOMS_TOKEN_KEY")
 	if rawKey == "" {
 		// Derive fallback key material from the user's home directory so that
 		// each machine has unique key material without requiring user config.
-		homeDir, _ := os.UserHomeDir()
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("no NOMS_TOKEN_KEY set and home dir unavailable: %w", err)
+		}
 		h := sha256.Sum256([]byte("noms:" + homeDir))
 		rawKey = string(h[:])
 	}
@@ -237,20 +242,9 @@ func (f *FileStore) encryptWithKey(key, plaintext []byte) ([]byte, error) {
 }
 
 func (f *FileStore) decrypt(data []byte) ([]byte, error) {
-	// Attempt GCM nonce size detection to determine v1 vs v2.
 	// For v2 format: [saltSize bytes salt][nonce][ciphertext]
 	// For v1 format (legacy): [nonce][ciphertext] with fixed salt
-	block, err := aes.NewCipher(make([]byte, 32)) // dummy to get nonce size
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonceSize := gcm.NonceSize()
-
-	if len(data) >= saltSize+nonceSize {
+	if len(data) >= saltSize+gcmNonceSize {
 		// Try v2: first saltSize bytes are the random salt.
 		salt := data[:saltSize]
 		key, err := f.deriveKey(salt)

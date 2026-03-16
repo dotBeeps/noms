@@ -613,3 +613,32 @@ func TestWindowSizeResize(t *testing.T) {
 		t.Errorf("Expected height 40, got %d", m.height)
 	}
 }
+
+func TestCharCount_Emoji(t *testing.T) {
+	t.Parallel()
+	client := &mockBlueskyClient{}
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+
+	tests := []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{"ascii", "hello", 5},
+		{"single emoji", "😀", 1},
+		{"family emoji (multi-codepoint)", "👨‍👩‍👧‍👦", 1},
+		{"text with emoji", "hi 😀", 4},
+		{"emoji sequence", "😀😀😀", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m.SetText(tt.input)
+			got := m.CharCount()
+			if got != tt.want {
+				t.Errorf("CharCount(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}

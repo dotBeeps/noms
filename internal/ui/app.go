@@ -140,13 +140,13 @@ func (m App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-type sessionRestoreFailedMsg struct{}
+type sessionRestoreFailedMsg struct{ err error }
 
 func (m App) tryRestoreSession() tea.Msg {
 	dpopKeyPath := filepath.Join(config.DataDir(), "dpop.key")
 	session, err := auth.RestoreSession(m.tokenStore, m.cfg.DefaultAccount, dpopKeyPath)
 	if err != nil {
-		return sessionRestoreFailedMsg{}
+		return sessionRestoreFailedMsg{err: err}
 	}
 	return login.LoginSuccessMsg{Session: session}
 }
@@ -242,6 +242,9 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.finishLogin(client, msg.DID, msg.Handle)
 
 	case sessionRestoreFailedMsg:
+		if msg.err != nil {
+			m.login.SetError(fmt.Errorf("saved session expired, please log in again"))
+		}
 		return m, m.login.Init()
 
 	case login.LoginErrorMsg:
@@ -249,18 +252,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case voreskySessionLoadedMsg:
-		m.voreskyAuth = msg.auth
-		m.voreskyClient = voresky.NewVoreskyClient(defaultVoreskyURL, msg.auth)
-		m.enrichManager = enrichment.New()
-		m.tabBar.VoreskyActive = true
-		contentHeight := m.contentHeight()
-		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
-		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
-		m.voreskyTabInit = false
-		m.vnotifInit = false
-		m.screen = ScreenFeed
-		m.updateTabBarForScreen()
-		cmds = append(cmds, m.fetchMainCharacter())
+		cmds = append(cmds, m.initVoresky(msg.auth, ScreenFeed))
 		return m, tea.Batch(cmds...)
 
 	case voreskySessionNotFoundMsg:
@@ -270,18 +262,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.validateVoreskyCookie(msg.Cookie)
 
 	case voreskyAuthSuccessMsg:
-		m.voreskyAuth = msg.auth
-		m.voreskyClient = voresky.NewVoreskyClient(defaultVoreskyURL, msg.auth)
-		m.enrichManager = enrichment.New()
-		m.tabBar.VoreskyActive = true
-		contentHeight := m.contentHeight()
-		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
-		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
-		m.voreskyTabInit = false
-		m.vnotifInit = false
-		m.screen = m.prevScreen
-		m.updateTabBarForScreen()
-		cmds = append(cmds, m.fetchMainCharacter())
+		cmds = append(cmds, m.initVoresky(msg.auth, m.prevScreen))
 		return m, tea.Batch(cmds...)
 
 	case mainCharacterLoadedMsg:
@@ -568,6 +549,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case enrichResultMsg:
 		if m.enrichManager != nil && msg.overrides != nil {
 			m.enrichManager.Store(msg.overrides)
+			m.enrichManager.ResolveSnapshots()
 			pending := m.enrichManager.PendingSnapshots()
 			for _, ps := range pending {
 				cmds = append(cmds, m.fetchSnapshot(ps.BlobHash))
@@ -1432,16 +1414,33 @@ func (m App) validateVoreskyCookie(cookie string) tea.Cmd {
 	}
 }
 
+func (m *App) initVoresky(va *voresky.VoreskyAuth, returnScreen Screen) tea.Cmd {
+	m.voreskyAuth = va
+	m.voreskyClient = voresky.NewVoreskyClient(defaultVoreskyURL, va)
+	m.enrichManager = enrichment.New()
+	m.tabBar.VoreskyActive = true
+	contentHeight := m.contentHeight()
+	m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
+	m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
+	m.voreskyTabInit = false
+	m.vnotifInit = false
+	m.screen = returnScreen
+	m.updateTabBarForScreen()
+	return m.fetchMainCharacter()
+}
+
 func (m *App) fetchMainCharacter() tea.Cmd {
+	voreskyAuth := m.voreskyAuth
+	voreskyClient := m.voreskyClient
 	return func() tea.Msg {
-		if m.voreskyAuth == nil || m.voreskyClient == nil {
+		if voreskyAuth == nil || voreskyClient == nil {
 			return mainCharacterLoadedMsg{character: nil}
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		session, err := m.voreskyAuth.ValidateSession(ctx)
+		session, err := voreskyAuth.ValidateSession(ctx)
 		if err != nil {
 			return mainCharacterErrorMsg{err: err}
 		}
@@ -1449,7 +1448,7 @@ func (m *App) fetchMainCharacter() tea.Cmd {
 			return mainCharacterLoadedMsg{character: nil}
 		}
 
-		char, err := m.voreskyClient.GetCharacter(ctx, session.MainCharacterID)
+		char, err := voreskyClient.GetCharacter(ctx, session.MainCharacterID)
 		if err != nil {
 			return mainCharacterErrorMsg{err: err}
 		}
