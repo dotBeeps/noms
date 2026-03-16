@@ -1,0 +1,48 @@
+version: 2
+
+builds:
+  - main: ./cmd/noms
+    binary: noms
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: git
+  groups:
+    - title: Features
+      regexp: "^feat"
+    - title: Bug Fixes
+      regexp: "^fix"
+    - title: Performance
+      regexp: "^perf"
+  filters:
+    exclude:
+      - "^chore:"
+      - "^docs:"
+      - "^test:"
+      - "^Merge"
+
+release:
+  prerelease: auto
