@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -37,7 +38,6 @@ type NavigateToNotificationMsg struct {
 	Notification voresky.Notification
 }
 
-func universeStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorSecondary) }
 func pokeStyle() lipgloss.Style        { return lipgloss.NewStyle().Foreground(theme.ColorAccent) }
 func stalkStyle() lipgloss.Style       { return lipgloss.NewStyle().Foreground(theme.ColorMuted) }
 func housingStyle() lipgloss.Style     { return lipgloss.NewStyle().Foreground(theme.ColorSuccess) }
@@ -90,7 +90,9 @@ func (m VNotificationsModel) fetchNotificationsCmd() tea.Cmd {
 		if m.client == nil {
 			return VNotificationsErrorMsg{Err: fmt.Errorf("client not initialized")}
 		}
-		notifications, cursor, err := m.client.GetNotifications(context.Background(), 50, m.cursor)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		notifications, cursor, err := m.client.GetNotifications(ctx, 50, m.cursor)
 		if err != nil {
 			return VNotificationsErrorMsg{Err: err}
 		}
@@ -106,7 +108,9 @@ func (m VNotificationsModel) fetchUnreadCountCmd() tea.Cmd {
 		if m.client == nil {
 			return VNotifUnreadCountMsg{Count: 0}
 		}
-		count, err := m.client.GetUnreadNotificationCount(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		count, err := m.client.GetUnreadNotificationCount(ctx)
 		if err != nil {
 			return VNotifUnreadCountMsg{Count: 0}
 		}
@@ -124,7 +128,9 @@ func (m VNotificationsModel) markSelectedReadCmd() tea.Cmd {
 		if n.IsRead {
 			return nil
 		}
-		if err := m.client.MarkNotificationsRead(context.Background(), []string{n.ID}); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := m.client.MarkNotificationsRead(ctx, []string{n.ID}); err != nil {
 			return VNotificationsErrorMsg{Err: err}
 		}
 		return VNotifUnreadCountMsg{Count: max(0, m.unreadCount-1)}
@@ -218,8 +224,10 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 func (m *VNotificationsModel) rebuildViewport() {
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.notifications), func(index int, selected bool) string {
-		return m.renderNotification(index, selected)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return m.renderNotification(index, selected, lazy)
 	})
 }
 
@@ -278,7 +286,7 @@ func (m VNotificationsModel) View() tea.View {
 	if m.unreadCount > 0 {
 		header = fmt.Sprintf("Voresky Notifications (%d unread)", m.unreadCount)
 	}
-	content.WriteString(theme.StyleHeaderSubtle.Render(header))
+	content.WriteString(theme.StyleHeaderSubtle().Render(header))
 	content.WriteString("\n\n")
 	headerHeight := strings.Count(content.String(), "\n")
 	availableHeight := max(1, m.height-headerHeight)
@@ -289,7 +297,7 @@ func (m VNotificationsModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleMuted.Render(m.spinner.View()+" Loading notifications..."),
+			theme.StyleMuted().Render(m.spinner.View()+" Loading notifications..."),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -302,7 +310,7 @@ func (m VNotificationsModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleError.Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry", m.err)),
+			theme.StyleError().Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry", m.err)),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -315,7 +323,7 @@ func (m VNotificationsModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleMuted.Italic(true).Render("No Voresky notifications"),
+			theme.StyleMuted().Italic(true).Render("No Voresky notifications"),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -325,7 +333,7 @@ func (m VNotificationsModel) View() tea.View {
 	content.WriteString(m.viewport.View())
 
 	if m.loading {
-		content.WriteString(theme.StyleMuted.Render(m.spinner.View() + " Loading more..."))
+		content.WriteString(theme.StyleMuted().Render(m.spinner.View() + " Loading more..."))
 	}
 
 	v := tea.NewView(content.String())
@@ -333,7 +341,7 @@ func (m VNotificationsModel) View() tea.View {
 	return v
 }
 
-func (m VNotificationsModel) renderNotification(index int, selected bool) string {
+func (m VNotificationsModel) renderNotification(index int, selected bool, renderer images.ImageRenderer) string {
 	n := m.notifications[index]
 	var b strings.Builder
 
@@ -346,23 +354,23 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 	b.WriteString(line + "\n")
 
 	if n.Universe != "" {
-		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle().Render(n.Universe))
+		_, _ = fmt.Fprintf(&b, "  %s\n", shared.UniverseStyle().Render(n.Universe))
 	}
 
 	ts := n.CreatedAt.Format("Jan 2, 2006 15:04")
-	_, _ = fmt.Fprintf(&b, "  %s", theme.StyleMuted.Render(ts))
+	_, _ = fmt.Fprintf(&b, "  %s", theme.StyleMuted().Render(ts))
 
 	contentStr := b.String()
 
 	var avatarBlock string
 	var gutterWidth int
-	if m.imageCache != nil && m.imageCache.Enabled() {
+	if renderer != nil && renderer.Enabled() {
 		sourceAv, targetAv := "", ""
 
 		if n.SourceCharacter != nil && n.SourceCharacter.Avatar.URL != "" {
 			url := n.SourceCharacter.Avatar.URL
-			if m.imageCache.IsCached(url) {
-				sourceAv = m.imageCache.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+			if renderer.IsCached(url) {
+				sourceAv = renderer.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
 			} else {
 				sourceAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 			}
@@ -370,8 +378,8 @@ func (m VNotificationsModel) renderNotification(index int, selected bool) string
 
 		if n.TargetCharacter != nil && n.TargetCharacter.Avatar.URL != "" {
 			url := n.TargetCharacter.Avatar.URL
-			if m.imageCache.IsCached(url) {
-				targetAv = m.imageCache.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+			if renderer.IsCached(url) {
+				targetAv = renderer.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
 			} else {
 				targetAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 			}
@@ -413,7 +421,7 @@ func notificationStyle(t voresky.NotificationType) lipgloss.Style {
 	case strings.HasPrefix(s, "collar_"):
 		return collarStyle()
 	default:
-		return theme.StyleMuted
+		return theme.StyleMuted()
 	}
 }
 

@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
@@ -56,7 +57,9 @@ type DeletePostResultMsg struct {
 // PerformLike fires an async API call to like a post and returns a LikeResultMsg.
 func PerformLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
 	return func() tea.Msg {
-		likeURI, err := client.Like(context.Background(), postURI, postCID)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		likeURI, err := client.Like(ctx, postURI, postCID)
 		return LikeResultMsg{
 			PostURI: postURI,
 			LikeURI: likeURI,
@@ -68,7 +71,9 @@ func PerformLike(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd 
 // PerformUnlike fires an async API call to unlike a post and returns an UnlikeResultMsg.
 func PerformUnlike(client bluesky.BlueskyClient, postURI, likeURI string) tea.Cmd {
 	return func() tea.Msg {
-		err := client.Unlike(context.Background(), likeURI)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err := client.Unlike(ctx, likeURI)
 		return UnlikeResultMsg{
 			PostURI: postURI,
 			Err:     err,
@@ -79,7 +84,9 @@ func PerformUnlike(client bluesky.BlueskyClient, postURI, likeURI string) tea.Cm
 // PerformRepost fires an async API call to repost a post and returns a RepostResultMsg.
 func PerformRepost(client bluesky.BlueskyClient, postURI, postCID string) tea.Cmd {
 	return func() tea.Msg {
-		repostURI, err := client.Repost(context.Background(), postURI, postCID)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		repostURI, err := client.Repost(ctx, postURI, postCID)
 		return RepostResultMsg{
 			PostURI:   postURI,
 			RepostURI: repostURI,
@@ -91,7 +98,9 @@ func PerformRepost(client bluesky.BlueskyClient, postURI, postCID string) tea.Cm
 // PerformUnRepost fires an async API call to unrepost a post and returns an UnRepostResultMsg.
 func PerformUnRepost(client bluesky.BlueskyClient, postURI, repostURI string) tea.Cmd {
 	return func() tea.Msg {
-		err := client.UnRepost(context.Background(), repostURI)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err := client.UnRepost(ctx, repostURI)
 		return UnRepostResultMsg{
 			PostURI: postURI,
 			Err:     err,

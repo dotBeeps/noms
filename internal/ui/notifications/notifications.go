@@ -23,12 +23,18 @@ import (
 
 // Notification type constants
 const (
-	ReasonLike    = "like"
-	ReasonRepost  = "repost"
-	ReasonFollow  = "follow"
-	ReasonMention = "mention"
-	ReasonReply   = "reply"
-	ReasonQuote   = "quote"
+	ReasonLike              = "like"
+	ReasonRepost            = "repost"
+	ReasonFollow            = "follow"
+	ReasonMention           = "mention"
+	ReasonReply             = "reply"
+	ReasonQuote             = "quote"
+	ReasonLikeViaRepost     = "like-via-repost"
+	ReasonRepostViaRepost   = "repost-via-repost"
+	ReasonStarterpackJoined = "starterpack-joined"
+	ReasonVerified          = "verified"
+	ReasonUnverified        = "unverified"
+	ReasonSubscribedPost    = "subscribed-post"
 )
 
 // Message types for Bubble Tea
@@ -123,7 +129,9 @@ func (m NotificationsModel) fetchNotificationsCmd() tea.Cmd {
 		if m.client == nil {
 			return NotificationsErrorMsg{Err: fmt.Errorf("client not initialized")}
 		}
-		notifications, cursor, err := m.client.ListNotifications(context.Background(), m.cursor, 50)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		notifications, cursor, err := m.client.ListNotifications(ctx, m.cursor, 50)
 		if err != nil {
 			return NotificationsErrorMsg{Err: err}
 		}
@@ -139,7 +147,9 @@ func (m NotificationsModel) fetchUnreadCountCmd() tea.Cmd {
 		if m.client == nil {
 			return UnreadCountMsg{Count: 0}
 		}
-		count, err := m.client.GetUnreadCount(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		count, err := m.client.GetUnreadCount(ctx)
 		if err != nil {
 			return UnreadCountMsg{Count: 0}
 		}
@@ -152,8 +162,9 @@ func (m NotificationsModel) markAsReadCmd() tea.Cmd {
 		if m.client == nil {
 			return nil
 		}
-
-		err := m.client.MarkNotificationsRead(context.Background(), time.Now())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err := m.client.MarkNotificationsRead(ctx, time.Now())
 		if err != nil {
 			return NotificationsErrorMsg{Err: err}
 		}
@@ -267,6 +278,9 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 		m.notifications = nil
 		m.groups = nil
 		m.viewport.Reset()
+		if m.imageCache != nil {
+			m.imageCache.InvalidateTransmissions()
+		}
 		return m, tea.Batch(
 			m.fetchNotificationsCmd(),
 			m.markAsReadCmd(),
@@ -318,7 +332,7 @@ func (m NotificationsModel) View() tea.View {
 	if m.unreadCount > 0 {
 		header = fmt.Sprintf("Notifications (%d unread)", m.unreadCount)
 	}
-	content.WriteString(theme.StyleHeaderSubtle.Render(header))
+	content.WriteString(theme.StyleHeaderSubtle().Render(header))
 	content.WriteString("\n\n")
 	headerHeight := 2
 
@@ -329,12 +343,12 @@ func (m NotificationsModel) View() tea.View {
 	}
 
 	if m.loading && len(m.notifications) == 0 {
-		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(m.spinner.View()+" Loading notifications...")))
+		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render(m.spinner.View()+" Loading notifications...")))
 		return mouseView(content.String())
 	}
 
 	if m.err != nil {
-		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err))))
+		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, theme.StyleError().Render(fmt.Sprintf("Error: %v", m.err))))
 		return mouseView(content.String())
 	}
 
@@ -348,15 +362,17 @@ func (m NotificationsModel) View() tea.View {
 
 	if m.loading {
 		content.WriteString("\n")
-		content.WriteString(theme.StyleMuted.Render(m.spinner.View() + " Loading more..."))
+		content.WriteString(theme.StyleMuted().Render(m.spinner.View() + " Loading more..."))
 	}
 
 	return mouseView(content.String())
 }
 
 func (m *NotificationsModel) rebuildViewport() {
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.groups), func(index int, selected bool) string {
-		return m.renderGroup(index, selected)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return m.renderGroup(index, selected, lazy)
 	})
 }
 
@@ -365,7 +381,9 @@ func (m *NotificationsModel) buildGroups() {
 	seen := make(map[string]int)
 
 	for _, notif := range m.notifications {
-		if (notif.Reason == ReasonLike || notif.Reason == ReasonRepost) && notif.ReasonSubject != nil && *notif.ReasonSubject != "" {
+		isGroupable := notif.Reason == ReasonLike || notif.Reason == ReasonRepost ||
+			notif.Reason == ReasonLikeViaRepost || notif.Reason == ReasonRepostViaRepost
+		if isGroupable && notif.ReasonSubject != nil && *notif.ReasonSubject != "" {
 			key := notif.Reason + ":" + *notif.ReasonSubject
 			if idx, ok := seen[key]; ok {
 				g := &m.groups[idx]
@@ -407,7 +425,7 @@ func (m *NotificationsModel) buildGroups() {
 			preview: getContentPreview(notif),
 		}
 
-		if (notif.Reason == ReasonLike || notif.Reason == ReasonRepost) && subject != "" {
+		if isGroupable && subject != "" {
 			seen[notif.Reason+":"+subject] = len(m.groups)
 		}
 
@@ -415,7 +433,7 @@ func (m *NotificationsModel) buildGroups() {
 	}
 }
 
-func (m NotificationsModel) renderGroup(index int, selected bool) string {
+func (m NotificationsModel) renderGroup(index int, selected bool, renderer images.ImageRenderer) string {
 	var b strings.Builder
 	g := m.groups[index]
 
@@ -450,15 +468,15 @@ func (m NotificationsModel) renderGroup(index int, selected bool) string {
 			timeStr = g.notif.IndexedAt
 		}
 	}
-	_, _ = fmt.Fprintf(&b, "  %s", theme.StyleMuted.Render(timeStr))
+	_, _ = fmt.Fprintf(&b, "  %s", theme.StyleMuted().Render(timeStr))
 
 	contentStr := b.String()
 
 	var avatarBlock string
-	if m.imageCache != nil && m.imageCache.Enabled() && g.notif != nil && g.notif.Author != nil && g.notif.Author.Avatar != nil {
+	if renderer != nil && renderer.Enabled() && g.notif != nil && g.notif.Author != nil && g.notif.Author.Avatar != nil {
 		avatarURL := *g.notif.Author.Avatar
-		if m.imageCache.IsCached(avatarURL) {
-			avatarBlock = m.imageCache.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows)
+		if renderer.IsCached(avatarURL) {
+			avatarBlock = renderer.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows)
 		} else {
 			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 		}
@@ -490,8 +508,20 @@ func getNotificationStyle(reason string) (icon, action string, style lipgloss.St
 		return "💬", "replied to your post", replyStyle()
 	case ReasonQuote:
 		return "❝", "quoted your post", quoteStyle()
+	case ReasonLikeViaRepost:
+		return "♡", "liked your repost", likeStyle()
+	case ReasonRepostViaRepost:
+		return "⟲", "reposted your repost", repostStyle()
+	case ReasonStarterpackJoined:
+		return "+", "joined your starter pack", followStyle()
+	case ReasonVerified:
+		return "✓", "verified you", followStyle()
+	case ReasonUnverified:
+		return "✗", "removed your verification", theme.StyleMuted()
+	case ReasonSubscribedPost:
+		return "🔔", "subscribed post was updated", mentionStyle()
 	default:
-		return "•", reason, theme.StyleMuted
+		return "•", reason, theme.StyleMuted()
 	}
 }
 
@@ -504,21 +534,8 @@ func getContentPreview(notif *bsky.NotificationListNotifications_Notification) s
 	// Type assert to different record types
 	switch record := notif.Record.Val.(type) {
 	case *bsky.FeedPost:
-		return truncateText(ansi.Strip(record.Text), 50)
+		return shared.TruncateStr(ansi.Strip(record.Text), 50)
 	}
 
 	return ""
-}
-
-func truncateText(text string, maxLen int) string {
-	runes := []rune(text)
-	if len(runes) <= maxLen {
-		return text
-	}
-	// Find a good break point
-	truncated := string(runes[:maxLen])
-	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxLen/2 {
-		truncated = truncated[:lastSpace]
-	}
-	return truncated + "..."
 }

@@ -324,38 +324,43 @@ const (
 	StatusBarHeight = 1
 )
 
-// Reusable styles
-var (
-	StylePost = lipgloss.NewStyle().
-			Foreground(ColorText)
+// Style factory functions — constructed on call so they always reflect the active theme.
 
-	StyleHeader = lipgloss.NewStyle().
-			Foreground(ColorPrimary).
-			Bold(true)
+func StylePost() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorText)
+}
 
-	StyleSelected = lipgloss.NewStyle().
-			Foreground(ColorAccent).
-			Bold(true)
+func StyleHeader() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+}
 
-	StyleMuted = lipgloss.NewStyle().
-			Foreground(ColorMuted)
+func StyleSelected() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
+}
 
-	StyleError = lipgloss.NewStyle().
-			Foreground(ColorError)
+func StyleMuted() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorMuted)
+}
 
-	StyleHeaderSubtle = lipgloss.NewStyle().
-				Foreground(ColorPrimary)
+func StyleError() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorError)
+}
 
-	StyleTabActive = lipgloss.NewStyle().
-			Foreground(ColorAccent).
-			Border(lipgloss.NormalBorder(), false, false, true, false).
-			BorderForeground(ColorAccent).
-			Padding(0, 1)
+func StyleHeaderSubtle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorPrimary)
+}
 
-	StyleTabInactive = lipgloss.NewStyle().
-				Foreground(ColorSecondary).
-				Padding(0, 1)
-)
+func StyleTabActive() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(ColorAccent).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(ColorAccent).
+		Padding(0, 1)
+}
+
+func StyleTabInactive() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorSecondary).Padding(0, 1)
+}
 
 func init() {
 	Apply("default")
@@ -420,36 +425,6 @@ func Apply(name string) string {
 	ColorWarning = lipgloss.Color(p.Warning)
 	ColorOnPrimary = lipgloss.Color(p.OnPrimary)
 	ColorOnAccent = lipgloss.Color(p.OnAccent)
-
-	StylePost = lipgloss.NewStyle().
-		Foreground(ColorText)
-
-	StyleHeader = lipgloss.NewStyle().
-		Foreground(ColorPrimary).
-		Bold(true)
-
-	StyleSelected = lipgloss.NewStyle().
-		Foreground(ColorAccent).
-		Bold(true)
-
-	StyleMuted = lipgloss.NewStyle().
-		Foreground(ColorMuted)
-
-	StyleError = lipgloss.NewStyle().
-		Foreground(ColorError)
-
-	StyleHeaderSubtle = lipgloss.NewStyle().
-		Foreground(ColorPrimary)
-
-	StyleTabActive = lipgloss.NewStyle().
-		Foreground(ColorAccent).
-		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(ColorAccent).
-		Padding(0, 1)
-
-	StyleTabInactive = lipgloss.NewStyle().
-		Foreground(ColorSecondary).
-		Padding(0, 1)
 
 	return activePalette.Name
 }

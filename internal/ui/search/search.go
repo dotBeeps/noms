@@ -327,12 +327,14 @@ func (m SearchModel) performSearch(query, cursor string, mode SearchMode, append
 
 func (m *SearchModel) rebuildViewport() {
 	if m.mode == ModePosts {
+		lazy := &images.LazyRenderer{Inner: m.imageCache}
 		m.viewport.SetItems(len(m.postResults), func(index int, selected bool) string {
 			if index < 0 || index >= len(m.postResults) {
 				return ""
 			}
+			lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 			fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[index]}
-			return feed.RenderPost(fvp, m.width, selected, m.imageCache, m.avatarOverrides)
+			return feed.RenderPost(fvp, m.width, selected, lazy, m.avatarOverrides)
 		})
 	} else {
 		m.viewport.SetItems(len(m.actorResults), func(index int, selected bool) string {
@@ -360,9 +362,9 @@ func (m SearchModel) renderPerson(index int, selected bool) string {
 		}
 	}
 
-	nameStr := theme.StyleHeader.Render(displayName)
-	handleStr := theme.StyleMuted.Render("@" + actor.Handle)
-	bioStr := theme.StyleMuted.Render(bio)
+	nameStr := theme.StyleHeader().Render(displayName)
+	handleStr := theme.StyleMuted().Render("@" + actor.Handle)
+	bioStr := theme.StyleMuted().Render(bio)
 
 	line := fmt.Sprintf("%s %s — %s", handleStr, nameStr, bioStr)
 	return shared.RenderItemWithBorder(line, selected, m.width)
@@ -379,26 +381,26 @@ func (m SearchModel) View() tea.View {
 	postsTab := "[Posts]"
 	peopleTab := "[People]"
 	if m.mode == ModePosts {
-		postsTab = theme.StyleTabActive.Render(postsTab)
-		peopleTab = theme.StyleTabInactive.Render(peopleTab)
+		postsTab = theme.StyleTabActive().Render(postsTab)
+		peopleTab = theme.StyleTabInactive().Render(peopleTab)
 	} else {
-		postsTab = theme.StyleTabInactive.Render(postsTab)
-		peopleTab = theme.StyleTabActive.Render(peopleTab)
+		postsTab = theme.StyleTabInactive().Render(postsTab)
+		peopleTab = theme.StyleTabActive().Render(peopleTab)
 	}
 	_, _ = fmt.Fprintf(&b, "%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab)
 	availableHeight := max(1, m.height-5)
 
 	// Content area
 	if m.err != nil {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleError.Render(fmt.Sprintf("Error: %v", m.err))))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleError().Render(fmt.Sprintf("Error: %v", m.err))))
 	} else if m.query == "" {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render("Type to search...")))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render("Type to search...")))
 	} else if m.loading && len(m.postResults) == 0 && len(m.actorResults) == 0 {
 		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, m.spinner.View()+" Searching..."))
 	} else if m.mode == ModePosts && len(m.postResults) == 0 {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query))))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render(fmt.Sprintf("No results for '%s'", m.query))))
 	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted.Render(fmt.Sprintf("No results for '%s'", m.query))))
+		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render(fmt.Sprintf("No results for '%s'", m.query))))
 	} else {
 		b.WriteString(m.viewport.View())
 	}
@@ -414,7 +416,7 @@ func (m SearchModel) View() tea.View {
 	} else {
 		status = fmt.Sprintf("%d results", len(m.actorResults))
 	}
-	b.WriteString(theme.StyleMuted.Render(status))
+	b.WriteString(theme.StyleMuted().Render(status))
 
 	v := tea.NewView(b.String())
 	v.MouseMode = tea.MouseModeCellMotion

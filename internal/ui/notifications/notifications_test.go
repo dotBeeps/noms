@@ -608,14 +608,14 @@ func TestTruncateText(t *testing.T) {
 		expected string
 	}{
 		{"short", 50, "short"},
-		{"this is a very long text that should be truncated", 20, "this is a very long..."},
+		{"this is a very long text that should be truncated", 20, "this is a very long …"},
 		{"exactly50chars_exactly50chars_exactly50char", 50, "exactly50chars_exactly50chars_exactly50char"},
 	}
 
 	for _, tc := range tests {
-		result := truncateText(tc.input, tc.maxLen)
+		result := shared.TruncateStr(tc.input, tc.maxLen)
 		if result != tc.expected {
-			t.Errorf("truncateText(%q, %d) = %q, want %q", tc.input, tc.maxLen, result, tc.expected)
+			t.Errorf("shared.TruncateStr(%q, %d) = %q, want %q", tc.input, tc.maxLen, result, tc.expected)
 		}
 	}
 }
@@ -633,6 +633,12 @@ func TestGetNotificationStyle(t *testing.T) {
 		{"mention", "@", "mentioned you"},
 		{"reply", "💬", "replied to your post"},
 		{"quote", "❝", "quoted your post"},
+		{"like-via-repost", "♡", "liked your repost"},
+		{"repost-via-repost", "⟲", "reposted your repost"},
+		{"starterpack-joined", "+", "joined your starter pack"},
+		{"verified", "✓", "verified you"},
+		{"unverified", "✗", "removed your verification"},
+		{"subscribed-post", "🔔", "subscribed post was updated"},
 	}
 
 	for _, tc := range tests {
@@ -992,6 +998,104 @@ func TestGroupRenderOutput(t *testing.T) {
 	}
 }
 
+func TestRenderLikeViaRepostNotification(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotification("like-via-repost", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "♡") {
+		t.Error("Expected like icon ♡ in like-via-repost notification view")
+	}
+	if !strings.Contains(content, "liked your repost") {
+		t.Error("Expected 'liked your repost' text in notification view")
+	}
+}
+
+func TestRenderRepostViaRepostNotification(t *testing.T) {
+	t.Parallel()
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotification("repost-via-repost", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-5*time.Minute).Format(time.RFC3339)),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "⟲") {
+		t.Error("Expected repost icon ⟲ in repost-via-repost notification view")
+	}
+	if !strings.Contains(content, "reposted your repost") {
+		t.Error("Expected 'reposted your repost' text in notification view")
+	}
+}
+
+func TestGroupingLikeViaRepostSamePost(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("like-via-repost", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("like-via-repost", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group for 2 like-via-reposts on same post, got %d", len(m.groups))
+	}
+	if m.groups[0].count != 2 {
+		t.Errorf("Expected group count 2, got %d", m.groups[0].count)
+	}
+	if m.groups[0].reason != ReasonLikeViaRepost {
+		t.Errorf("Expected reason 'like-via-repost', got %q", m.groups[0].reason)
+	}
+}
+
+func TestGroupingRepostViaRepostSamePost(t *testing.T) {
+	t.Parallel()
+	subject := "at://did:plc:author/app.bsky.feed.post/target"
+	notifs := []*bsky.NotificationListNotifications_Notification{
+		createTestNotification("repost-via-repost", "alice.bsky.social", "did:plc:alice", false, time.Now().Add(-1*time.Minute).Format(time.RFC3339)),
+		createTestNotification("repost-via-repost", "bob.bsky.social", "did:plc:bob", false, time.Now().Add(-2*time.Minute).Format(time.RFC3339)),
+		createTestNotification("repost-via-repost", "charlie.bsky.social", "did:plc:charlie", false, time.Now().Add(-3*time.Minute).Format(time.RFC3339)),
+	}
+	for _, n := range notifs {
+		n.ReasonSubject = &subject
+	}
+
+	mockClient := &mockBlueskyClient{}
+	m := NewNotificationsModel(mockClient, 80, 24, nil)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: notifs})
+	m = updated.(NotificationsModel)
+
+	if len(m.groups) != 1 {
+		t.Fatalf("Expected 1 group for 3 repost-via-reposts on same post, got %d", len(m.groups))
+	}
+	if m.groups[0].count != 3 {
+		t.Errorf("Expected group count 3, got %d", m.groups[0].count)
+	}
+}
+
 type stubImageRenderer struct {
 	enabled bool
 	cached  bool
@@ -1002,6 +1106,7 @@ func (s *stubImageRenderer) Enabled() bool                                 { ret
 func (s *stubImageRenderer) IsCached(url string) bool                      { return s.cached }
 func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string { return s.img }
 func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd                { return nil }
+func (s *stubImageRenderer) InvalidateTransmissions()                      {}
 
 func createTestNotificationWithAvatar(reason, handle, did string, isRead bool, indexedAt string, avatarURL string) *bsky.NotificationListNotifications_Notification {
 	notif := createTestNotification(reason, handle, did, isRead, indexedAt)

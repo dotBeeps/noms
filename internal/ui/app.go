@@ -168,11 +168,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar, _ = updateStatusBar(m.statusBar, msg)
 		m.help.SetWidth(msg.Width - 8)
 
-		contentHeight := msg.Height - theme.TabBarHeight - theme.StatusBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		contentMsg := tea.WindowSizeMsg{Width: msg.Width, Height: contentHeight}
+		contentMsg := tea.WindowSizeMsg{Width: msg.Width, Height: m.contentHeight()}
 
 		if m.screen == ScreenVoreskySetup {
 			updated, cmd := m.vsetupModel.Update(contentMsg)
@@ -223,11 +219,8 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case login.LoginSuccessMsg:
 		m.session = msg.Session
-		m.loggedIn = true
-
 		if m.tokenStore != nil {
 			_ = auth.SaveSession(m.tokenStore, msg.Session)
-
 			if msg.Session.TokenManager != nil {
 				store := m.tokenStore
 				sess := msg.Session
@@ -235,70 +228,18 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					_ = auth.SaveSession(store, sess)
 				}
 			}
-
 			if m.cfg != nil {
 				m.cfg.DefaultAccount = msg.Session.DID
 				_ = config.Save(m.cfg)
 			}
 		}
-
 		httpClient := msg.Session.AuthenticatedHTTPClient()
-		m.client = bluesky.NewClient(httpClient, msg.Session.PDS, msg.Session.DID)
-
-		contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		m.feedModel = feed.NewFeedModel(m.client, msg.Session.DID, m.width, contentHeight, m.imageCache)
-		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight, m.imageCache)
-		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight, m.imageCache)
-
-		cmds = append(cmds, m.feedModel.Init())
-
-		m.statusBar.Handle = msg.Session.Handle
-		m.statusBar.DID = msg.Session.DID
-		m.statusBar.Connected = true
-		m.ownDID = msg.Session.DID
-
-		m.prevScreen = ScreenFeed
-		m.screen = ScreenVoreskySetup
-		m.vsetupModel = vsetup.New()
-		cmds = append(cmds, m.vsetupModel.Init())
-		cmds = append(cmds, m.tryLoadVoreskySession)
-
-		cmds = append(cmds, scheduleAutoRefresh())
-
-		return m, tea.Batch(cmds...)
+		client := bluesky.NewClient(httpClient, msg.Session.PDS, msg.Session.DID)
+		return m.finishLogin(client, msg.Session.DID, msg.Session.Handle)
 
 	case login.AppPasswordLoginSuccessMsg:
-		m.loggedIn = true
-
-		m.client = bluesky.NewClientFromAPI(msg.Client, msg.DID)
-
-		contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		m.feedModel = feed.NewFeedModel(m.client, msg.DID, m.width, contentHeight, m.imageCache)
-		m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight, m.imageCache)
-		m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight, m.imageCache)
-
-		cmds = append(cmds, m.feedModel.Init())
-
-		m.statusBar.Handle = msg.Handle
-		m.statusBar.DID = msg.DID
-		m.statusBar.Connected = true
-		m.ownDID = msg.DID
-
-		m.prevScreen = ScreenFeed
-		m.screen = ScreenVoreskySetup
-		m.vsetupModel = vsetup.New()
-		cmds = append(cmds, m.vsetupModel.Init())
-		cmds = append(cmds, m.tryLoadVoreskySession)
-
-		cmds = append(cmds, scheduleAutoRefresh())
-
-		return m, tea.Batch(cmds...)
+		client := bluesky.NewClientFromAPI(msg.Client, msg.DID)
+		return m.finishLogin(client, msg.DID, msg.Handle)
 
 	case sessionRestoreFailedMsg:
 		return m, m.login.Init()
@@ -312,10 +253,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.voreskyClient = voresky.NewVoreskyClient(defaultVoreskyURL, msg.auth)
 		m.enrichManager = enrichment.New()
 		m.tabBar.VoreskyActive = true
-		contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
+		contentHeight := m.contentHeight()
 		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.voreskyTabInit = false
@@ -336,10 +274,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.voreskyClient = voresky.NewVoreskyClient(defaultVoreskyURL, msg.auth)
 		m.enrichManager = enrichment.New()
 		m.tabBar.VoreskyActive = true
-		contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
+		contentHeight := m.contentHeight()
 		m.voreskyTabModel = vtab.NewVoreskyModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.vnotifModel = vnotifications.NewVNotificationsModel(m.voreskyClient, m.width, contentHeight, m.imageCache)
 		m.voreskyTabInit = false
@@ -400,7 +335,9 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			client := m.client
 			uri := msg.URI
 			return m, func() tea.Msg {
-				err := client.DeletePost(context.Background(), uri)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				err := client.DeletePost(ctx, uri)
 				return feed.DeletePostResultMsg{URI: uri, Err: err}
 			}
 		}
@@ -735,10 +672,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m App) navigateToThread(uri string) (App, tea.Cmd) {
 	m.prevScreen = m.screen
 	m.screen = ScreenThread
-	contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 	ownDID := ""
 	if m.session != nil {
 		ownDID = m.session.DID
@@ -752,10 +686,7 @@ func (m App) navigateToThread(uri string) (App, tea.Cmd) {
 func (m App) navigateToProfile(did string) (App, tea.Cmd) {
 	m.prevScreen = m.screen
 	m.screen = ScreenProfile
-	contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 	ownDID := ""
 	if m.session != nil {
 		ownDID = m.session.DID
@@ -769,10 +700,7 @@ func (m App) navigateToProfile(did string) (App, tea.Cmd) {
 func (m App) navigateToCompose(mode compose.ComposeMode, parentPost interface{}) (App, tea.Cmd) {
 	m.prevScreen = m.screen
 	m.screen = ScreenCompose
-	contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 	m.composeModel = compose.NewComposeModel(m.client, mode, nil, m.width, contentHeight)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
 
@@ -782,16 +710,15 @@ func (m App) navigateToCompose(mode compose.ComposeMode, parentPost interface{})
 func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
 	m.prevScreen = m.screen
 	m.screen = ScreenCompose
-	contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 	client := m.client
 	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
 
 	return m, func() tea.Msg {
-		post, err := client.GetPost(context.Background(), uri)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		post, err := client.GetPost(ctx, uri)
 		if err != nil {
 			return compose.ComposeErrorMsg{Err: fmt.Errorf("loading parent post: %w", err)}
 		}
@@ -886,7 +813,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.screen == ScreenLogin {
-		if k =="ctrl+c" || k == "q" {
+		if k == "ctrl+c" || k == "q" {
 			m.imageCache.Close()
 			return m, tea.Quit
 		}
@@ -896,7 +823,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.screen == ScreenVoreskySetup {
-		if k =="ctrl+c" {
+		if k == "ctrl+c" {
 			m.imageCache.Close()
 			return m, tea.Quit
 		}
@@ -905,7 +832,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	if k =="ctrl+c" || k == "q" {
+	if k == "ctrl+c" || k == "q" {
 		m.imageCache.Close()
 		return m, tea.Quit
 	}
@@ -944,10 +871,18 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.screen = ScreenFeed
 			m.tabBar.SetActiveTab(components.TabFeed)
 
-			return m, nil
+			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+			updated, cmd := m.feedModel.Update(sizeMsg)
+			m.feedModel = updated.(feed.FeedModel)
+			return m, cmd
 		case "2":
 			m.screen = ScreenNotifications
 			m.tabBar.SetActiveTab(components.TabNotifications)
+
+			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+			updated, cmd := m.notifModel.Update(sizeMsg)
+			m.notifModel = updated.(notifications.NotificationsModel)
+			cmds = append(cmds, cmd)
 
 			if m.client != nil && !m.notifInitialized {
 				m.notifInitialized = true
@@ -957,13 +892,10 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "3":
 			m.screen = ScreenProfile
 			m.tabBar.SetActiveTab(components.TabProfile)
-		
+
 			if m.client != nil && !m.selfProfileCreated {
 				m.selfProfileCreated = true
-				contentHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
-				if contentHeight < 1 {
-					contentHeight = 1
-				}
+				contentHeight := m.contentHeight()
 				m.profileModel = profile.NewProfileModel(m.client, m.session.DID, m.session.DID, m.width, contentHeight, m.imageCache)
 				m.profileModel.SetAvatarOverrides(m.buildAvatarOverrides())
 				cmds = append(cmds, m.profileModel.Init())
@@ -973,27 +905,42 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.screen = ScreenSearch
 			m.tabBar.SetActiveTab(components.TabSearch)
 
-			return m, nil
+			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+			updated, cmd := m.searchModel.Update(sizeMsg)
+			m.searchModel = updated.(search.SearchModel)
+			return m, cmd
 		case "5":
 			if m.voreskyClient != nil {
 				m.screen = ScreenVoresky
 				m.updateTabBarForScreen()
+
+				sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+				updated, cmd := m.voreskyTabModel.Update(sizeMsg)
+				m.voreskyTabModel = updated.(vtab.VoreskyModel)
+				cmds = append(cmds, cmd)
+
 				if !m.voreskyTabInit {
 					m.voreskyTabInit = true
-					return m, m.voreskyTabModel.Init()
+					cmds = append(cmds, m.voreskyTabModel.Init())
 				}
 			}
-			return m, nil
+			return m, tea.Batch(cmds...)
 		case "6":
 			if m.voreskyClient != nil {
 				m.screen = ScreenVoreskyNotifications
 				m.updateTabBarForScreen()
+
+				sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+				updated, cmd := m.vnotifModel.Update(sizeMsg)
+				m.vnotifModel = updated.(vnotifications.VNotificationsModel)
+				cmds = append(cmds, cmd)
+
 				if !m.vnotifInit {
 					m.vnotifInit = true
-					return m, m.vnotifModel.Init()
+					cmds = append(cmds, m.vnotifModel.Init())
 				}
 			}
-			return m, nil
+			return m, tea.Batch(cmds...)
 		case "v":
 			m.prevScreen = m.screen
 			m.screen = ScreenVoreskySetup
@@ -1003,7 +950,7 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Esc in overlay screens: go back
-	if k =="esc" && m.loggedIn {
+	if k == "esc" && m.loggedIn {
 		if m.screen == ScreenThread || m.screen == ScreenProfile {
 			m.screen = m.prevScreen
 			m.prevScreen = ScreenFeed
@@ -1068,11 +1015,6 @@ func (m App) View() tea.View {
 	}
 
 	mainContent := m.renderMainContent(mainHeight)
-	mainContent = lipgloss.NewStyle().
-		Width(m.width).
-		Height(mainHeight).
-		MaxHeight(mainHeight).
-		Render(mainContent)
 	content.WriteString(mainContent)
 	content.WriteString("\n")
 
@@ -1310,8 +1252,6 @@ func updateStatusBar(m components.StatusBar, msg tea.Msg) (components.StatusBar,
 	return updated.(components.StatusBar), cmd
 }
 
-
-
 func oauthSetup() (string, *auth.DPoPSigner, error) {
 	if err := config.EnsureDirs(); err != nil {
 		return "", nil, fmt.Errorf("creating data directories: %w", err)
@@ -1498,7 +1438,10 @@ func (m *App) fetchMainCharacter() tea.Cmd {
 			return mainCharacterLoadedMsg{character: nil}
 		}
 
-		session, err := m.voreskyAuth.ValidateSession(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		session, err := m.voreskyAuth.ValidateSession(ctx)
 		if err != nil {
 			return mainCharacterErrorMsg{err: err}
 		}
@@ -1506,7 +1449,7 @@ func (m *App) fetchMainCharacter() tea.Cmd {
 			return mainCharacterLoadedMsg{character: nil}
 		}
 
-		char, err := m.voreskyClient.GetCharacter(context.Background(), session.MainCharacterID)
+		char, err := m.voreskyClient.GetCharacter(ctx, session.MainCharacterID)
 		if err != nil {
 			return mainCharacterErrorMsg{err: err}
 		}
@@ -1687,4 +1630,40 @@ func (m *App) fetchSnapshot(hash string) tea.Cmd {
 		}
 		return snapshotResultMsg{hash: hash, blob: blob}
 	}
+}
+
+func (m App) contentHeight() int {
+	h := m.height - theme.TabBarHeight - theme.StatusBarHeight
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
+// finishLogin wires up client models and navigates to the post-login screen.
+// It is shared between OAuth and app-password login paths.
+func (m App) finishLogin(client bluesky.BlueskyClient, did, handle string) (App, tea.Cmd) {
+	m.loggedIn = true
+	m.client = client
+
+	contentHeight := m.contentHeight()
+	m.feedModel = feed.NewFeedModel(m.client, did, m.width, contentHeight, m.imageCache)
+	m.notifModel = notifications.NewNotificationsModel(m.client, m.width, contentHeight, m.imageCache)
+	m.searchModel = search.NewSearchModel(m.client, m.width, contentHeight, m.imageCache)
+
+	m.statusBar.Handle = handle
+	m.statusBar.DID = did
+	m.statusBar.Connected = true
+	m.ownDID = did
+
+	m.prevScreen = ScreenFeed
+	m.screen = ScreenVoreskySetup
+	m.vsetupModel = vsetup.New()
+
+	return m, tea.Batch(
+		m.feedModel.Init(),
+		m.vsetupModel.Init(),
+		m.tryLoadVoreskySession,
+		scheduleAutoRefresh(),
+	)
 }

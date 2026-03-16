@@ -31,6 +31,7 @@ func (s *stubImageRenderer) Enabled() bool                                 { ret
 func (s *stubImageRenderer) IsCached(url string) bool                      { return s.cached }
 func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string { return s.img }
 func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd                { return nil }
+func (s *stubImageRenderer) InvalidateTransmissions()                      {}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ func TestRenderNotification_DualAvatars(t *testing.T) {
 		width:         80,
 	}
 
-	result := m.renderNotification(0, false)
+	result := m.renderNotification(0, false, m.imageCache)
 	count := strings.Count(result, "AVATAR")
 	if count < 2 {
 		t.Errorf("dual avatars: want AVATAR marker at least 2 times in output, got %d\noutput: %q",
@@ -208,7 +209,7 @@ func TestRenderNotification_SingleAvatar(t *testing.T) {
 		width:         80,
 	}
 
-	result := m.renderNotification(0, false)
+	result := m.renderNotification(0, false, m.imageCache)
 	if !strings.Contains(result, "AVATAR") {
 		t.Errorf("single avatar: expected AVATAR in rendered output\noutput: %q", result)
 	}
@@ -227,7 +228,7 @@ func TestRenderNotification_NoAvatars(t *testing.T) {
 		width:         80,
 	}
 
-	result := m.renderNotification(0, false)
+	result := m.renderNotification(0, false, m.imageCache)
 	if result == "" {
 		t.Error("no avatars: expected non-empty render")
 	}
@@ -249,7 +250,7 @@ func TestRenderNotification_UncachedAvatars(t *testing.T) {
 		width:         80,
 	}
 
-	result := m.renderNotification(0, false)
+	result := m.renderNotification(0, false, m.imageCache)
 	if strings.Contains(result, "SHOULD_NOT_APPEAR") {
 		t.Error("uncached avatars: RenderImage should not be called when not cached")
 	}
@@ -273,7 +274,7 @@ func TestDualAvatarGutterWidth13(t *testing.T) {
 		width:         30,
 	}
 
-	out := stripAnsi(m.renderNotification(0, false))
+	out := stripAnsi(m.renderNotification(0, false, m.imageCache))
 	lines := strings.Split(out, "\n")
 
 	foundIndented := false
@@ -281,7 +282,7 @@ func TestDualAvatarGutterWidth13(t *testing.T) {
 		if !strings.Contains(line, "Jan") {
 			continue
 		}
-		line = strings.TrimPrefix(line, "▎  ")
+		line = strings.TrimPrefix(line, "▎ ")
 		idx := strings.Index(line, "Jan")
 		if idx == -1 {
 			continue
@@ -309,7 +310,7 @@ func TestSingleAvatarGutterWidth6(t *testing.T) {
 		width:         24,
 	}
 
-	out := stripAnsi(m.renderNotification(0, false))
+	out := stripAnsi(m.renderNotification(0, false, m.imageCache))
 	lines := strings.Split(out, "\n")
 
 	foundIndented := false
@@ -317,7 +318,7 @@ func TestSingleAvatarGutterWidth6(t *testing.T) {
 		if !strings.Contains(line, "Jan") {
 			continue
 		}
-		line = strings.TrimPrefix(line, "▎  ")
+		line = strings.TrimPrefix(line, "▎ ")
 		idx := strings.Index(line, "Jan")
 		if idx == -1 {
 			continue
@@ -345,7 +346,7 @@ func TestNarrowTerminalFallsBackToSingleAvatar(t *testing.T) {
 		width:         20,
 	}
 
-	out := m.renderNotification(0, false)
+	out := m.renderNotification(0, false, m.imageCache)
 	if strings.Count(out, "AAAAAA") > 1 {
 		t.Fatalf("expected fallback to single avatar at narrow width, got dual avatar block: %q", out)
 	}
@@ -366,7 +367,7 @@ func TestVnotificationAvatarPresentInOutput(t *testing.T) {
 		width:         80,
 	}
 
-	out := m.renderNotification(0, false)
+	out := m.renderNotification(0, false, m.imageCache)
 	if !strings.Contains(out, "VN_AVATAR") {
 		t.Fatalf("expected avatar marker in output, got: %q", out)
 	}
@@ -385,7 +386,7 @@ func TestDualAvatarRenderContainsBothWhenWide(t *testing.T) {
 		width:         80,
 	}
 
-	out := m.renderNotification(0, false)
+	out := m.renderNotification(0, false, m.imageCache)
 	if strings.Count(out, "DUALAV") < 2 {
 		t.Fatalf("expected two avatars to render on wide terminal; output: %q", out)
 	}

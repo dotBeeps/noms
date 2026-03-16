@@ -33,7 +33,7 @@ func NewItemViewport(width, height int) ItemViewport {
 	// Use a large width so viewport never clips pre-formatted content
 	// horizontally. Our items are already rendered to the correct visual width.
 	vp := viewport.New(viewport.WithWidth(width+20), viewport.WithHeight(height))
-	vp.MouseWheelEnabled = false // we handle mouse wheel at the item level
+	vp.MouseWheelEnabled = false  // we handle mouse wheel at the item level
 	vp.KeyMap = viewport.KeyMap{} // we handle all keys ourselves
 	return ItemViewport{vp: vp, width: width}
 }
@@ -61,16 +61,19 @@ func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bo
 		iv.selectedIndex = count - 1
 	}
 
-	iv.lineOffsets = make([]int, count+1)
+	// Build offsets into a local slice so IsNearVisible can still read the
+	// previous (fully-computed) lineOffsets during the render loop.
+	newOffsets := make([]int, count+1)
 	var buf strings.Builder
 	lineNum := 0
 	for i := range count {
-		iv.lineOffsets[i] = lineNum
+		newOffsets[i] = lineNum
 		rendered := renderFn(i, i == iv.selectedIndex)
 		buf.WriteString(rendered)
 		lineNum += strings.Count(rendered, "\n")
 	}
-	iv.lineOffsets[count] = lineNum
+	newOffsets[count] = lineNum
+	iv.lineOffsets = newOffsets
 
 	iv.vp.SetContent(buf.String())
 	iv.ensureVisible()
@@ -144,6 +147,19 @@ func (iv *ItemViewport) View() string { return iv.vp.View() }
 func (iv *ItemViewport) Reset() {
 	iv.selectedIndex = 0
 	iv.vp.GotoTop()
+}
+
+// IsNearVisible returns whether item at index is within buffer lines of
+// the current viewport scroll position. Returns true when unknown (first
+// render or out-of-bounds index), so items are treated as visible by default.
+func (iv *ItemViewport) IsNearVisible(index, buffer int) bool {
+	if iv.lineOffsets == nil || index+1 >= len(iv.lineOffsets) {
+		return true
+	}
+	itemStart := iv.lineOffsets[index]
+	itemEnd := iv.lineOffsets[index+1]
+	yOffset := iv.vp.YOffset()
+	return itemEnd > yOffset-buffer && itemStart < yOffset+iv.vp.Height()+buffer
 }
 
 // ensureVisible scrolls the viewport so the selected item is visible.

@@ -96,39 +96,41 @@ func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
 	return *post.Post.Author.Avatar
 }
 
-func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string) string {
+// RenderPostContent builds the post's visual content without border wrapping.
+// Used by thread view which applies its own border treatment.
+// The width parameter is the content area width (caller accounts for border overhead).
+func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images.ImageRenderer, avatarOverrides map[string]string) string {
 	var b strings.Builder
-	contentWidth := max(10, width-2)
-	b.WriteString("\n")
+	contentWidth := max(10, width)
 
 	if post.Reason != nil && post.Reason.FeedDefs_ReasonRepost != nil {
 		reason := post.Reason.FeedDefs_ReasonRepost
 		handle := reason.By.Handle
-		b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("⟲ Reposted by @%s", handle)))
+		b.WriteString(theme.StyleMuted().Render(fmt.Sprintf("⟲ Reposted by @%s", handle)))
 		b.WriteString("\n")
 	} else if post.Reply != nil && post.Reply.Parent != nil {
 		if parent := post.Reply.Parent.FeedDefs_PostView; parent != nil && parent.Author != nil {
 			handle := parent.Author.Handle
-			b.WriteString(theme.StyleMuted.Render(fmt.Sprintf("↩ Replying to @%s", handle)))
+			b.WriteString(theme.StyleMuted().Render(fmt.Sprintf("↩ Replying to @%s", handle)))
 			b.WriteString("\n")
 		}
 	}
 
 	if post.Post == nil || post.Post.Author == nil {
-		return theme.StyleMuted.Render("[unavailable post]")
+		return theme.StyleMuted().Render("[unavailable post]")
 	}
 	displayName := post.Post.Author.Handle
 	if post.Post.Author.DisplayName != nil && *post.Post.Author.DisplayName != "" {
 		displayName = ansi.Strip(*post.Post.Author.DisplayName)
 	}
-	authorName := theme.StyleHeader.Render(displayName)
-	handle := theme.StyleMuted.Render("@" + post.Post.Author.Handle)
+	authorName := theme.StyleHeader().Render(displayName)
+	handle := theme.StyleMuted().Render("@" + post.Post.Author.Handle)
 
-	timeStr := theme.StyleMuted.Render("now")
+	timeStr := theme.StyleMuted().Render("now")
 	if post.Post.Record != nil && post.Post.Record.Val != nil {
 		if record, ok := post.Post.Record.Val.(*bsky.FeedPost); ok {
 			if t, err := time.Parse(time.RFC3339, record.CreatedAt); err == nil {
-				timeStr = theme.StyleMuted.Render(FormatRelativeTime(t))
+				timeStr = theme.StyleMuted().Render(FormatRelativeTime(t))
 			}
 		}
 	}
@@ -154,7 +156,8 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 		}
 	}
 
-	// Content with facets (rich text), wrapped to account for left border width
+	avatarContentWidth := max(10, width-shared.AvatarCols-1)
+
 	bodyLines := []string{}
 	if post.Post.Record != nil && post.Post.Record.Val != nil {
 		if record, ok := post.Post.Record.Val.(*bsky.FeedPost); ok {
@@ -174,7 +177,6 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 				}
 			}
 			if avatarStr != "" {
-				avatarContentWidth := max(10, width-2-shared.AvatarCols-1)
 				bodyLines = strings.Split(lipgloss.NewStyle().Width(avatarContentWidth).Render(body.String()), "\n")
 			} else {
 				bodyLines = strings.Split(lipgloss.NewStyle().Width(contentWidth).Render(body.String()), "\n")
@@ -183,7 +185,6 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 
 	if avatarStr != "" {
-		avatarContentWidth := max(10, width-2-shared.AvatarCols-1)
 		paddedNameLine := lipgloss.NewStyle().Width(avatarContentWidth).Render(nameLine)
 		completeContent := paddedNameLine + "\n" + strings.Join(bodyLines, "\n")
 		b.WriteString(shared.JoinWithGutter(avatarStr, completeContent, " ", shared.AvatarCols))
@@ -198,9 +199,9 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	}
 
 	if post.Post.Embed != nil {
-		embedWidth := width - 2
+		embedWidth := width
 		if avatarStr != "" {
-			embedWidth = max(10, width-2-shared.AvatarCols-1)
+			embedWidth = avatarContentWidth
 		}
 		if embedStr := strings.TrimRight(renderEmbed(post.Post.Embed, embedWidth, cache), "\n "); embedStr != "" {
 			b.WriteString(embedStr)
@@ -223,24 +224,30 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 	reposted := post.Post.Viewer != nil && post.Post.Viewer.Repost != nil && *post.Post.Viewer.Repost != ""
 
 	likeIcon := "♡"
-	likeStyle := theme.StyleMuted
+	likeStyle := theme.StyleMuted()
 	if liked {
 		likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
 	}
 
 	repostIcon := "↻"
-	repostStyle := theme.StyleMuted
+	repostStyle := theme.StyleMuted()
 	if reposted {
 		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
 	}
 
 	engLine := likeStyle.Render(fmt.Sprintf("%s %d", likeIcon, likeCount)) +
 		"  " + repostStyle.Render(fmt.Sprintf("%s %d", repostIcon, repostCount)) +
-		"  " + theme.StyleMuted.Render(fmt.Sprintf("↩ %d", replyCount))
+		"  " + theme.StyleMuted().Render(fmt.Sprintf("↩ %d", replyCount))
 	b.WriteString(engLine)
 	b.WriteString("\n \n")
 
-	return shared.RenderItemWithBorder(b.String(), selected, width)
+	return b.String()
+}
+
+// RenderPost renders a complete bordered post panel.
+func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string) string {
+	content := RenderPostContent(post, width-2, cache, avatarOverrides)
+	return shared.RenderItemWithBorder(content, selected, width)
 }
 
 func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.ImageRenderer) string {
@@ -263,7 +270,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 			if len(imgs) == 1 {
 				alt := ""
 				if imgs[0].Alt != "" {
-					alt = ": " + truncateStr(imgs[0].Alt, 60)
+					alt = ": " + shared.TruncateStr(imgs[0].Alt, 60)
 				}
 				return rendered + "\n" + embedBoxStyle.Render(fmt.Sprintf("🖼 image%s", alt))
 			}
@@ -272,7 +279,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		if len(imgs) == 1 {
 			alt := ""
 			if imgs[0].Alt != "" {
-				alt = ": " + truncateStr(imgs[0].Alt, 60)
+				alt = ": " + shared.TruncateStr(imgs[0].Alt, 60)
 			}
 			return embedBoxStyle.Render(fmt.Sprintf("🖼 image%s", alt))
 		}
@@ -289,13 +296,13 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 			if rendered != "" {
 				rendered += "\n"
 			}
-			rendered += embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(ext.Title, 50)))
+			rendered += embedBoxStyle.Render(fmt.Sprintf("🔗 %s", shared.TruncateStr(ext.Title, 50)))
 			return rendered
 		}
-		title := truncateStr(ext.Title, 50)
+		title := shared.TruncateStr(ext.Title, 50)
 		desc := ""
 		if ext.Description != "" {
-			desc = "\n" + truncateStr(ext.Description, 80)
+			desc = "\n" + shared.TruncateStr(ext.Description, 80)
 		}
 		return embedBoxStyle.Render(fmt.Sprintf("🔗 %s%s", title, desc))
 
@@ -312,7 +319,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		text := ""
 		if vr.Value != nil {
 			if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
-				text = truncateStr(ansi.Strip(fp.Text), 80)
+				text = shared.TruncateStr(ansi.Strip(fp.Text), 80)
 			}
 		}
 		return embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text))
@@ -321,7 +328,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		vid := embed.EmbedVideo_View
 		alt := ""
 		if vid.Alt != nil && *vid.Alt != "" {
-			alt = ": " + truncateStr(*vid.Alt, 60)
+			alt = ": " + shared.TruncateStr(*vid.Alt, 60)
 		}
 		return embedBoxStyle.Render(fmt.Sprintf("🎥 video%s", alt))
 
@@ -339,7 +346,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 					parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🖼 %d images", len(imgs))))
 				}
 			case rwm.Media.EmbedExternal_View != nil && rwm.Media.EmbedExternal_View.External != nil:
-				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🔗 %s", truncateStr(rwm.Media.EmbedExternal_View.External.Title, 50))))
+				parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("🔗 %s", shared.TruncateStr(rwm.Media.EmbedExternal_View.External.Title, 50))))
 			case rwm.Media.EmbedVideo_View != nil:
 				parts = append(parts, embedBoxStyle.Render("🎥 video"))
 			}
@@ -353,7 +360,7 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 			text := ""
 			if vr.Value != nil {
 				if fp, ok := vr.Value.Val.(*bsky.FeedPost); ok {
-					text = truncateStr(ansi.Strip(fp.Text), 80)
+					text = shared.TruncateStr(ansi.Strip(fp.Text), 80)
 				}
 			}
 			parts = append(parts, embedBoxStyle.Render(fmt.Sprintf("❝ %s\n%s", author, text)))
@@ -381,40 +388,32 @@ func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.Im
 
 	switch len(imgs) {
 	case 1:
-		cols := max(10, width*3/4)
+		cols := min(max(10, width*3/4), 60)
 		rendered := renderOrPlaceholder(imgs[0].Thumb, cols, 16)
 		if imgs[0].Alt != "" {
-			rendered += "\n" + theme.StyleMuted.Render(truncateStr(imgs[0].Alt, 60))
+			rendered += "\n" + theme.StyleMuted().Render(shared.TruncateStr(imgs[0].Alt, 60))
 		}
 		return rendered
 
 	case 2:
-		cols := max(8, (width-2)/2)
+		cols := min(max(8, (width-2)/2), 40)
 		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 10)
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 10)
 		return shared.JoinHorizontalRaw(img1, img2, "  ")
 
 	case 3:
-		cols := max(8, (width-2)/2)
+		cols := min(max(8, (width-2)/2), 40)
 		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
 		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
 		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + img3
 
 	default:
-		cols := max(8, (width-2)/2)
+		cols := min(max(8, (width-2)/2), 40)
 		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
 		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
 		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
 		img4 := renderOrPlaceholder(imgs[3].Thumb, cols, 8)
 		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + shared.JoinHorizontalRaw(img3, img4, "  ")
 	}
-}
-
-func truncateStr(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "…"
 }

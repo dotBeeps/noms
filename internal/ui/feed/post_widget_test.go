@@ -320,9 +320,9 @@ func TestTruncateStr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := truncateStr(tt.input, tt.maxLen)
+			result := shared.TruncateStr(tt.input, tt.maxLen)
 			if result != tt.expected {
-				t.Errorf("truncateStr(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
+				t.Errorf("shared.TruncateStr(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
 			}
 		})
 	}
@@ -348,6 +348,7 @@ func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string {
 	return s.render(url, cols, rows)
 }
 func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd { return nil }
+func (s *stubImageRenderer) InvalidateTransmissions()       {}
 
 func TestRenderPostAvatarLeftWhenCached(t *testing.T) {
 	t.Parallel()
@@ -396,7 +397,7 @@ func TestRenderPostPlaceholderWhenUncached(t *testing.T) {
 	}
 }
 
-func TestRenderPostTopPadding(t *testing.T) {
+func TestRenderPostNoLeadingBlankLine(t *testing.T) {
 	t.Parallel()
 	post := createTestPost("Padding test post", "padtest.bsky.social", "PaddingDisplayName", "at://uri_pad1", "cid_pad1")
 
@@ -410,8 +411,8 @@ func TestRenderPostTopPadding(t *testing.T) {
 			break
 		}
 	}
-	if nameLineIdx <= 0 {
-		t.Errorf("Expected 'PaddingDisplayName' to appear after the first line (1-cell top padding). Got line index %d in:\n%s", nameLineIdx, rendered)
+	if nameLineIdx != 0 {
+		t.Errorf("Expected 'PaddingDisplayName' on the first line (no leading blank). Got line index %d in:\n%s", nameLineIdx, rendered)
 	}
 }
 

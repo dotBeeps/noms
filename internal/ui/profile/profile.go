@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -108,7 +109,8 @@ func (m ProfileModel) Init() tea.Cmd {
 
 func (m ProfileModel) fetchProfile() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		p, err := m.client.GetProfile(ctx, m.viewDID)
 		if err != nil {
 			return ProfileErrorMsg{Err: err}
@@ -119,7 +121,8 @@ func (m ProfileModel) fetchProfile() tea.Cmd {
 
 func (m ProfileModel) fetchAuthorFeed(cursor string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		posts, nextCursor, err := m.client.GetAuthorFeed(ctx, m.viewDID, cursor, 30)
 		if err != nil {
 			return ProfileErrorMsg{Err: err}
@@ -134,7 +137,8 @@ func (m ProfileModel) toggleFollow() tea.Cmd {
 			return nil
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 
 		// Check if currently following
 		isFollowing := m.profile.Viewer.Following != nil && *m.profile.Viewer.Following != ""
@@ -579,8 +583,10 @@ func (m *ProfileModel) rebuildViewport() {
 		headerHeight = strings.Count(b.String(), "\n") + 1
 	}
 	m.viewport.SetSize(m.width, max(1, m.height-headerHeight))
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.authorFeed), func(index int, selected bool) string {
-		return feed.RenderPost(m.authorFeed[index], m.width, selected, m.imageCache, m.avatarOverrides)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return feed.RenderPost(m.authorFeed[index], m.width, selected, lazy, m.avatarOverrides)
 	})
 }
 

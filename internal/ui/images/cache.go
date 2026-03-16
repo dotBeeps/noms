@@ -10,6 +10,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -24,20 +25,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/blacktop/go-termimg"
 	"github.com/dotBeeps/noms/internal/ui/theme"
+	"github.com/nfnt/resize"
 )
 
-var debugLog *log.Logger
-
 var httpClient = &http.Client{Timeout: 10 * time.Second}
-
-func init() {
-	f, err := os.OpenFile("/tmp/noms-images-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		debugLog = log.New(os.Stderr, "[img] ", log.Ltime|log.Lmicroseconds)
-	} else {
-		debugLog = log.New(f, "[img] ", log.Ltime|log.Lmicroseconds)
-	}
-}
 
 // ImageFetchedMsg signals that an image has been downloaded and cached.
 type ImageFetchedMsg struct {
@@ -51,6 +42,51 @@ type placementInfo struct {
 	imageNum uint32
 }
 
+// transmittedEntry stores a Kitty image ID alongside the generation it was transmitted in.
+type transmittedEntry struct {
+	imageNum   uint32
+	generation uint32
+}
+
+// failedFetchEntry tracks a failed download for retry logic.
+type failedFetchEntry struct {
+	failedAt time.Time
+	attempts int
+}
+
+const (
+	maxFetchRetries   = 3
+	baseRetryDelay    = 2 * time.Second
+	maxRetryDelay     = 2 * time.Minute
+	maxCooldown       = 5 * time.Minute
+	maxImageDimension = 256
+)
+
+func resizeToFit(img image.Image, maxDim uint) image.Image {
+	bounds := img.Bounds()
+	w, h := uint(bounds.Dx()), uint(bounds.Dy())
+	if w <= maxDim && h <= maxDim {
+		return img
+	}
+	return resize.Thumbnail(maxDim, maxDim, img, resize.Lanczos3)
+}
+
+func retryDelay(attempt int) time.Duration {
+	d := baseRetryDelay << uint(attempt) // 2s, 4s, 8s
+	if d > maxRetryDelay {
+		return maxRetryDelay
+	}
+	return d
+}
+
+func cooldownFor(attempts int) time.Duration {
+	d := retryDelay(attempts)
+	if d > maxCooldown {
+		return maxCooldown
+	}
+	return d
+}
+
 // imageNumCounter is a global counter for assigning unique Kitty image IDs.
 var imageNumCounter uint32
 
@@ -58,14 +94,17 @@ var imageNumCounter uint32
 // For Kitty, transmits image data via /dev/tty and returns cellbuf-compatible
 // Unicode placeholders. For other protocols, uses go-termimg widgets directly.
 type Cache struct {
-	files      sync.Map // url -> filepath
-	widgets    sync.Map // url -> *termimg.ImageWidget (non-Kitty protocols)
-	pending    sync.Map // url -> bool (in-flight downloads)
-	imageNums  sync.Map // url -> uint32 (Kitty: transmitted image IDs)
-	placements sync.Map // url -> placementInfo (Kitty: last placement dimensions)
-	dir        string
-	protocol   termimg.Protocol
-	tty        *os.File // direct terminal access for Kitty APC bypass
+	files         sync.Map // url -> filepath
+	widgets       sync.Map // url -> *termimg.ImageWidget (non-Kitty protocols)
+	pending       sync.Map // url -> bool (in-flight downloads)
+	imageNums     sync.Map // url -> transmittedEntry (Kitty: transmitted image IDs + generation)
+	placements    sync.Map // url -> placementInfo (Kitty: last placement dimensions)
+	failedFetches sync.Map // url -> failedFetchEntry (failed downloads eligible for retry)
+	dir           string
+	protocol      termimg.Protocol
+	tty           *os.File // direct terminal access for Kitty APC bypass
+	logger        *log.Logger
+	generation    uint32 // incremented to invalidate all Kitty transmissions
 
 	mu      sync.Mutex
 	lastErr error
@@ -73,6 +112,18 @@ type Cache struct {
 
 // New creates a new image cache. Detects the best available graphics protocol.
 func New() *Cache {
+	var logger *log.Logger
+	if os.Getenv("NOMS_DEBUG") != "" {
+		f, err := os.OpenFile("/tmp/noms-images-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			logger = log.New(os.Stderr, "[img] ", log.Ltime|log.Lmicroseconds)
+		} else {
+			logger = log.New(f, "[img] ", log.Ltime|log.Lmicroseconds)
+		}
+	} else {
+		logger = log.New(io.Discard, "", 0)
+	}
+
 	protocol := termimg.DetectProtocol()
 	dir := filepath.Join(os.TempDir(), "noms-images")
 	os.MkdirAll(dir, 0o700) //nolint:errcheck
@@ -82,13 +133,13 @@ func New() *Cache {
 		var err error
 		tty, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 		if err != nil {
-			debugLog.Printf("New: failed to open /dev/tty, falling back to halfblocks: %v", err)
+			logger.Printf("New: failed to open /dev/tty, falling back to halfblocks: %v", err)
 			protocol = termimg.Halfblocks
 		}
 	}
 
-	debugLog.Printf("New: protocol=%s(%d) enabled=%v dir=%s kitty=%v", protocol, protocol, protocol != termimg.Unsupported, dir, tty != nil)
-	return &Cache{dir: dir, protocol: protocol, tty: tty}
+	logger.Printf("New: protocol=%s(%d) enabled=%v dir=%s kitty=%v", protocol, protocol, protocol != termimg.Unsupported, dir, tty != nil)
+	return &Cache{dir: dir, protocol: protocol, tty: tty, logger: logger}
 }
 
 // Enabled returns whether any graphics protocol is supported.
@@ -104,6 +155,14 @@ func (c *Cache) Protocol() string {
 	return c.protocol.String()
 }
 
+// InvalidateTransmissions increments the generation counter, causing all
+// Kitty image IDs to be considered stale. Images will be re-transmitted
+// with fresh IDs on next render. Downloaded PNG files are kept.
+func (c *Cache) InvalidateTransmissions() {
+	gen := atomic.AddUint32(&c.generation, 1)
+	c.logger.Printf("InvalidateTransmissions: new generation=%d", gen)
+}
+
 // IsCached returns whether the given URL has been downloaded.
 func (c *Cache) IsCached(url string) bool {
 	if c == nil {
@@ -111,6 +170,16 @@ func (c *Cache) IsCached(url string) bool {
 	}
 	_, ok := c.files.Load(url)
 	return ok
+}
+
+// PendingCount returns the number of in-flight image downloads.
+func (c *Cache) PendingCount() int {
+	if c == nil {
+		return 0
+	}
+	var n int
+	c.pending.Range(func(_, _ any) bool { n++; return true })
+	return n
 }
 
 // Fetch returns a tea.Cmd that downloads an image and caches it.
@@ -134,82 +203,137 @@ func (c *Cache) FetchAvatar(url string) tea.Cmd {
 
 func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.Image) tea.Cmd {
 	if c == nil || !c.Enabled() || url == "" {
-		debugLog.Printf("Fetch: skip url=%q (nil=%v enabled=%v empty=%v)", truncateURL(url), c == nil, c != nil && c.Enabled(), url == "")
 		return nil
 	}
 	if c.IsCached(url) {
-		debugLog.Printf("Fetch: skip already cached url=%s", truncateURL(url))
+		c.logger.Printf("Fetch: skip already cached url=%s", truncateURL(url))
 		return nil
 	}
+	// Check if this URL previously failed — skip if cooldown hasn't elapsed
+	var priorAttempts int
+	if val, ok := c.failedFetches.Load(url); ok {
+		entry := val.(failedFetchEntry)
+		priorAttempts = entry.attempts
+		if time.Since(entry.failedAt) < cooldownFor(entry.attempts) {
+			return nil
+		}
+		c.logger.Printf("Fetch: retrying previously failed url=%s (attempt=%d)", truncateURL(url), entry.attempts)
+		c.failedFetches.Delete(url)
+	}
 	if _, loaded := c.pending.LoadOrStore(url, true); loaded {
-		debugLog.Printf("Fetch: skip already pending url=%s", truncateURL(url))
+		c.logger.Printf("Fetch: skip already pending url=%s", truncateURL(url))
 		return nil
 	}
 
-	debugLog.Printf("Fetch: starting download url=%s", truncateURL(url))
+	c.logger.Printf("Fetch: starting download url=%s", truncateURL(url))
 
 	return func() tea.Msg {
 		defer c.pending.Delete(url)
 
-		resp, err := httpClient.Get(url)
-		if err != nil {
-			debugLog.Printf("Fetch: HTTP error url=%s err=%v", truncateURL(url), err)
-			c.setError(fmt.Errorf("fetch %s: %w", truncateURL(url), err))
-			return nil
+		var lastErr error
+		for attempt := 0; attempt <= maxFetchRetries; attempt++ {
+			if attempt > 0 {
+				delay := retryDelay(attempt - 1)
+				c.logger.Printf("Fetch: retry %d/%d after %v url=%s", attempt, maxFetchRetries, delay, truncateURL(url))
+				time.Sleep(delay)
+			}
+
+			resp, err := httpClient.Get(url)
+			if err != nil {
+				c.logger.Printf("Fetch: HTTP error url=%s err=%v", truncateURL(url), err)
+				lastErr = err
+				continue
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				c.logger.Printf("Fetch: HTTP status %d url=%s", resp.StatusCode, truncateURL(url))
+				resp.Body.Close()
+				lastErr = fmt.Errorf("status %d", resp.StatusCode)
+				if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+					break // don't retry client errors
+				}
+				continue
+			}
+
+			img, format, err := image.Decode(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				c.logger.Printf("Fetch: decode error url=%s err=%v", truncateURL(url), err)
+				lastErr = err
+				continue
+			}
+
+			c.logger.Printf("Fetch: decoded %s %dx%d url=%s", format, img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
+
+			if transform != nil {
+				img = transform(img)
+				c.logger.Printf("Fetch: applied transform %dx%d url=%s", img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
+			}
+
+			img = resizeToFit(img, maxImageDimension)
+			c.logger.Printf("Fetch: resized to %dx%d url=%s", img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
+
+			hash := sha256.Sum256([]byte(url))
+			filename := fmt.Sprintf("%x.png", hash[:8])
+			path := filepath.Join(c.dir, filename)
+
+			f, err := os.Create(path)
+			if err != nil {
+				c.logger.Printf("Fetch: create error path=%s err=%v", path, err)
+				c.setError(fmt.Errorf("create %s: %w", path, err))
+				return nil
+			}
+
+			if err := png.Encode(f, img); err != nil {
+				f.Close()
+				_ = os.Remove(path)
+				c.logger.Printf("Fetch: encode error path=%s err=%v", path, err)
+				c.setError(fmt.Errorf("encode %s: %w", path, err))
+				return nil
+			}
+			f.Close()
+
+			c.logger.Printf("Fetch: saved path=%s url=%s", path, truncateURL(url))
+			c.files.Store(url, path)
+			return ImageFetchedMsg{URL: url}
 		}
-		defer func() {
-			_ = resp.Body.Close()
-		}()
 
-		if resp.StatusCode != http.StatusOK {
-			debugLog.Printf("Fetch: HTTP status %d url=%s", resp.StatusCode, truncateURL(url))
-			c.setError(fmt.Errorf("fetch %s: status %d", truncateURL(url), resp.StatusCode))
-			return nil
-		}
-
-		img, format, err := image.Decode(resp.Body)
-		if err != nil {
-			debugLog.Printf("Fetch: decode error url=%s err=%v", truncateURL(url), err)
-			c.setError(fmt.Errorf("decode %s: %w", truncateURL(url), err))
-			return nil
-		}
-
-		debugLog.Printf("Fetch: decoded %s %dx%d url=%s", format, img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
-
-		if transform != nil {
-			img = transform(img)
-			debugLog.Printf("Fetch: applied transform %dx%d url=%s", img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
-		}
-
-		hash := sha256.Sum256([]byte(url))
-		filename := fmt.Sprintf("%x.png", hash[:8])
-		path := filepath.Join(c.dir, filename)
-
-		f, err := os.Create(path)
-		if err != nil {
-			debugLog.Printf("Fetch: create error path=%s err=%v", path, err)
-			c.setError(fmt.Errorf("create %s: %w", path, err))
-			return nil
-		}
-		defer func() {
-			_ = f.Close()
-		}()
-
-		if err := png.Encode(f, img); err != nil {
-			_ = os.Remove(path)
-			debugLog.Printf("Fetch: encode error path=%s err=%v", path, err)
-			c.setError(fmt.Errorf("encode %s: %w", path, err))
-			return nil
-		}
-
-		debugLog.Printf("Fetch: saved path=%s url=%s", path, truncateURL(url))
-		c.files.Store(url, path)
-
-		// /dev/tty writes (Kitty APC) deferred to renderKittyPlaceholders (View goroutine)
-		// to avoid interleaving with bubbletea's stdout writes from this background goroutine.
-
-		return ImageFetchedMsg{URL: url}
+		// All retries exhausted
+		c.setError(fmt.Errorf("fetch %s: %w", truncateURL(url), lastErr))
+		c.failedFetches.Store(url, failedFetchEntry{
+			failedAt: time.Now(),
+			attempts: priorAttempts + 1,
+		})
+		return nil
 	}
+}
+
+// ClearFailedFetches resets all failed fetch entries, allowing immediate re-fetch.
+func (c *Cache) ClearFailedFetches() {
+	if c == nil {
+		return
+	}
+	c.failedFetches = sync.Map{}
+}
+
+// RenderImageNoTransmit renders a cached image without initiating new Kitty
+// transmissions. For Kitty protocol, returns "" if the image hasn't been
+// transmitted yet (caller should fall back to a text placeholder). For
+// non-Kitty protocols, behaves identically to RenderImage.
+func (c *Cache) RenderImageNoTransmit(url string, cols, rows int) string {
+	if c == nil || !c.Enabled() {
+		return ""
+	}
+	if _, ok := c.files.Load(url); !ok {
+		return ""
+	}
+	if c.protocol == termimg.Kitty && c.tty != nil {
+		if _, ok := c.imageNums.Load(url); !ok {
+			return ""
+		}
+		return c.renderKittyPlaceholders(url, cols, rows)
+	}
+	return c.renderWidget(url, cols, rows)
 }
 
 // RenderImage renders the cached image at the given size using the best
@@ -232,39 +356,61 @@ func (c *Cache) RenderImage(url string, cols, rows int) string {
 }
 
 func (c *Cache) renderKittyPlaceholders(url string, cols, rows int) string {
-	numVal, ok := c.imageNums.Load(url)
-	if !ok {
-		// Lazy transmit: runs on main goroutine (View), safe from /dev/tty races
+	currentGen := atomic.LoadUint32(&c.generation)
+
+	needsTransmit := false
+	var imageNum uint32
+
+	if entryVal, ok := c.imageNums.Load(url); ok {
+		entry := entryVal.(transmittedEntry)
+		if entry.generation != currentGen {
+			c.logger.Printf("renderKittyPlaceholders: stale generation url=%s (have=%d, current=%d), re-transmitting", truncateURL(url), entry.generation, currentGen)
+			c.imageNums.Delete(url)
+			c.placements.Delete(url)
+			needsTransmit = true
+		} else {
+			imageNum = entry.imageNum
+		}
+	} else {
+		needsTransmit = true
+	}
+
+	if needsTransmit {
 		pathVal, pathOk := c.files.Load(url)
 		if !pathOk {
 			return ""
 		}
-		imageNum, err := c.transmitImageData(pathVal.(string))
+		var err error
+		imageNum, err = c.transmitImageData(pathVal.(string))
 		if err != nil {
+			c.logger.Printf("renderKittyPlaceholders: transmit failed url=%s err=%v", truncateURL(url), err)
 			c.setError(fmt.Errorf("transmit %s: %w", truncateURL(url), err))
 			return ""
 		}
-		c.imageNums.Store(url, imageNum)
-		numVal = imageNum
+		c.imageNums.Store(url, transmittedEntry{imageNum: imageNum, generation: currentGen})
 	}
-	imageNum := numVal.(uint32)
 
-	if info, ok := c.placements.Load(url); ok {
-		pi := info.(placementInfo)
-		if pi.cols != cols || pi.rows != rows {
-			c.deleteVirtualPlacement(imageNum)
-			c.setVirtualPlacement(imageNum, cols, rows)
-			c.placements.Store(url, placementInfo{cols: cols, rows: rows, imageNum: imageNum})
-		}
-	} else {
-		c.setVirtualPlacement(imageNum, cols, rows)
-		c.placements.Store(url, placementInfo{cols: cols, rows: rows, imageNum: imageNum})
+	// Always re-send placement to handle terminal-side eviction
+	if err := c.setVirtualPlacement(imageNum, cols, rows); err != nil {
+		c.logger.Printf("renderKittyPlaceholders: placement failed url=%s err=%v", truncateURL(url), err)
+		c.imageNums.Delete(url)
+		return ""
 	}
+	c.placements.Store(url, placementInfo{cols: cols, rows: rows, imageNum: imageNum})
 
 	area := termimg.CreatePlaceholderArea(imageNum, uint16(rows), uint16(cols))
 	output := termimg.RenderPlaceholderAreaWithImageID(area, imageNum)
 	// Strip \r — termimg uses \r\n line endings but cellbuf only expects \n
-	return strings.ReplaceAll(output, "\r", "")
+	output = strings.ReplaceAll(output, "\r", "")
+
+	if output == "" {
+		return ""
+	}
+	if !strings.Contains(output, "\U0010EEEE") {
+		c.logger.Printf("renderKittyPlaceholders: output missing placeholder chars url=%s len=%d (proceeding anyway)", truncateURL(url), len(output))
+	}
+
+	return output
 }
 
 func (c *Cache) renderWidget(url string, cols, rows int) string {
@@ -336,8 +482,12 @@ func (c *Cache) DebugInfo() string {
 		}
 	}
 
-	return fmt.Sprintf("protocol=%s enabled=%v cached=%d widgets=%d transmitted=%d tty=%v dir=%s lastErr=%s detection=[%s]",
-		c.protocol, c.Enabled(), cached, widgetCount, transmittedCount, c.tty != nil, c.dir, errStr, strings.TrimSpace(detLog.String()))
+	gen := atomic.LoadUint32(&c.generation)
+	var failedCount int
+	c.failedFetches.Range(func(_, _ any) bool { failedCount++; return true })
+
+	return fmt.Sprintf("protocol=%s enabled=%v cached=%d widgets=%d transmitted=%d generation=%d failed=%d tty=%v dir=%s lastErr=%s detection=[%s]",
+		c.protocol, c.Enabled(), cached, widgetCount, transmittedCount, gen, failedCount, c.tty != nil, c.dir, errStr, strings.TrimSpace(detLog.String()))
 }
 
 // transmitImageData uploads PNG data to the terminal via Kitty APC protocol.
@@ -377,18 +527,17 @@ func (c *Cache) transmitImageData(path string) (uint32, error) {
 		return 0, fmt.Errorf("tty write: %w", err)
 	}
 
-	debugLog.Printf("transmitImageData: sent imageNum=%d dataLen=%d path=%s", imageNum, len(data), path)
+	c.logger.Printf("transmitImageData: sent imageNum=%d dataLen=%d path=%s", imageNum, len(data), path)
 	return imageNum, nil
 }
 
-func (c *Cache) setVirtualPlacement(imageNum uint32, cols, rows int) {
+func (c *Cache) setVirtualPlacement(imageNum uint32, cols, rows int) error {
 	seq := fmt.Sprintf("\x1b_Ga=p,U=1,i=%d,c=%d,r=%d,q=2\x1b\\", imageNum, cols, rows)
-	c.tty.WriteString(seq) //nolint:errcheck
-}
-
-func (c *Cache) deleteVirtualPlacement(imageNum uint32) {
-	seq := fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", imageNum)
-	c.tty.WriteString(seq) //nolint:errcheck
+	_, err := c.tty.WriteString(seq)
+	if err != nil {
+		c.setError(fmt.Errorf("placement i=%d: %w", imageNum, err))
+	}
+	return err
 }
 
 func (c *Cache) Close() {

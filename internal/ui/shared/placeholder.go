@@ -22,7 +22,7 @@ func RenderPlaceholder(cols, rows int) string {
 
 	// For avatar-sized placeholders (6x3), use compact format
 	if cols == 6 && rows == 3 {
-		return theme.StyleMuted.Render("[····]") + "\n" + theme.StyleMuted.Render("[····]") + "\n" + theme.StyleMuted.Render("[····]")
+		return theme.StyleMuted().Render("[····]") + "\n" + theme.StyleMuted().Render("[····]") + "\n" + theme.StyleMuted().Render("[····]")
 	}
 
 	// For larger placeholders, render a box with ⋯ centered
@@ -30,7 +30,7 @@ func RenderPlaceholder(cols, rows int) string {
 
 	// Top border
 	topBorder := "┌" + strings.Repeat("─", max(0, cols-2)) + "┐"
-	lines = append(lines, theme.StyleMuted.Render(topBorder))
+	lines = append(lines, theme.StyleMuted().Render(topBorder))
 
 	// Middle lines with ⋯ centered on the middle row
 	middleRow := rows / 2
@@ -39,16 +39,16 @@ func RenderPlaceholder(cols, rows int) string {
 			// Center the ⋯ indicator
 			padding := max(0, cols-4) / 2
 			line := "│" + strings.Repeat(" ", padding) + "⋯" + strings.Repeat(" ", max(0, cols-4-padding-1)) + "│"
-			lines = append(lines, theme.StyleMuted.Render(line))
+			lines = append(lines, theme.StyleMuted().Render(line))
 		} else {
 			line := "│" + strings.Repeat(" ", max(0, cols-2)) + "│"
-			lines = append(lines, theme.StyleMuted.Render(line))
+			lines = append(lines, theme.StyleMuted().Render(line))
 		}
 	}
 
 	// Bottom border
 	bottomBorder := "└" + strings.Repeat("─", max(0, cols-2)) + "┘"
-	lines = append(lines, theme.StyleMuted.Render(bottomBorder))
+	lines = append(lines, theme.StyleMuted().Render(bottomBorder))
 
 	return strings.Join(lines, "\n")
 }

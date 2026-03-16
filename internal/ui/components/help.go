@@ -1,16 +1,13 @@
 package components
 
 import (
-	"fmt"
-	"strings"
-
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
-
-// Style factory functions — constructed on call so they always reflect the active theme.
 
 func helpOverlayStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
@@ -19,15 +16,6 @@ func helpOverlayStyle() lipgloss.Style {
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.ColorPrimary)
-}
-func helpKeyStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true)
-}
-func helpDescStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorMuted)
-}
-func helpSectionStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Italic(true)
 }
 
 type KeyBinding struct {
@@ -110,16 +98,42 @@ var composeKeyBindings = []KeyBinding{
 	{Key: "Esc", Description: "Cancel"},
 }
 
+// keyMapAdapter implements help.KeyMap from two slices of KeyBinding.
+type keyMapAdapter struct {
+	view   []key.Binding
+	global []key.Binding
+}
+
+func (k keyMapAdapter) ShortHelp() []key.Binding { return k.view }
+func (k keyMapAdapter) FullHelp() [][]key.Binding {
+	if len(k.global) == 0 {
+		return [][]key.Binding{k.view}
+	}
+	return [][]key.Binding{k.view, k.global}
+}
+
+func toKeyBindings(kbs []KeyBinding) []key.Binding {
+	out := make([]key.Binding, len(kbs))
+	for i, kb := range kbs {
+		out[i] = key.NewBinding(key.WithKeys(kb.Key), key.WithHelp(kb.Key, kb.Description))
+	}
+	return out
+}
+
 type HelpModel struct {
 	Visible bool
 	Width   int
 	Height  int
 	Context HelpContext
+	helper  help.Model
 }
 
 func NewHelpModel() HelpModel {
+	h := help.New()
+	h.ShowAll = true
 	return HelpModel{
 		Context: HelpContextLogin,
+		helper:  h,
 	}
 }
 
@@ -191,40 +205,14 @@ func (m HelpModel) View() tea.View {
 		title = "Keyboard Shortcuts"
 	}
 
-	allBindings := make([]KeyBinding, 0, len(viewBindings)+len(globals))
-	allBindings = append(allBindings, viewBindings...)
-	allBindings = append(allBindings, globals...)
-
-	maxKeyLen := 0
-	for _, kb := range allBindings {
-		if len(kb.Key) > maxKeyLen {
-			maxKeyLen = len(kb.Key)
-		}
+	km := keyMapAdapter{
+		view:   toKeyBindings(viewBindings),
+		global: toKeyBindings(globals),
 	}
 
-	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary).Render(title))
-	lines = append(lines, "")
-
-	for _, kb := range viewBindings {
-		key := helpKeyStyle().Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
-		desc := helpDescStyle().Render(kb.Description)
-		lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
-	}
-
-	if len(globals) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, helpSectionStyle().Render("  ── Global ──"))
-		lines = append(lines, "")
-		for _, kb := range globals {
-			key := helpKeyStyle().Render(fmt.Sprintf("%-*s", maxKeyLen, kb.Key))
-			desc := helpDescStyle().Render(kb.Description)
-			lines = append(lines, fmt.Sprintf("  %s  %s", key, desc))
-		}
-	}
-
-	content := strings.Join(lines, "\n")
-	rendered := helpOverlayStyle().Render(content)
+	heading := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary).Render(title)
+	body := m.helper.View(km)
+	rendered := helpOverlayStyle().Render(heading + "\n\n" + body)
 
 	return tea.NewView(rendered)
 }

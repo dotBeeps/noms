@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -63,7 +64,9 @@ func (m FeedModel) Init() tea.Cmd {
 
 func (m FeedModel) fetchTimeline(cursor string) tea.Cmd {
 	return func() tea.Msg {
-		posts, nextCursor, err := m.client.GetTimeline(context.Background(), cursor, 20)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		posts, nextCursor, err := m.client.GetTimeline(ctx, cursor, 20)
 		if err != nil {
 			return FeedErrorMsg{Err: err}
 		}
@@ -109,7 +112,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rebuildViewport()
 		if len(fetchCmds) > 0 {
-			return m, tea.Batch(fetchCmds...)
+			return m, tea.Batch(append(fetchCmds, m.spinner.Tick)...)
 		}
 		return m, nil
 
@@ -120,10 +123,13 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case images.ImageFetchedMsg:
 		m.rebuildViewport()
+		if m.imageCache != nil && m.imageCache.PendingCount() > 0 {
+			return m, m.spinner.Tick
+		}
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.loading {
+		if m.loading || (m.imageCache != nil && m.imageCache.PendingCount() > 0) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -137,6 +143,10 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.confirmDelete = -1
 		m.viewport.Reset()
+		if m.imageCache != nil {
+			m.imageCache.InvalidateTransmissions()
+			m.imageCache.ClearFailedFetches()
+		}
 		return m, tea.Batch(m.fetchTimeline(""), m.spinner.Tick)
 
 	case LikePostMsg:
@@ -318,8 +328,10 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *FeedModel) rebuildViewport() {
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.posts), func(index int, selected bool) string {
-		return RenderPost(m.posts[index], m.width, selected, m.imageCache, m.avatarOverrides)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return RenderPost(m.posts[index], m.width, selected, lazy, m.avatarOverrides)
 	})
 }
 
@@ -327,7 +339,7 @@ func (m FeedModel) View() tea.View {
 	var content string
 
 	if m.err != nil {
-		s := theme.StyleError.Render("Error: "+m.err.Error()) + "\n\nPress 'r' to retry"
+		s := theme.StyleError().Render("Error: "+m.err.Error()) + "\n\nPress 'r' to retry"
 		content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s)
 	} else if len(m.posts) == 0 {
 		if m.loading {
@@ -339,6 +351,8 @@ func (m FeedModel) View() tea.View {
 		rendered := m.viewport.View()
 		if m.loading {
 			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading more...")
+		} else if m.imageCache != nil && m.imageCache.PendingCount() > 0 {
+			rendered += "\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.spinner.View()+" Loading images...")
 		}
 		if m.confirmDelete >= 0 {
 			confirmStyle := lipgloss.NewStyle().

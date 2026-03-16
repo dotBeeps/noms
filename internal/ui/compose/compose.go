@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -13,6 +15,7 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -55,6 +58,7 @@ type postSuccessMsg struct {
 // ComposeModel is the Bubble Tea model for the compose screen
 type ComposeModel struct {
 	textarea        textarea.Model
+	spinner         spinner.Model
 	mode            ComposeMode
 	parentPost      *bsky.FeedDefs_PostView
 	client          bluesky.BlueskyClient
@@ -75,6 +79,7 @@ func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost 
 
 	return ComposeModel{
 		textarea:   ta,
+		spinner:    shared.NewSpinner(),
 		mode:       mode,
 		parentPost: parentPost,
 		client:     client,
@@ -117,6 +122,14 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.Err
 		return m, nil
 
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		km := DefaultKeyMap
 		switch {
@@ -125,7 +138,7 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.loading = true
-			return m, m.submitPost()
+			return m, tea.Batch(m.submitPost(), m.spinner.Tick)
 
 		case key.Matches(msg, km.Cancel):
 			if m.err != nil {
@@ -183,7 +196,9 @@ func (m ComposeModel) submitPost() tea.Cmd {
 			}
 		}
 
-		uri, cid, err := m.client.CreatePost(context.Background(), text, facets, reply, embed)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		uri, cid, err := m.client.CreatePost(ctx, text, facets, reply, embed)
 		if err != nil {
 			return ComposeErrorMsg{Err: err}
 		}
@@ -207,11 +222,11 @@ func (m ComposeModel) View() tea.View {
 	var header string
 	switch m.mode {
 	case ModeNewPost:
-		header = theme.StyleHeader.Render("New Post")
+		header = theme.StyleHeader().Render("New Post")
 	case ModeReply:
-		header = theme.StyleHeader.Render("Reply")
+		header = theme.StyleHeader().Render("Reply")
 	case ModeQuote:
-		header = theme.StyleHeader.Render("Quote Post")
+		header = theme.StyleHeader().Render("Quote Post")
 	}
 	b.WriteString(header)
 	b.WriteString("\n\n")
@@ -222,7 +237,7 @@ func (m ComposeModel) View() tea.View {
 			Post: m.parentPost,
 		}
 		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false, nil, m.avatarOverrides)
-		b.WriteString(theme.StyleMuted.Render("Replying to:"))
+		b.WriteString(theme.StyleMuted().Render("Replying to:"))
 		b.WriteString("\n")
 		b.WriteString(parentRendered)
 		b.WriteString("\n")
@@ -235,22 +250,22 @@ func (m ComposeModel) View() tea.View {
 	// Character counter
 	text := m.textarea.Value()
 	charCount := len([]rune(text))
-	counterStyle := theme.StyleMuted
+	counterStyle := theme.StyleMuted()
 	if charCount > maxPostChars {
-		counterStyle = theme.StyleError
+		counterStyle = theme.StyleError()
 	}
 	counter := counterStyle.Render(fmt.Sprintf("%d/%d", charCount, maxPostChars))
 	b.WriteString(counter)
 
 	// Key hints
-	hints := theme.StyleMuted.Render("  Ctrl+Enter: Submit  |  Esc: Cancel")
+	hints := theme.StyleMuted().Render("  Ctrl+Enter: Submit  |  Esc: Cancel")
 	b.WriteString(hints)
 	b.WriteString("\n")
 
 	// For quote mode, show quoted post below textarea
 	if m.mode == ModeQuote && m.parentPost != nil {
 		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted.Render("Quoting:"))
+		b.WriteString(theme.StyleMuted().Render("Quoting:"))
 		b.WriteString("\n")
 		quotedFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
@@ -262,15 +277,15 @@ func (m ComposeModel) View() tea.View {
 	// Error display
 	if m.err != nil {
 		b.WriteString("\n")
-		b.WriteString(theme.StyleError.Render("Error: " + m.err.Error()))
+		b.WriteString(theme.StyleError().Render("Error: " + m.err.Error()))
 		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted.Render("Press Esc to clear error"))
+		b.WriteString(theme.StyleMuted().Render("Press Esc to clear error"))
 	}
 
 	// Loading indicator
 	if m.loading {
 		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted.Render("Posting..."))
+		b.WriteString(theme.StyleMuted().Render(m.spinner.View() + " Posting..."))
 	}
 
 	content := style.Render(b.String())

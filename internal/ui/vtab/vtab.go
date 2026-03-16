@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	voresky "github.com/dotBeeps/noms/internal/api/voresky"
 	"github.com/dotBeeps/noms/internal/ui/images"
@@ -43,8 +45,7 @@ func statusActiveStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground
 func statusInactiveStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(theme.ColorMuted)
 }
-func universeStyle() lipgloss.Style     { return lipgloss.NewStyle().Foreground(theme.ColorSecondary) }
-func descriptionStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorMuted) }
+func descriptionStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorMuted) }
 
 // VoreskyModel is the BubbleTea model for the Voresky character list tab.
 type VoreskyModel struct {
@@ -85,7 +86,9 @@ func (m VoreskyModel) fetchCharactersCmd() tea.Msg {
 	if m.client == nil {
 		return CharactersErrorMsg{Err: fmt.Errorf("client not initialized")}
 	}
-	result, err := m.client.GetMyCharacters(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := m.client.GetMyCharacters(ctx)
 	if err != nil {
 		return CharactersErrorMsg{Err: err}
 	}
@@ -203,7 +206,7 @@ func (m VoreskyModel) Keys() KeyMap {
 func (m VoreskyModel) View() tea.View {
 	var content strings.Builder
 
-	content.WriteString(theme.StyleHeaderSubtle.Render("My Characters"))
+	content.WriteString(theme.StyleHeaderSubtle().Render("My Characters"))
 	content.WriteString("\n")
 
 	availableHeight := max(1, m.height-1)
@@ -214,7 +217,7 @@ func (m VoreskyModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleMuted.Render(m.spinner.View()+" Loading characters..."),
+			theme.StyleMuted().Render(m.spinner.View()+" Loading characters..."),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -227,7 +230,7 @@ func (m VoreskyModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleError.Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry", m.err)),
+			theme.StyleError().Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry", m.err)),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -240,7 +243,7 @@ func (m VoreskyModel) View() tea.View {
 			availableHeight,
 			lipgloss.Center,
 			lipgloss.Center,
-			theme.StyleMuted.Italic(true).Render("No characters found"),
+			theme.StyleMuted().Italic(true).Render("No characters found"),
 		))
 		v := tea.NewView(content.String())
 		v.MouseMode = tea.MouseModeCellMotion
@@ -254,7 +257,7 @@ func (m VoreskyModel) View() tea.View {
 	return v
 }
 
-func (m VoreskyModel) renderCharacter(index int, selected bool) string {
+func (m VoreskyModel) renderCharacter(index int, selected bool, renderer images.ImageRenderer) string {
 	var b strings.Builder
 	c := m.characters[index]
 
@@ -280,14 +283,15 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 	}
 
 	var avatarBlock string
-	if m.imageCache != nil && m.imageCache.Enabled() && c.Avatar != "" {
-		if m.imageCache.IsCached(c.Avatar) {
-			avatarBlock = m.imageCache.RenderImage(c.Avatar, shared.AvatarCols, shared.AvatarRows)
+	if renderer != nil && renderer.Enabled() && c.Avatar != "" {
+		if renderer.IsCached(c.Avatar) {
+			avatarBlock = renderer.RenderImage(c.Avatar, shared.AvatarCols, shared.AvatarRows)
 		} else {
 			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 		}
 	}
 
+	// RenderItemWithBorder overhead: border(1) + padding(1) = 2
 	contentWidth := m.width - 2
 	if avatarBlock != "" {
 		contentWidth = max(10, m.width-2-shared.AvatarCols-1)
@@ -296,35 +300,27 @@ func (m VoreskyModel) renderCharacter(index int, selected bool) string {
 	_, _ = fmt.Fprintf(&b, "%s%s  %s\n", nameStr, mainIndicator, statusStr)
 
 	if c.FeaturedUniverse != "" {
-		_, _ = fmt.Fprintf(&b, "  %s\n", universeStyle().Render(c.FeaturedUniverse))
+		_, _ = fmt.Fprintf(&b, "  %s\n", shared.UniverseStyle().Render(c.FeaturedUniverse))
 	}
 
 	if c.Description != "" {
-		desc := truncateText(c.Description, contentWidth)
+		desc := ansi.Truncate(c.Description, contentWidth-2, "…")
 		_, _ = fmt.Fprintf(&b, "  %s\n", descriptionStyle().Render(desc))
 	}
 
+	textContent := lipgloss.NewStyle().Width(contentWidth).Render(b.String())
+
 	if avatarBlock != "" {
-		joined := shared.JoinWithGutter(avatarBlock, b.String(), " ", shared.AvatarCols)
+		joined := shared.JoinWithGutter(avatarBlock, textContent, " ", shared.AvatarCols)
 		return shared.RenderItemWithBorder(joined, selected, m.width)
 	}
-	return shared.RenderItemWithBorder(b.String(), selected, m.width)
+	return shared.RenderItemWithBorder(textContent, selected, m.width)
 }
 
 func (m *VoreskyModel) rebuildViewport() {
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.characters), func(index int, selected bool) string {
-		return m.renderCharacter(index, selected)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return m.renderCharacter(index, selected, lazy)
 	})
-}
-
-func truncateText(text string, maxLen int) string {
-	runes := []rune(text)
-	if len(runes) <= maxLen {
-		return text
-	}
-	truncated := string(runes[:maxLen])
-	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxLen/2 {
-		truncated = truncated[:lastSpace]
-	}
-	return truncated + "..."
 }

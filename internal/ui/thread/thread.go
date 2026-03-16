@@ -3,6 +3,7 @@ package thread
 import (
 	"context"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -76,7 +77,9 @@ func (m ThreadModel) Keys() KeyMap { return m.keys }
 
 func (m ThreadModel) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
-		thread, err := m.client.GetPostThread(context.Background(), m.targetURI, 10)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		thread, err := m.client.GetPostThread(ctx, m.targetURI, 10)
 		if err != nil {
 			return ThreadErrorMsg{Err: err}
 		}
@@ -107,12 +110,28 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildViewport()
 		var fetchCmds []tea.Cmd
 		for _, tp := range m.threadPosts {
-			if tp.Post != nil && tp.Post.Embed != nil {
-				fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
+			if tp.Post == nil {
+				continue
+			}
+			fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
+
+			if tp.Post.Embed != nil {
 				for _, url := range feed.ExtractImageURLs(fvp) {
 					if cmd := images.Fetch(m.imageCache, url); cmd != nil {
 						fetchCmds = append(fetchCmds, cmd)
 					}
+				}
+			}
+
+			avatarURL := feed.ExtractAvatarURL(fvp)
+			if tp.Post.Author != nil {
+				if override, ok := m.avatarOverrides[tp.Post.Author.Did]; ok && override != "" {
+					avatarURL = override
+				}
+			}
+			if avatarURL != "" {
+				if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+					fetchCmds = append(fetchCmds, cmd)
 				}
 			}
 		}
@@ -334,28 +353,30 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *ThreadModel) rebuildViewport() {
+	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.threadPosts), func(index int, selected bool) string {
-		return m.renderThreadPost(index, selected)
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		return m.renderThreadPost(index, selected, lazy)
 	})
 }
 
-func (m ThreadModel) renderThreadPost(index int, selected bool) string {
+func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.ImageRenderer) string {
 	tp := m.threadPosts[index]
 
 	if tp.NotFound {
 		content := "[Deleted post]"
 		if selected {
-			return theme.StyleSelected.Render("▶ "+content) + "\n\n"
+			return theme.StyleSelected().Render("▶ "+content) + "\n\n"
 		}
-		return theme.StyleMuted.Render("  "+content) + "\n\n"
+		return theme.StyleMuted().Render("  "+content) + "\n\n"
 	}
 
 	if tp.Blocked {
 		content := "[Blocked post]"
 		if selected {
-			return theme.StyleSelected.Render("▶ "+content) + "\n\n"
+			return theme.StyleSelected().Render("▶ "+content) + "\n\n"
 		}
-		return theme.StyleMuted.Render("  "+content) + "\n\n"
+		return theme.StyleMuted().Render("  "+content) + "\n\n"
 	}
 
 	if tp.Post == nil {
@@ -380,32 +401,35 @@ func (m ThreadModel) renderThreadPost(index int, selected bool) string {
 		postWidth = 20
 	}
 
-	postStr := feed.RenderPost(fvp, postWidth, selected, m.imageCache, m.avatarOverrides)
-
-	lines := strings.Split(postStr, "\n")
-	for j, line := range lines {
-		if line == "" {
-			continue
-		}
-		if tp.IsParent {
-			lines[j] = theme.StyleMuted.Render(indent) + line
-		} else {
-			lines[j] = indent + line
-		}
-	}
-
-	finalStr := strings.Join(lines, "\n")
-
 	if tp.IsTarget {
-		style := lipgloss.NewStyle().
-			Border(lipgloss.DoubleBorder()).
-			BorderForeground(theme.ColorPrimary).
-			Padding(0, 1).
-			Width(m.width - 4)
-		finalStr = style.Render(finalStr)
+		contentWidth := max(10, m.width-2) // border(1) + padding(1)
+		rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides)
+
+		separator := lipgloss.NewStyle().Foreground(theme.ColorPrimary).Render(strings.Repeat("═", m.width))
+		bordered := shared.RenderItemWithBorder(rawContent, true, m.width)
+		return separator + "\n" + bordered + separator + "\n"
 	}
 
-	return finalStr + "\n"
+	// Non-target: get raw content, apply indent, then single border via RenderItemWithBorder.
+	contentWidth := max(10, postWidth-2) // border(1) + padding(1)
+	rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides)
+
+	if indent != "" {
+		indentedLines := strings.Split(rawContent, "\n")
+		for j, line := range indentedLines {
+			if line == "" {
+				continue
+			}
+			if tp.IsParent {
+				indentedLines[j] = theme.StyleMuted().Render(indent) + line
+			} else {
+				indentedLines[j] = indent + line
+			}
+		}
+		rawContent = strings.Join(indentedLines, "\n")
+	}
+
+	return shared.RenderItemWithBorder(rawContent, selected, postWidth)
 }
 
 func (m ThreadModel) View() tea.View {
@@ -416,7 +440,7 @@ func (m ThreadModel) View() tea.View {
 	}
 
 	if m.err != nil {
-		s := theme.StyleError.Render("Error: "+m.err.Error()) + "\n\nPress 'esc' to go back"
+		s := theme.StyleError().Render("Error: "+m.err.Error()) + "\n\nPress 'esc' to go back"
 		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s))
 	}
 

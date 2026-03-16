@@ -312,9 +312,15 @@ func TestLinkAutoDetect(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the command
+	// Execute the command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
 	msg := cmd()
-	_ = msg // We just need to trigger the create
+	if batchMsg, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batchMsg {
+			if c != nil {
+				c()
+			}
+		}
+	}
 
 	// Check that CreatePost was called with facets
 	if !client.createPostCalled {
@@ -357,8 +363,14 @@ func TestSubmitPost(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the submit command
-	_ = cmd()
+	// Execute the submit command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
+	if batchMsg, ok := cmd().(tea.BatchMsg); ok {
+		for _, c := range batchMsg {
+			if c != nil {
+				c()
+			}
+		}
+	}
 
 	// Verify CreatePost was called correctly
 	if !client.createPostCalled {
@@ -393,8 +405,14 @@ func TestSubmitReply(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the submit command
-	_ = cmd()
+	// Execute the submit command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
+	if batchMsg, ok := cmd().(tea.BatchMsg); ok {
+		for _, c := range batchMsg {
+			if c != nil {
+				c()
+			}
+		}
+	}
 
 	// Verify CreatePost was called with ReplyRef
 	if !client.createPostCalled {
