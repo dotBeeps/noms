@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,8 +17,12 @@ import (
 )
 
 const (
-	// devFallbackKey is used when NOMS_TOKEN_KEY is not set (development only).
-	devFallbackKey = "noms-dev-fallback-key-not-for-prod"
+	saltSize        = 32
+	legacyFixedSalt = "noms-filestore-salt-v1"
+	// legacyPassphrase is the hardcoded passphrase used by the original v1
+	// FileStore before per-machine key derivation was introduced. Must not
+	// change — it's needed to decrypt existing tokens.enc files.
+	legacyPassphrase = "noms-dev-fallback-key-not-for-prod"
 )
 
 // ErrNotFound is returned when a token is not found in the store.
@@ -107,26 +112,22 @@ type fileStoreData struct {
 // FileStore is an AES-256-GCM encrypted file-backed TokenStore.
 // The file is stored at DataDir()/tokens.enc.
 type FileStore struct {
-	path string
-	key  []byte // 32-byte AES-256 key
-	mu   sync.Mutex
+	path        string
+	keyMaterial []byte // raw passphrase; key is derived per-operation with a random salt
+	mu          sync.Mutex
 }
 
-// NewFileStore creates a FileStore, deriving the encryption key from the
-// NOMS_TOKEN_KEY environment variable (or a dev fallback).
+// NewFileStore creates a FileStore, deriving key material from the
+// NOMS_TOKEN_KEY environment variable (or a per-machine derived fallback).
+// TODO: set NOMS_TOKEN_KEY env var for stronger encryption
 func NewFileStore() (*FileStore, error) {
 	rawKey := os.Getenv("NOMS_TOKEN_KEY")
 	if rawKey == "" {
-		rawKey = devFallbackKey
-	}
-
-	// Use scrypt to derive a 32-byte key from the passphrase.
-	// Salt is fixed (per-app) — acceptable for a local credential store where
-	// the passphrase itself is the secret.
-	salt := []byte("noms-filestore-salt-v1")
-	key, err := scrypt.Key([]byte(rawKey), salt, 32768, 8, 1, 32)
-	if err != nil {
-		return nil, fmt.Errorf("key derivation: %w", err)
+		// Derive fallback key material from the user's home directory so that
+		// each machine has unique key material without requiring user config.
+		homeDir, _ := os.UserHomeDir()
+		h := sha256.Sum256([]byte("noms:" + homeDir))
+		rawKey = string(h[:])
 	}
 
 	dir := DataDir()
@@ -135,9 +136,15 @@ func NewFileStore() (*FileStore, error) {
 	}
 
 	return &FileStore{
-		path: filepath.Join(dir, "tokens.enc"),
-		key:  key,
+		path:        filepath.Join(dir, "tokens.enc"),
+		keyMaterial: []byte(rawKey),
 	}, nil
+}
+
+// deriveKey derives a 32-byte AES-256 key from the stored key material and the
+// provided salt using scrypt.
+func (f *FileStore) deriveKey(salt []byte) ([]byte, error) {
+	return scrypt.Key(f.keyMaterial, salt, 32768, 8, 1, 32)
 }
 
 func (f *FileStore) load() (*fileStoreData, error) {
@@ -196,7 +203,25 @@ func (f *FileStore) save(d *fileStoreData) error {
 }
 
 func (f *FileStore) encrypt(plaintext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(f.key)
+	// Generate a random salt for this encryption operation (v2 format).
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("generate salt: %w", err)
+	}
+	key, err := f.deriveKey(salt)
+	if err != nil {
+		return nil, fmt.Errorf("derive key: %w", err)
+	}
+	ciphertext, err := f.encryptWithKey(key, plaintext)
+	if err != nil {
+		return nil, err
+	}
+	// Output format: [saltSize bytes salt][nonce][ciphertext]
+	return append(salt, ciphertext...), nil
+}
+
+func (f *FileStore) encryptWithKey(key, plaintext []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +236,46 @@ func (f *FileStore) encrypt(plaintext []byte) ([]byte, error) {
 	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-func (f *FileStore) decrypt(ciphertext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(f.key)
+func (f *FileStore) decrypt(data []byte) ([]byte, error) {
+	// Attempt GCM nonce size detection to determine v1 vs v2.
+	// For v2 format: [saltSize bytes salt][nonce][ciphertext]
+	// For v1 format (legacy): [nonce][ciphertext] with fixed salt
+	block, err := aes.NewCipher(make([]byte, 32)) // dummy to get nonce size
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+
+	if len(data) >= saltSize+nonceSize {
+		// Try v2: first saltSize bytes are the random salt.
+		salt := data[:saltSize]
+		key, err := f.deriveKey(salt)
+		if err != nil {
+			return nil, fmt.Errorf("derive key: %w", err)
+		}
+		plaintext, err := f.decryptWithSalt(data[saltSize:], key)
+		if err == nil {
+			return plaintext, nil
+		}
+		// Fall through to v1 if v2 fails (e.g. existing data before migration).
+	}
+
+	// v1 fallback: fixed salt + original hardcoded passphrase.
+	// The original FileStore derived its key from legacyPassphrase+legacyFixedSalt;
+	// we must use the same passphrase here regardless of the current keyMaterial.
+	key, err := scrypt.Key([]byte(legacyPassphrase), []byte(legacyFixedSalt), 32768, 8, 1, 32)
+	if err != nil {
+		return nil, fmt.Errorf("derive key (legacy): %w", err)
+	}
+	return f.decryptWithSalt(data, key)
+}
+
+func (f *FileStore) decryptWithSalt(ciphertext, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}

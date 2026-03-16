@@ -2,6 +2,7 @@ package bluesky
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -120,19 +121,9 @@ func isRateLimited(err error) bool {
 
 // asAPIError attempts to extract an *atclient.APIError from an error.
 func asAPIError(err error) (*atclient.APIError, bool) {
-	if err == nil {
-		return nil, false
-	}
-	// Check if the error itself is an APIError
-	if apiErr, ok := err.(*atclient.APIError); ok {
+	var apiErr *atclient.APIError
+	if errors.As(err, &apiErr) {
 		return apiErr, true
-	}
-	// Check wrapped errors
-	type unwrapper interface {
-		Unwrap() error
-	}
-	if u, ok := err.(unwrapper); ok {
-		return asAPIError(u.Unwrap())
 	}
 	return nil, false
 }

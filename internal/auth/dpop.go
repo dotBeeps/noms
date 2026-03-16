@@ -109,11 +109,11 @@ func (s *DPoPSigner) getNonce(server string) string {
 	return s.nonces[server]
 }
 
-func (s *DPoPSigner) Sign(method, reqUrl, accessToken string) (string, error) {
+func (s *DPoPSigner) Sign(method, reqURL, accessToken string) (string, error) {
 	claims := jwt.MapClaims{
 		"jti": uuid.New().String(),
 		"htm": method,
-		"htu": reqUrl,
+		"htu": reqURL,
 		"iat": time.Now().Unix(),
 	}
 
@@ -122,7 +122,7 @@ func (s *DPoPSigner) Sign(method, reqUrl, accessToken string) (string, error) {
 		claims["ath"] = base64.RawURLEncoding.EncodeToString(hash[:])
 	}
 
-	server := extractHost(reqUrl)
+	server := extractHost(reqURL)
 	nonce := s.getNonce(server)
 	if nonce != "" {
 		claims["nonce"] = nonce
@@ -140,10 +140,10 @@ func (s *DPoPSigner) Sign(method, reqUrl, accessToken string) (string, error) {
 	return token.SignedString(s.privKey)
 }
 
-func extractHost(fullUrl string) string {
-	parsed, err := url.Parse(fullUrl)
+func extractHost(fullURL string) string {
+	parsed, err := url.Parse(fullURL)
 	if err == nil && parsed.Host != "" {
 		return parsed.Host
 	}
-	return fullUrl
+	return fullURL
 }

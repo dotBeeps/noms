@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dotBeeps/noms/internal/config"
@@ -62,6 +63,7 @@ type VoreskyAuth struct {
 	// BaseURL is the Voresky API base URL, e.g. "https://voresky.app".
 	BaseURL    string
 	httpClient *http.Client
+	mu         sync.Mutex
 	cookie     string // raw session cookie value
 	did        string // active DID
 	handle     string // active handle (cached)
@@ -86,16 +88,22 @@ func (a *VoreskyAuth) AuthenticateWithCookie(ctx context.Context, cookie string)
 	}
 
 	// Temporarily set the cookie so ValidateSession can use it.
+	a.mu.Lock()
 	a.cookie = cookie
+	a.mu.Unlock()
 
 	info, err := a.ValidateSession(ctx)
 	if err != nil {
+		a.mu.Lock()
 		a.cookie = "" // roll back on failure
+		a.mu.Unlock()
 		return err
 	}
 
+	a.mu.Lock()
 	a.did = info.DID
 	a.handle = info.Handle
+	a.mu.Unlock()
 
 	return a.persistSession()
 }
@@ -104,7 +112,11 @@ func (a *VoreskyAuth) AuthenticateWithCookie(ctx context.Context, cookie string)
 // identity. Returns ErrNotAuthenticated if the server responds with 401 or
 // reports authenticated=false.
 func (a *VoreskyAuth) ValidateSession(ctx context.Context) (*SessionInfo, error) {
-	if a.cookie == "" {
+	a.mu.Lock()
+	cookie := a.cookie
+	a.mu.Unlock()
+
+	if cookie == "" {
 		return nil, ErrNotAuthenticated
 	}
 
@@ -112,7 +124,7 @@ func (a *VoreskyAuth) ValidateSession(ctx context.Context) (*SessionInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Cookie", a.cookieHeader())
+	req.Header.Set("Cookie", cookie)
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
@@ -152,7 +164,11 @@ func (a *VoreskyAuth) ValidateSession(ctx context.Context) (*SessionInfo, error)
 // RefreshOrRevalidate checks whether the current session is still valid.
 // Returns ErrNotAuthenticated or ErrSessionExpired if it is not.
 func (a *VoreskyAuth) RefreshOrRevalidate(ctx context.Context) error {
-	if a.cookie == "" {
+	a.mu.Lock()
+	cookie := a.cookie
+	a.mu.Unlock()
+
+	if cookie == "" {
 		return ErrNotAuthenticated
 	}
 	_, err := a.ValidateSession(ctx)
@@ -162,11 +178,15 @@ func (a *VoreskyAuth) RefreshOrRevalidate(ctx context.Context) error {
 // GetCookie returns the raw session cookie value. An empty string means no
 // session is loaded.
 func (a *VoreskyAuth) GetCookie() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.cookie
 }
 
 // GetDID returns the active DID for the current session.
 func (a *VoreskyAuth) GetDID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.did
 }
 
@@ -195,16 +215,20 @@ func (a *VoreskyAuth) LoadStoredSession(ctx context.Context) error {
 			continue
 		}
 
+		a.mu.Lock()
 		a.cookie = ss.Cookie
 		a.did = ss.DID
 		a.handle = ss.Handle
+		a.mu.Unlock()
 
 		// Validate the restored session.
 		if _, err := a.ValidateSession(ctx); err != nil {
 			// Session is stale — clear it.
+			a.mu.Lock()
 			a.cookie = ""
 			a.did = ""
 			a.handle = ""
+			a.mu.Unlock()
 			_ = a.tokenStore.Delete(key)
 			continue
 		}
@@ -217,26 +241,24 @@ func (a *VoreskyAuth) LoadStoredSession(ctx context.Context) error {
 
 // Logout clears the in-memory session and removes the persisted token.
 func (a *VoreskyAuth) Logout() error {
-	if a.did == "" {
+	a.mu.Lock()
+	did := a.did
+	if did == "" {
+		a.mu.Unlock()
 		return nil
 	}
 	key := a.storeKey()
 	a.cookie = ""
 	a.handle = ""
 	a.did = ""
+	a.mu.Unlock()
 	return a.tokenStore.Delete(key)
 }
 
 // ─── internal helpers ─────────────────────────────────────────────────────────
 
-// cookieHeader returns the Cookie header value for the current session.
-// Voresky accepts the raw cookie value; the cookie name is handled by the
-// browser but for API calls we send the value directly.
-func (a *VoreskyAuth) cookieHeader() string {
-	return a.cookie
-}
-
 // storeKey returns the TokenStore key for the current session.
+// Must be called with mu held.
 func (a *VoreskyAuth) storeKey() string {
 	return "voresky:" + a.did
 }
@@ -244,17 +266,21 @@ func (a *VoreskyAuth) storeKey() string {
 // persistSession serialises the current session and writes it to the
 // TokenStore.
 func (a *VoreskyAuth) persistSession() error {
-	if a.did == "" {
-		return nil
-	}
+	a.mu.Lock()
+	did := a.did
 	ss := storedSession{
 		Cookie: a.cookie,
 		DID:    a.did,
 		Handle: a.handle,
 	}
+	a.mu.Unlock()
+
+	if did == "" {
+		return nil
+	}
 	data, err := json.Marshal(ss)
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
-	return a.tokenStore.Store(a.storeKey(), data)
+	return a.tokenStore.Store("voresky:"+did, data)
 }
