@@ -30,6 +30,11 @@ import (
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
+var (
+	detectOnce       sync.Once
+	detectedProtocol termimg.Protocol
+)
+
 // ImageFetchedMsg signals that an image has been downloaded and cached.
 type ImageFetchedMsg struct {
 	URL string
@@ -124,7 +129,10 @@ func New() *Cache {
 		logger = log.New(io.Discard, "", 0)
 	}
 
-	protocol := termimg.DetectProtocol()
+	detectOnce.Do(func() {
+		detectedProtocol = termimg.DetectProtocol()
+	})
+	protocol := detectedProtocol
 	dir := filepath.Join(os.TempDir(), "noms-images")
 	os.MkdirAll(dir, 0o700) //nolint:errcheck
 
