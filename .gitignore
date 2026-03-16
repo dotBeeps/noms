@@ -23,6 +23,12 @@ vendor/
 voresky-temp/
 .opencode/
 
+# Claude Code
+.claude/
+
+# Go workspace
+.gopath/
+
 # IDE
 .vscode/
 .idea/
