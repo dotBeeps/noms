@@ -3,6 +3,8 @@ package theme
 import (
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"charm.land/lipgloss/v2"
 )
@@ -293,6 +295,8 @@ var paletteAliases = map[string]string{
 
 var activePalette = palettes["default"]
 var isDark = true // assume dark until terminal reports otherwise
+var applyMu sync.Mutex
+var currentThemeName atomic.Value // stores string; set by Apply
 
 // Color palette constants
 var (
@@ -405,6 +409,21 @@ func Apply(name string) string {
 		p = palettes["default"]
 	}
 
+	// Fast path: skip all writes if the theme hasn't changed.
+	// This prevents data races when parallel tests all call Apply("default")
+	// after init() has already applied it.
+	if cur, _ := currentThemeName.Load().(string); cur == p.Name {
+		return p.Name
+	}
+
+	applyMu.Lock()
+	defer applyMu.Unlock()
+
+	// Re-check under write lock.
+	if cur, _ := currentThemeName.Load().(string); cur == p.Name {
+		return p.Name
+	}
+
 	activePalette = p
 
 	ColorPrimary = lipgloss.Color(p.Primary)
@@ -426,6 +445,7 @@ func Apply(name string) string {
 	ColorOnPrimary = lipgloss.Color(p.OnPrimary)
 	ColorOnAccent = lipgloss.Color(p.OnAccent)
 
+	currentThemeName.Store(activePalette.Name)
 	return activePalette.Name
 }
 

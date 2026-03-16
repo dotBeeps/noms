@@ -617,7 +617,6 @@ func TestWindowSizeResize(t *testing.T) {
 func TestCharCount_Emoji(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 
 	tests := []struct {
 		name  string
@@ -634,6 +633,7 @@ func TestCharCount_Emoji(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
 			m.SetText(tt.input)
 			got := m.CharCount()
 			if got != tt.want {
