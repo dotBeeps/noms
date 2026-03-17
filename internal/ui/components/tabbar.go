@@ -12,7 +12,13 @@ import (
 // Style factory functions — constructed on call so they always reflect the active theme.
 
 func tabActiveStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true).Padding(0, 2)
+	return lipgloss.NewStyle().
+		Foreground(theme.ColorOnPrimary).
+		Background(theme.ColorPrimary).
+		Bold(true).
+		Padding(0, 2).
+		Underline(true).
+		UnderlineColor(theme.ColorAccent)
 }
 func tabInactiveStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Background(theme.ColorSurfaceAlt).Padding(0, 2)

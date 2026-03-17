@@ -2,9 +2,14 @@ package shared
 
 import (
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
+
+// ScrollTickMsg drives the spring scroll animation.
+type ScrollTickMsg time.Time
 
 // PaginationThreshold is the number of items from the bottom at which
 // we trigger loading the next page.
@@ -23,25 +28,31 @@ type ItemViewport struct {
 	// lineOffsets[i] = starting line number of item i.
 	// lineOffsets[itemCount] = total line count (sentinel).
 	lineOffsets []int
+
+	// Easing scroll state
+	scrollPos     float64
+	scrollStart   float64
+	scrollTarget  float64
+	animDuration  time.Duration
+	animating     bool
+	animStartTime time.Time
 }
 
 // NewItemViewport creates an ItemViewport with the given dimensions.
-// Width is stored for callers but does NOT constrain viewport rendering —
-// content is pre-formatted by RenderItemWithBorder and may include border
-// characters that exceed the logical width.
 func NewItemViewport(width, height int) ItemViewport {
-	// Use a large width so viewport never clips pre-formatted content
-	// horizontally. Our items are already rendered to the correct visual width.
 	vp := viewport.New(viewport.WithWidth(width+20), viewport.WithHeight(height))
-	vp.MouseWheelEnabled = false  // we handle mouse wheel at the item level
-	vp.KeyMap = viewport.KeyMap{} // we handle all keys ourselves
-	return ItemViewport{vp: vp, width: width}
+	vp.MouseWheelEnabled = false
+	vp.KeyMap = viewport.KeyMap{}
+	return ItemViewport{
+		vp:    vp,
+		width: width,
+	}
 }
 
 // SetSize updates the viewport dimensions.
 func (iv *ItemViewport) SetSize(width, height int) {
 	iv.width = width
-	iv.vp.SetWidth(width + 20) // leave room for border chars / ANSI
+	iv.vp.SetWidth(width + 20)
 	iv.vp.SetHeight(height)
 }
 
@@ -51,9 +62,16 @@ func (iv *ItemViewport) Width() int { return iv.width }
 // Height returns the viewport height.
 func (iv *ItemViewport) Height() int { return iv.vp.Height() }
 
+// YOffset returns the current viewport scroll offset.
+func (iv *ItemViewport) YOffset() int { return iv.vp.YOffset() }
+
 // SetItems rebuilds the viewport content. renderFn is called for each item
 // with the index and whether that item is currently selected.
 func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bool) string) {
+	wasAnimating := iv.animating
+	savedPos := iv.scrollPos
+
+	iv.animating = false
 	iv.itemCount = count
 	if count == 0 {
 		iv.selectedIndex = 0
@@ -61,8 +79,6 @@ func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bo
 		iv.selectedIndex = count - 1
 	}
 
-	// Build offsets into a local slice so IsNearVisible can still read the
-	// previous (fully-computed) lineOffsets during the render loop.
 	newOffsets := make([]int, count+1)
 	var buf strings.Builder
 	lineNum := 0
@@ -77,6 +93,15 @@ func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bo
 
 	iv.vp.SetContent(buf.String())
 	iv.ensureVisible()
+
+	if wasAnimating {
+		iv.scrollStart = savedPos
+		iv.scrollPos = savedPos
+		iv.scrollTarget = float64(iv.vp.YOffset())
+		iv.animStartTime = time.Now()
+		iv.animDuration = 200 * time.Millisecond
+		iv.animating = true
+	}
 }
 
 // SelectedIndex returns the current selection.
@@ -146,12 +171,12 @@ func (iv *ItemViewport) View() string { return iv.vp.View() }
 // Reset clears selection and scroll to zero.
 func (iv *ItemViewport) Reset() {
 	iv.selectedIndex = 0
+	iv.animating = false
 	iv.vp.GotoTop()
 }
 
 // IsNearVisible returns whether item at index is within buffer lines of
-// the current viewport scroll position. Returns true when unknown (first
-// render or out-of-bounds index), so items are treated as visible by default.
+// the current viewport scroll position.
 func (iv *ItemViewport) IsNearVisible(index, buffer int) bool {
 	if iv.lineOffsets == nil || index+1 >= len(iv.lineOffsets) {
 		return true
@@ -162,6 +187,52 @@ func (iv *ItemViewport) IsNearVisible(index, buffer int) bool {
 	return itemEnd > yOffset-buffer && itemStart < yOffset+iv.vp.Height()+buffer
 }
 
+// AnimateFrom sets up a spring animation from prevOffset to the current
+// viewport position. Call after rebuildViewport() when the user navigates.
+func (iv *ItemViewport) AnimateFrom(prevOffset int) {
+	newOffset := iv.vp.YOffset()
+	if newOffset == prevOffset {
+		return
+	}
+	iv.scrollStart = float64(prevOffset)
+	iv.scrollPos = float64(prevOffset)
+	iv.scrollTarget = float64(newOffset)
+	iv.vp.SetYOffset(prevOffset)
+	iv.animating = true
+	iv.animStartTime = time.Now()
+	iv.animDuration = 200 * time.Millisecond
+}
+
+// UpdateSpring advances the spring animation one frame.
+// Returns true if animation is still in progress.
+func (iv *ItemViewport) UpdateSpring() bool {
+	if !iv.animating {
+		return false
+	}
+	t := float64(time.Since(iv.animStartTime)) / float64(iv.animDuration)
+	if t >= 1.0 {
+		iv.scrollPos = iv.scrollTarget
+		iv.vp.SetYOffset(int(iv.scrollTarget))
+		iv.animating = false
+		return false
+	}
+	eased := t * (2 - t) // ease-out quadratic: fast start, smooth stop
+	iv.scrollPos = iv.scrollStart + (iv.scrollTarget-iv.scrollStart)*eased
+	iv.vp.SetYOffset(int(iv.scrollPos))
+	return true
+}
+
+// SpringCmd returns a tick command to drive the spring animation,
+// or nil if no animation is in progress.
+func (iv *ItemViewport) SpringCmd() tea.Cmd {
+	if !iv.animating {
+		return nil
+	}
+	return tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
+		return ScrollTickMsg(t)
+	})
+}
+
 // ensureVisible scrolls the viewport so the selected item is visible.
 func (iv *ItemViewport) ensureVisible() {
 	if iv.itemCount == 0 || iv.lineOffsets == nil || len(iv.lineOffsets) <= iv.selectedIndex+1 {
@@ -169,17 +240,14 @@ func (iv *ItemViewport) ensureVisible() {
 	}
 
 	startLine := iv.lineOffsets[iv.selectedIndex]
-	// endLine is the last line of this item (exclusive sentinel minus 1).
 	endLine := iv.lineOffsets[iv.selectedIndex+1] - 1
 
 	currentOffset := iv.vp.YOffset()
 	visibleEnd := currentOffset + iv.vp.Height() - 1
 
-	// Scroll down if selected item's bottom is below viewport.
 	if endLine > visibleEnd {
 		iv.vp.SetYOffset(endLine - iv.vp.Height() + 1)
 	}
-	// Scroll up if selected item's top is above viewport.
 	if startLine < iv.vp.YOffset() {
 		iv.vp.SetYOffset(startLine)
 	}

@@ -64,7 +64,7 @@ const (
 	baseRetryDelay    = 2 * time.Second
 	maxRetryDelay     = 2 * time.Minute
 	maxCooldown       = 5 * time.Minute
-	maxImageDimension = 256
+	maxImageDimension = 800
 )
 
 func resizeToFit(img image.Image, maxDim uint) image.Image {
@@ -105,6 +105,7 @@ type Cache struct {
 	imageNums     sync.Map // url -> transmittedEntry (Kitty: transmitted image IDs + generation)
 	placements    sync.Map // url -> placementInfo (Kitty: last placement dimensions)
 	failedFetches sync.Map // url -> failedFetchEntry (failed downloads eligible for retry)
+	dimensions    sync.Map // url -> image.Point (original pixel dimensions)
 	dir           string
 	protocol      termimg.Protocol
 	tty           *os.File // direct terminal access for Kitty APC bypass
@@ -178,6 +179,16 @@ func (c *Cache) IsCached(url string) bool {
 	}
 	_, ok := c.files.Load(url)
 	return ok
+}
+
+// Dimensions returns the original pixel width and height of a cached image.
+func (c *Cache) Dimensions(url string) (int, int, bool) {
+	v, ok := c.dimensions.Load(url)
+	if !ok {
+		return 0, 0, false
+	}
+	pt := v.(image.Point)
+	return pt.X, pt.Y, true
 }
 
 // PendingCount returns the number of in-flight image downloads.
@@ -272,6 +283,7 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 			}
 
 			c.logger.Printf("Fetch: decoded %s %dx%d url=%s", format, img.Bounds().Dx(), img.Bounds().Dy(), truncateURL(url))
+			c.dimensions.Store(url, img.Bounds().Max)
 
 			if transform != nil {
 				img = transform(img)

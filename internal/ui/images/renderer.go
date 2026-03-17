@@ -8,6 +8,7 @@ type ImageRenderer interface {
 	RenderImage(url string, cols, rows int) string
 	FetchAvatar(url string) tea.Cmd
 	InvalidateTransmissions()
+	Dimensions(url string) (int, int, bool)
 }
 
 // LazyRenderer wraps an ImageRenderer to avoid Kitty image transmissions for
@@ -38,6 +39,13 @@ func (lr *LazyRenderer) InvalidateTransmissions() {
 	if lr.Inner != nil {
 		lr.Inner.InvalidateTransmissions()
 	}
+}
+
+func (lr *LazyRenderer) Dimensions(url string) (int, int, bool) {
+	if lr.Inner == nil {
+		return 0, 0, false
+	}
+	return lr.Inner.Dimensions(url)
 }
 
 func (lr *LazyRenderer) RenderImage(url string, cols, rows int) string {

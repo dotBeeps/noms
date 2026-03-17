@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -11,6 +12,10 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 	"github.com/dotBeeps/noms/internal/ui/vsetup"
 )
+
+var appTestAnsiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsiApp(s string) string { return appTestAnsiRe.ReplaceAllString(s, "") }
 
 func TestAppInitShowsLogin(t *testing.T) {
 	t.Parallel()
@@ -159,7 +164,7 @@ func TestTabBarIntegration(t *testing.T) {
 	v := app.View()
 	content := v.Content
 
-	if !strings.Contains(content, "[1]") {
+	if !strings.Contains(stripAnsiApp(content), "[1]") {
 		t.Errorf("Expected view to contain tab bar with [1], got %q", content)
 	}
 }

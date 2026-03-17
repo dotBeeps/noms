@@ -1107,6 +1107,7 @@ func (s *stubImageRenderer) IsCached(url string) bool                      { ret
 func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string { return s.img }
 func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd                { return nil }
 func (s *stubImageRenderer) InvalidateTransmissions()                      {}
+func (s *stubImageRenderer) Dimensions(url string) (int, int, bool)        { return 0, 0, false }
 
 func createTestNotificationWithAvatar(reason, handle, did string, isRead bool, indexedAt string, avatarURL string) *bsky.NotificationListNotifications_Notification {
 	notif := createTestNotification(reason, handle, did, isRead, indexedAt)

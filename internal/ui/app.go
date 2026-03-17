@@ -401,7 +401,13 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.navigateToProfile(msg.DID)
 
 	case notifications.UnreadCountMsg:
+		prev := m.statusBar.UnreadCount
 		m.statusBar.UnreadCount = msg.Count
+		if msg.Count > prev {
+			updated, cmd := m.statusBar.Update(components.StatusBarBounceMsg{})
+			m.statusBar = updated.(components.StatusBar)
+			cmds = append(cmds, cmd)
+		}
 		if m.client != nil {
 			updated, cmd := m.notifModel.Update(msg)
 			m.notifModel = updated.(notifications.NotificationsModel)
@@ -593,6 +599,24 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, scheduleAutoRefresh())
 		}
 		return m, tea.Batch(cmds...)
+	}
+
+	// Broadcast ImageFetchedMsg to all persistent models so off-screen tabs update.
+	if _, ok := msg.(images.ImageFetchedMsg); ok && m.client != nil {
+		updated, cmd := m.feedModel.Update(msg)
+		m.feedModel = updated.(feed.FeedModel)
+		cmds = append(cmds, cmd)
+		updated2, cmd2 := m.notifModel.Update(msg)
+		m.notifModel = updated2.(notifications.NotificationsModel)
+		cmds = append(cmds, cmd2)
+		if m.voreskyClient != nil {
+			updated3, cmd3 := m.voreskyTabModel.Update(msg)
+			m.voreskyTabModel = updated3.(vtab.VoreskyModel)
+			cmds = append(cmds, cmd3)
+			updated4, cmd4 := m.vnotifModel.Update(msg)
+			m.vnotifModel = updated4.(vnotifications.VNotificationsModel)
+			cmds = append(cmds, cmd4)
+		}
 	}
 
 	// Delegate remaining messages to login screen if active

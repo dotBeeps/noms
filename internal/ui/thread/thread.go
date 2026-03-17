@@ -142,7 +142,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case images.ImageFetchedMsg:
 		m.rebuildViewport()
-		return m, nil
+		return m, m.spinner.Tick
 
 	case ThreadErrorMsg:
 		m.loading = false
@@ -277,12 +277,18 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return BackMsg{} }
 		case key.Matches(msg, km.Down):
 			if m.viewport.MoveDown() {
+				prev := m.viewport.YOffset()
 				m.rebuildViewport()
+				m.viewport.AnimateFrom(prev)
 			}
+			return m, m.viewport.SpringCmd()
 		case key.Matches(msg, km.Up):
 			if m.viewport.MoveUp() {
+				prev := m.viewport.YOffset()
 				m.rebuildViewport()
+				m.viewport.AnimateFrom(prev)
 			}
+			return m, m.viewport.SpringCmd()
 		case key.Matches(msg, km.Open):
 			if idx < len(m.threadPosts) {
 				p := m.threadPosts[idx]
@@ -334,6 +340,12 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
+		return m, nil
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
@@ -403,7 +415,7 @@ func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.
 
 	if tp.IsTarget {
 		contentWidth := max(10, m.width-2) // border(1) + padding(1)
-		rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides)
+		rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides, 0, 0)
 
 		separator := lipgloss.NewStyle().Foreground(theme.ColorPrimary).Render(strings.Repeat("═", m.width))
 		bordered := shared.RenderItemWithBorder(rawContent, true, m.width)
@@ -412,7 +424,7 @@ func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.
 
 	// Non-target: get raw content, apply indent, then single border via RenderItemWithBorder.
 	contentWidth := max(10, postWidth-2) // border(1) + padding(1)
-	rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides)
+	rawContent := feed.RenderPostContent(fvp, contentWidth, renderer, m.avatarOverrides, 0, 0)
 
 	if indent != "" {
 		indentedLines := strings.Split(rawContent, "\n")
@@ -429,7 +441,7 @@ func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.
 		rawContent = strings.Join(indentedLines, "\n")
 	}
 
-	return shared.RenderItemWithBorder(rawContent, selected, postWidth)
+	return shared.RenderItemWithBorder(rawContent, selected, m.width)
 }
 
 func (m ThreadModel) View() tea.View {

@@ -32,10 +32,14 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	// Width(w) includes border in v2, so content area = w - border(1) - paddingLeft(1).
 	panelStyle := lipgloss.NewStyle().
 		Border(LeftAccent, false, false, false, true).
-		BorderLeftForeground(borderColor).
 		Width(width).
 		Background(panelBg).
 		PaddingLeft(1)
+	if selected {
+		panelStyle = panelStyle.BorderForegroundBlend(theme.ColorAccent, theme.ColorPrimary)
+	} else {
+		panelStyle = panelStyle.BorderLeftForeground(borderColor)
+	}
 	contentWidth := max(0, width-2)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
@@ -62,7 +66,11 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	}
 
 	// Kitty path: manual padding for ALL lines in block (consistent alignment).
-	styledBorder := lipgloss.NewStyle().Foreground(borderColor).Render("▎")
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	if selected {
+		borderStyle = borderStyle.Foreground(theme.ColorAccent)
+	}
+	styledBorder := borderStyle.Render("▎")
 	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
 
 	var result strings.Builder

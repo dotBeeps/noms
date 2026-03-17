@@ -23,6 +23,41 @@ func linkSegStyle() lipgloss.Style {
 func tagSegStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorTag) }
 func textSegStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorText) }
 
+// renderStyled applies a lipgloss style to text, splitting on newlines first to prevent
+// lipgloss's alignTextHorizontal from adding trailing whitespace to empty lines. Without this,
+// a text segment ending with "\n" (e.g. "word\n") causes lipgloss to pad the empty line after
+// the newline to match the widest line width — those spaces then appear before the next segment.
+func renderStyled(style lipgloss.Style, text string) string {
+	if !strings.Contains(text, "\n") {
+		return style.Render(text)
+	}
+	parts := strings.Split(text, "\n")
+	for i, p := range parts {
+		parts[i] = style.Render(p)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func imageDims(url string, maxCols, maxRows, minRows int, cache images.ImageRenderer) (cols, rows int) {
+	if cache == nil {
+		return maxCols, minRows
+	}
+	w, h, ok := cache.Dimensions(url)
+	if !ok || w == 0 || h == 0 {
+		return maxCols, minRows
+	}
+	cols = maxCols
+	rows = maxCols * h / (w * 2)
+	if rows > maxRows {
+		cols = maxRows * w * 2 / h
+		rows = maxRows
+	}
+	if rows < minRows {
+		rows = minRows
+	}
+	return max(cols, 1), max(rows, 1)
+}
+
 // FormatRelativeTime converts a timestamp to a human-readable relative time string.
 // Returns formats like "2m", "1h", "3d", or "Jan 5" for older dates.
 func FormatRelativeTime(t time.Time) string {
@@ -99,7 +134,7 @@ func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
 // RenderPostContent builds the post's visual content without border wrapping.
 // Used by thread view which applies its own border treatment.
 // The width parameter is the content area width (caller accounts for border overhead).
-func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images.ImageRenderer, avatarOverrides map[string]string) string {
+func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images.ImageRenderer, avatarOverrides map[string]string, likeAnim, repostAnim float64) string {
 	var b strings.Builder
 	contentWidth := max(10, width)
 
@@ -167,13 +202,13 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 				segText := ansi.Strip(seg.Text)
 				switch seg.Type {
 				case bluesky.SegmentMention:
-					body.WriteString(mentionSegStyle().Render(segText))
+					body.WriteString(renderStyled(mentionSegStyle(), segText))
 				case bluesky.SegmentLink:
-					body.WriteString(linkSegStyle().Render(segText))
+					body.WriteString(renderStyled(linkSegStyle(), segText))
 				case bluesky.SegmentTag:
-					body.WriteString(tagSegStyle().Render(segText))
+					body.WriteString(renderStyled(tagSegStyle(), segText))
 				default:
-					body.WriteString(textSegStyle().Render(segText))
+					body.WriteString(renderStyled(textSegStyle(), segText))
 				}
 			}
 			if avatarStr != "" {
@@ -225,13 +260,17 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 
 	likeIcon := "♡"
 	likeStyle := theme.StyleMuted()
-	if liked {
+	if liked && likeAnim > 0.05 {
+		likeStyle = lipgloss.NewStyle().Foreground(theme.ColorHighlight)
+	} else if liked {
 		likeStyle = lipgloss.NewStyle().Foreground(theme.ColorAccent)
 	}
 
 	repostIcon := "↻"
 	repostStyle := theme.StyleMuted()
-	if reposted {
+	if reposted && repostAnim > 0.05 {
+		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorHighlight)
+	} else if reposted {
 		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
 	}
 
@@ -246,7 +285,12 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 
 // RenderPost renders a complete bordered post panel.
 func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string) string {
-	content := RenderPostContent(post, width-2, cache, avatarOverrides)
+	return RenderPostAnimated(post, width, selected, cache, avatarOverrides, 0, 0)
+}
+
+// RenderPostAnimated renders a post with like/repost pulse animation values (0–1).
+func RenderPostAnimated(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string, likeAnim, repostAnim float64) string {
+	content := RenderPostContent(post, width-2, cache, avatarOverrides, likeAnim, repostAnim)
 	return shared.RenderItemWithBorder(content, selected, width)
 }
 
@@ -386,34 +430,34 @@ func renderImages(imgs []*bsky.EmbedImages_ViewImage, width int, cache images.Im
 		return shared.RenderPlaceholder(cols, rows)
 	}
 
-	switch len(imgs) {
-	case 1:
-		cols := min(max(10, width*3/4), 60)
-		rendered := renderOrPlaceholder(imgs[0].Thumb, cols, 16)
+	if len(imgs) == 1 {
+		maxCols := min(max(10, width*3/4), 60)
+		cols, rows := imageDims(imgs[0].Thumb, maxCols, 28, 8, cache)
+		rendered := renderOrPlaceholder(imgs[0].Thumb, cols, rows)
 		if imgs[0].Alt != "" {
 			rendered += "\n" + theme.StyleMuted().Render(shared.TruncateStr(imgs[0].Alt, 60))
 		}
 		return rendered
-
-	case 2:
-		cols := min(max(8, (width-2)/2), 40)
-		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 10)
-		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 10)
-		return shared.JoinHorizontalRaw(img1, img2, "  ")
-
-	case 3:
-		cols := min(max(8, (width-2)/2), 40)
-		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
-		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
-		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
-		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + img3
-
-	default:
-		cols := min(max(8, (width-2)/2), 40)
-		img1 := renderOrPlaceholder(imgs[0].Thumb, cols, 8)
-		img2 := renderOrPlaceholder(imgs[1].Thumb, cols, 8)
-		img3 := renderOrPlaceholder(imgs[2].Thumb, cols, 8)
-		img4 := renderOrPlaceholder(imgs[3].Thumb, cols, 8)
-		return shared.JoinHorizontalRaw(img1, img2, "  ") + "\n" + shared.JoinHorizontalRaw(img3, img4, "  ")
 	}
+
+	// Multi-image: 2 per row, wrapping. Each image keeps its own aspect ratio.
+	// perImgMaxCols matches half the single-image cap so widths feel consistent.
+	perImgMaxCols := min(max(8, (width-2)/2), 30)
+	const multiMaxRows = 14
+	const multiMinRows = 4
+
+	var rowStrings []string
+	for i := 0; i < len(imgs); i += 2 {
+		if i+1 < len(imgs) {
+			cols1, rows1 := imageDims(imgs[i].Thumb, perImgMaxCols, multiMaxRows, multiMinRows, cache)
+			cols2, rows2 := imageDims(imgs[i+1].Thumb, perImgMaxCols, multiMaxRows, multiMinRows, cache)
+			img1 := renderOrPlaceholder(imgs[i].Thumb, cols1, rows1)
+			img2 := renderOrPlaceholder(imgs[i+1].Thumb, cols2, rows2)
+			rowStrings = append(rowStrings, shared.JoinHorizontalRaw(img1, img2, "  "))
+		} else {
+			cols, rows := imageDims(imgs[i].Thumb, perImgMaxCols, multiMaxRows, multiMinRows, cache)
+			rowStrings = append(rowStrings, renderOrPlaceholder(imgs[i].Thumb, cols, rows))
+		}
+	}
+	return strings.Join(rowStrings, "\n")
 }

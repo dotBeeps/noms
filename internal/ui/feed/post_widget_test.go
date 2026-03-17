@@ -347,8 +347,9 @@ func (s *stubImageRenderer) RenderImage(url string, cols, rows int) string {
 	}
 	return s.render(url, cols, rows)
 }
-func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd { return nil }
-func (s *stubImageRenderer) InvalidateTransmissions()       {}
+func (s *stubImageRenderer) FetchAvatar(url string) tea.Cmd         { return nil }
+func (s *stubImageRenderer) InvalidateTransmissions()               {}
+func (s *stubImageRenderer) Dimensions(url string) (int, int, bool) { return 0, 0, false }
 
 func TestRenderPostAvatarLeftWhenCached(t *testing.T) {
 	t.Parallel()

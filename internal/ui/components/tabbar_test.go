@@ -1,11 +1,16 @@
 package components
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 )
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 func TestTabBarInit(t *testing.T) {
 	t.Parallel()
@@ -54,7 +59,7 @@ func TestTabHighlight(t *testing.T) {
 	v := tb.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Feed") {
+	if !strings.Contains(stripAnsi(content), "Feed") {
 		t.Errorf("Expected tab bar to contain 'Feed', got %q", content)
 	}
 
@@ -62,7 +67,7 @@ func TestTabHighlight(t *testing.T) {
 	v = tb.View()
 	content = v.Content
 
-	if !strings.Contains(content, "Notifications") {
+	if !strings.Contains(stripAnsi(content), "Notifications") {
 		t.Errorf("Expected tab bar to contain 'Notifications', got %q", content)
 	}
 }

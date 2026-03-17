@@ -173,21 +173,25 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, km.Up):
 			if !m.input.Focused() {
 				if m.viewport.MoveUp() {
+					prev := m.viewport.YOffset()
 					m.rebuildViewport()
+					m.viewport.AnimateFrom(prev)
 				}
-				return m, nil
+				return m, m.viewport.SpringCmd()
 			}
 
 		case key.Matches(msg, km.Down):
 			if !m.input.Focused() {
 				if m.viewport.MoveDown() {
+					prev := m.viewport.YOffset()
 					m.rebuildViewport()
+					m.viewport.AnimateFrom(prev)
 				}
 				if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 					m.loading = true
-					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick)
+					return m, tea.Batch(m.performSearch(m.query, m.cursor, m.mode, true), m.spinner.Tick, m.viewport.SpringCmd())
 				}
-				return m, nil
+				return m, m.viewport.SpringCmd()
 			}
 		}
 
@@ -196,6 +200,12 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
+		}
+		return m, nil
+
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
 		}
 		return m, nil
 

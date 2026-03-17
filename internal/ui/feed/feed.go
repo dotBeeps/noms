@@ -26,6 +26,12 @@ type FeedLoadedMsg struct {
 type FeedErrorMsg struct{ Err error }
 type FeedRefreshMsg struct{}
 
+type feedAnimTickMsg struct{}
+
+func feedAnimTick() tea.Cmd {
+	return tea.Tick(time.Second/30, func(t time.Time) tea.Msg { return feedAnimTickMsg{} })
+}
+
 type FeedModel struct {
 	client          bluesky.BlueskyClient
 	ownDID          string
@@ -40,6 +46,8 @@ type FeedModel struct {
 	imageCache      *images.Cache
 	keys            KeyMap
 	viewport        shared.ItemViewport
+	likeAnim        map[string]float64
+	repostAnim      map[string]float64
 }
 
 func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int, cache *images.Cache) FeedModel {
@@ -123,10 +131,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case images.ImageFetchedMsg:
 		m.rebuildViewport()
-		if m.imageCache != nil && m.imageCache.PendingCount() > 0 {
-			return m, m.spinner.Tick
-		}
-		return m, nil
+		return m, m.spinner.Tick
 
 	case spinner.TickMsg:
 		if m.loading || (m.imageCache != nil && m.imageCache.PendingCount() > 0) {
@@ -182,8 +187,15 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
 				}
 				post.Post.Viewer.Like = &msg.LikeURI
+				if m.likeAnim == nil {
+					m.likeAnim = make(map[string]float64)
+				}
+				m.likeAnim[msg.PostURI] = 1.0
+				m.rebuildViewport()
+				return m, feedAnimTick()
 			}
 		}
+		m.rebuildViewport()
 		return m, nil
 
 	case UnlikeResultMsg:
@@ -192,6 +204,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				OptimisticLike(post.Post)
 			}
 		}
+		m.rebuildViewport()
 		return m, nil
 
 	case RepostResultMsg:
@@ -203,8 +216,15 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					post.Post.Viewer = &bsky.FeedDefs_ViewerState{}
 				}
 				post.Post.Viewer.Repost = &msg.RepostURI
+				if m.repostAnim == nil {
+					m.repostAnim = make(map[string]float64)
+				}
+				m.repostAnim[msg.PostURI] = 1.0
+				m.rebuildViewport()
+				return m, feedAnimTick()
 			}
 		}
+		m.rebuildViewport()
 		return m, nil
 
 	case UnRepostResultMsg:
@@ -212,6 +232,33 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Err != nil {
 				OptimisticRepost(post.Post)
 			}
+		}
+		m.rebuildViewport()
+		return m, nil
+
+	case feedAnimTickMsg:
+		still := false
+		for uri, v := range m.likeAnim {
+			v *= 0.72
+			if v < 0.01 {
+				delete(m.likeAnim, uri)
+			} else {
+				m.likeAnim[uri] = v
+				still = true
+			}
+		}
+		for uri, v := range m.repostAnim {
+			v *= 0.72
+			if v < 0.01 {
+				delete(m.repostAnim, uri)
+			} else {
+				m.repostAnim[uri] = v
+				still = true
+			}
+		}
+		m.rebuildViewport()
+		if still {
+			return m, feedAnimTick()
 		}
 		return m, nil
 
@@ -232,6 +279,12 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.confirmDelete = -1
 		m.rebuildViewport()
+		return m, nil
+
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
 		return m, nil
 
 	case tea.MouseWheelMsg:
@@ -266,16 +319,22 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, km.Down):
 			if m.viewport.MoveDown() {
+				prev := m.viewport.YOffset()
 				m.rebuildViewport()
+				m.viewport.AnimateFrom(prev)
 			}
 			if m.viewport.NearBottom(shared.PaginationThreshold) && !m.loading && m.cursor != "" {
 				m.loading = true
-				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
+				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick, m.viewport.SpringCmd())
 			}
+			return m, m.viewport.SpringCmd()
 		case key.Matches(msg, km.Up):
 			if m.viewport.MoveUp() {
+				prev := m.viewport.YOffset()
 				m.rebuildViewport()
+				m.viewport.AnimateFrom(prev)
 			}
+			return m, m.viewport.SpringCmd()
 		case key.Matches(msg, km.Reply):
 			if idx < len(m.posts) {
 				post := m.posts[idx].Post
@@ -331,7 +390,15 @@ func (m *FeedModel) rebuildViewport() {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.posts), func(index int, selected bool) string {
 		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
-		return RenderPost(m.posts[index], m.width, selected, lazy, m.avatarOverrides)
+		post := m.posts[index]
+		la, ra := float64(0), float64(0)
+		if m.likeAnim != nil && post.Post != nil {
+			la = m.likeAnim[post.Post.Uri]
+		}
+		if m.repostAnim != nil && post.Post != nil {
+			ra = m.repostAnim[post.Post.Uri]
+		}
+		return RenderPostAnimated(post, m.width, selected, lazy, m.avatarOverrides, la, ra)
 	})
 }
 

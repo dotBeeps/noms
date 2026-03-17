@@ -177,6 +177,11 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.profile = msg.Profile
 		m.loading = false
 		m.rebuildViewport() // header height changed
+		if m.profile.Avatar != nil && *m.profile.Avatar != "" {
+			if cmd := images.FetchAvatar(m.imageCache, *m.profile.Avatar); cmd != nil {
+				return m, cmd
+			}
+		}
 
 	case AuthorFeedLoadedMsg:
 		m.loadingFeed = false
@@ -294,6 +299,12 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildViewport()
 		return m, nil
 
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
+		return m, nil
+
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
 		switch mouse.Button {
@@ -330,17 +341,23 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
 		if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loadingFeed {
 			m.loadingFeed = true
-			return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick)
+			return m, tea.Batch(m.fetchAuthorFeed(m.cursor), m.spinner.Tick, m.viewport.SpringCmd())
 		}
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Follow):
 		if !m.isOwnProfile && m.profile != nil {
@@ -462,33 +479,14 @@ func (m ProfileModel) View() tea.View {
 }
 
 func (m ProfileModel) renderHeader(b *strings.Builder) {
-	// Display name (bold, primary color) - large
 	displayName := m.profile.Handle
 	if m.profile.DisplayName != nil && *m.profile.DisplayName != "" {
 		displayName = *m.profile.DisplayName
 	}
 
-	nameStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorPrimary).
-		Bold(true).
-		Padding(0, 2)
+	nameStyle := lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true)
+	handleStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted)
 
-	b.WriteString(nameStyle.Render(displayName))
-	b.WriteString("\n")
-
-	// Handle (muted)
-	handleStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorMuted).
-		Padding(0, 2)
-	b.WriteString(handleStyle.Render("@" + m.profile.Handle))
-	b.WriteString("\n")
-
-	// Bio with rich text facet rendering
-	if m.profile.Description != nil && *m.profile.Description != "" {
-		m.renderBio(b, *m.profile.Description)
-	}
-
-	// Stats line
 	var followers, following, posts int64
 	if m.profile.FollowersCount != nil {
 		followers = *m.profile.FollowersCount
@@ -499,18 +497,53 @@ func (m ProfileModel) renderHeader(b *strings.Builder) {
 	if m.profile.PostsCount != nil {
 		posts = *m.profile.PostsCount
 	}
-
 	stats := fmt.Sprintf("%s followers · %s following · %s posts",
 		formatCount(followers), formatCount(following), formatCount(posts))
-	b.WriteString(handleStyle.Render(stats))
-	b.WriteString("\n")
 
-	// Follow button (only if not own profile)
-	if !m.isOwnProfile {
-		m.renderFollowButton(b)
+	avatarStr := ""
+	if m.profile.Avatar != nil && *m.profile.Avatar != "" && m.imageCache != nil && m.imageCache.Enabled() {
+		avatarURL := *m.profile.Avatar
+		if m.imageCache.IsCached(avatarURL) {
+			avatarStr = strings.TrimRight(m.imageCache.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows), "\n ")
+			if avatarStr == "" {
+				avatarStr = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+			}
+		} else {
+			avatarStr = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+		}
 	}
 
-	b.WriteString("\n")
+	if avatarStr != "" {
+		isFollowing := m.profile.Viewer != nil && m.profile.Viewer.Following != nil && *m.profile.Viewer.Following != ""
+		var textBlock strings.Builder
+		textBlock.WriteString(nameStyle.Render(displayName) + "\n")
+		textBlock.WriteString(handleStyle.Render("@"+m.profile.Handle) + "\n")
+		textBlock.WriteString(handleStyle.Render(stats) + "\n")
+		if !m.isOwnProfile {
+			if isFollowing {
+				textBlock.WriteString(lipgloss.NewStyle().Foreground(theme.ColorSuccess).Bold(true).Render("[Following ✓]") + "\n")
+			} else {
+				textBlock.WriteString(lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Render("[Follow]") + "\n")
+			}
+		}
+		b.WriteString(shared.JoinWithGutter(avatarStr, textBlock.String(), " ", shared.AvatarCols))
+		b.WriteString("\n")
+	} else {
+		paddedName := lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(0, 2)
+		paddedMuted := lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 2)
+		b.WriteString(paddedName.Render(displayName) + "\n")
+		b.WriteString(paddedMuted.Render("@"+m.profile.Handle) + "\n")
+		b.WriteString(paddedMuted.Render(stats) + "\n")
+		if !m.isOwnProfile {
+			m.renderFollowButton(b)
+		}
+		b.WriteString("\n")
+	}
+
+	// Bio is always full-width below the header block
+	if m.profile.Description != nil && *m.profile.Description != "" {
+		m.renderBio(b, *m.profile.Description)
+	}
 }
 
 func (m ProfileModel) renderBio(b *strings.Builder, bio string) {

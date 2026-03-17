@@ -484,11 +484,11 @@ func TestPostSelection(t *testing.T) {
 	m.rebuildViewport()
 	m.loading = false
 
-	// First post should be selected (accent-colored left border)
+	// First post should be selected (gradient border — RGB blend of accent→primary)
 	v := m.View()
 	content := v.Content
-	if !strings.Contains(content, "\x1b[38;5;205m▎") {
-		t.Errorf("Expected selected post to have accent-colored border, got %q", content)
+	if !strings.Contains(content, "▎") || !strings.Contains(content, "\x1b[48;5;237m") {
+		t.Errorf("Expected selected post to have gradient border, got %q", content)
 	}
 
 	// Move selection down
@@ -1086,6 +1086,50 @@ func TestFeedLoadingViewShowsSpinner(t *testing.T) {
 }
 
 // Test 23: TestEngagementLine
+// TestFacetNoLeadingSpaceAfterNewline checks that a mention on a new line (after explicit \n)
+// doesn't get spurious leading whitespace from lipgloss alignTextHorizontal padding.
+// Root cause: lipgloss.Style.Render("text\n") pads the empty line after \n to match the widest
+// line width, producing trailing spaces that appear before the next segment.
+func TestFacetNoLeadingSpaceAfterNewline(t *testing.T) {
+	t.Parallel()
+	text := "First line\n@alice.bsky.social"
+	textBytes := []byte(text)
+	atIdx := 0
+	for i, b := range textBytes {
+		if b == '@' {
+			atIdx = i
+			break
+		}
+	}
+	facets := []*bsky.RichtextFacet{
+		{
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: int64(atIdx),
+				ByteEnd:   int64(atIdx + len("@alice.bsky.social")),
+			},
+			Features: []*bsky.RichtextFacet_Features_Elem{{
+				RichtextFacet_Mention: &bsky.RichtextFacet_Mention{
+					LexiconTypeID: "app.bsky.richtext.facet#mention",
+					Did:           "did:plc:alice",
+				},
+			}},
+		},
+	}
+
+	post := createTestPostWithFacets(text, "test.bsky.social", facets)
+	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
+
+	lines := strings.Split(rendered, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "@alice.bsky.social") {
+			if strings.HasPrefix(line, " ") {
+				t.Errorf("mention line has leading whitespace: %q", line)
+			}
+			break
+		}
+	}
+}
+
 func TestEngagementLine(t *testing.T) {
 	t.Parallel()
 	post := createTestPost("Test", "test.bsky.social", "Test", "at://test", "cid")

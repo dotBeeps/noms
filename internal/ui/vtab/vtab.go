@@ -145,6 +145,12 @@ func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
+		return m, nil
+
 	case tea.MouseWheelMsg:
 		if len(m.characters) == 0 {
 			return m, nil
@@ -170,15 +176,19 @@ func (m VoreskyModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Open):
 		idx := m.viewport.SelectedIndex()

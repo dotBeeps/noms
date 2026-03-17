@@ -199,6 +199,12 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
+		return m, nil
+
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
 		switch mouse.Button {
@@ -236,19 +242,23 @@ func (m VNotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea
 	switch {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 			if m.viewport.NearBottom(3) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick)
+				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
 			}
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.MarkRead):
 		m.loading = true

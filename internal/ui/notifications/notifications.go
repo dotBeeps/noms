@@ -180,7 +180,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
 		m.rebuildViewport()
-		return m, nil
+		return m, m.spinner.Tick
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -225,6 +225,12 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case shared.ScrollTickMsg:
+		if m.viewport.UpdateSpring() {
+			return m, m.viewport.SpringCmd()
+		}
+		return m, nil
+
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
 		switch mouse.Button {
@@ -255,19 +261,23 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	switch {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick)
+				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
 			}
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
+			prev := m.viewport.YOffset()
 			m.rebuildViewport()
+			m.viewport.AnimateFrom(prev)
 		}
-		return m, nil
+		return m, m.viewport.SpringCmd()
 
 	case key.Matches(msg, km.Open):
 		return m.handleNavigation()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,10 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/search"
 	"github.com/dotBeeps/noms/internal/ui/thread"
 )
+
+var integTestAnsiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsiInteg(s string) string { return integTestAnsiRe.ReplaceAllString(s, "") }
 
 type mockClient struct {
 	timelinePosts []*bsky.FeedDefs_FeedViewPost
@@ -214,7 +219,7 @@ func TestLoginAndFeedLoad(t *testing.T) {
 	app = updated.(ui.App)
 
 	v := app.View()
-	if !strings.Contains(v.Content, "[1]") {
+	if !strings.Contains(stripAnsiInteg(v.Content), "[1]") {
 		t.Errorf("expected tab bar with [1] in view")
 	}
 }
