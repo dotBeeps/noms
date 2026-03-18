@@ -459,7 +459,6 @@ func TestFeedLoading(t *testing.T) {
 	client := &mockBlueskyClient{}
 
 	m := NewFeedModel(client, "", 80, 24, nil)
-	// loading is set to true in NewFeedModel
 
 	v := m.View()
 	content := v.Content
@@ -934,13 +933,17 @@ func TestDeletePostResultRemovesPost(t *testing.T) {
 	m.loading = false
 	m.viewport.SetSelectedIndex(1)
 
+	// DeletePostResultMsg starts flash animation (deferred removal)
 	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
+	m = updated.(FeedModel)
+
+	// Post removed on next anim tick
+	updated, _ = m.Update(feedAnimTickMsg{})
 	m = updated.(FeedModel)
 
 	if len(m.posts) != 2 {
 		t.Errorf("Expected 2 posts after delete, got %d", len(m.posts))
 	}
-	// Verify the correct post was removed
 	for _, p := range m.posts {
 		if p.Post.Uri == "at://post2" {
 			t.Error("Deleted post should not exist in list")
@@ -962,7 +965,12 @@ func TestDeletePostResultAdjustsIndex(t *testing.T) {
 	m.loading = false
 	m.viewport.SetSelectedIndex(1) // On the last post
 
+	// DeletePostResultMsg starts flash animation (deferred removal)
 	updated, _ := m.Update(DeletePostResultMsg{URI: "at://post2", Err: nil})
+	m = updated.(FeedModel)
+
+	// Post removed on next anim tick
+	updated, _ = m.Update(feedAnimTickMsg{})
 	m = updated.(FeedModel)
 
 	if len(m.posts) != 1 {
@@ -1077,7 +1085,6 @@ func TestFeedLoadingViewShowsSpinner(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
 	m := NewFeedModel(client, "", 80, 24, nil)
-	// loading is true by default
 
 	v := m.View()
 	if !strings.Contains(v.Content, "Loading") {

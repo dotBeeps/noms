@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/feed"
 	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
@@ -50,6 +51,7 @@ type ThreadModel struct {
 	avatarOverrides map[string]string
 	keys            KeyMap
 	viewport        shared.ItemViewport
+	gallery         components.GalleryModel
 }
 
 func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int, cache *images.Cache) ThreadModel {
@@ -66,6 +68,7 @@ func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, hei
 		imageCache:    cache,
 		keys:          DefaultKeyMap,
 		viewport:      shared.NewItemViewport(width, height),
+		gallery:       components.NewGalleryModel(cache),
 	}
 }
 
@@ -88,11 +91,20 @@ func (m ThreadModel) Init() tea.Cmd {
 }
 
 func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Gallery captures all input when visible.
+	if m.gallery.Visible {
+		var cmd tea.Cmd
+		m.gallery, cmd = m.gallery.Update(msg)
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, msg.Height)
+		m.gallery.Width = msg.Width
+		m.gallery.Height = msg.Height
 		m.rebuildViewport()
 		return m, nil
 
@@ -339,6 +351,26 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		case key.Matches(msg, km.ViewImages):
+			if idx < len(m.threadPosts) {
+				p := m.threadPosts[idx]
+				if p.Post != nil {
+					fvp := &bsky.FeedDefs_FeedViewPost{Post: p.Post}
+					galleryImgs := feed.ExtractGalleryImages(fvp)
+					if len(galleryImgs) > 0 {
+						m.gallery.Width = m.width
+						m.gallery.Height = m.height
+						m.gallery.Open(galleryImgs, 0)
+						var fetchCmds []tea.Cmd
+						for _, gi := range galleryImgs {
+							if cmd := images.Fetch(m.imageCache, gi.URL); cmd != nil {
+								fetchCmds = append(fetchCmds, cmd)
+							}
+						}
+						return m, tea.Batch(fetchCmds...)
+					}
+				}
+			}
 		}
 
 	case shared.ScrollTickMsg:
@@ -449,6 +481,10 @@ func (m ThreadModel) View() tea.View {
 		v := tea.NewView(s)
 		v.MouseMode = tea.MouseModeCellMotion
 		return v
+	}
+
+	if m.gallery.Visible {
+		return mouseView(m.gallery.View())
 	}
 
 	if m.err != nil {

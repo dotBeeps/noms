@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -19,7 +20,10 @@ func statusBarTick() tea.Cmd {
 	return tea.Tick(time.Second/30, func(t time.Time) tea.Msg { return statusBarTickMsg{} })
 }
 
-func statusBarStyle() lipgloss.Style {
+func identityStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Background(theme.ColorPrimary).Foreground(theme.ColorOnPrimary).Bold(true).Padding(0, 1)
+}
+func statusZoneStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Background(theme.ColorSecondary).Foreground(theme.ColorTextStrong).Padding(0, 1)
 }
 func connectedStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorSuccess) }
@@ -59,11 +63,11 @@ func (m StatusBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, statusBarTick()
 
 	case statusBarTickMsg:
-		m.badgeAnim *= 0.7
-		if m.badgeAnim > 0.01 {
+		var still bool
+		m.badgeAnim, still = shared.Decay(m.badgeAnim, 0.7, 0.01)
+		if still {
 			return m, statusBarTick()
 		}
-		m.badgeAnim = 0
 	}
 	return m, nil
 }
@@ -74,12 +78,9 @@ func (m StatusBar) View() tea.View {
 		status = connectedStyle().Render("● Connected")
 	}
 
-	accountInfo := "Not logged in"
+	handleText := "Not logged in"
 	if m.Handle != "" {
-		accountInfo = fmt.Sprintf("%s (%s)", m.Handle, m.DID)
-		if len(accountInfo) > 40 {
-			accountInfo = accountInfo[:37] + "..."
-		}
+		handleText = "@" + m.Handle
 	}
 
 	badge := ""
@@ -91,8 +92,8 @@ func (m StatusBar) View() tea.View {
 		badge = badgeStyle(extraPad).Render(fmt.Sprintf("%d", m.UnreadCount)) + " "
 	}
 
-	left := statusBarStyle().Render(accountInfo)
-	right := statusBarStyle().Render(badge + status)
+	left := identityStyle().Render(handleText)
+	right := statusZoneStyle().Render(badge + status)
 
 	w := lipgloss.Width(left) + lipgloss.Width(right)
 	rem := m.Width - w
@@ -100,7 +101,7 @@ func (m StatusBar) View() tea.View {
 		rem = 0
 	}
 
-	middle := statusBarStyle().Width(rem).Render("")
+	middle := statusZoneStyle().Width(rem).Render("")
 	content := lipgloss.JoinHorizontal(lipgloss.Top, left, middle, right)
 	return tea.NewView(content)
 }

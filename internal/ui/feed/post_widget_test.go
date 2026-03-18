@@ -567,6 +567,52 @@ func TestPostWidgetAvatarPresentInOutput(t *testing.T) {
 	}
 }
 
+func TestEmbedIndentedToGutterWhenAvatarPresent(t *testing.T) {
+	t.Parallel()
+
+	post := createTestPost("Post with embed", "embedtest.bsky.social", "EmbedUser", "at://uri_em1", "cid_em1")
+	avatarURL := "https://example.com/avatar_embed.jpg"
+	post.Post.Author.Avatar = &avatarURL
+	post.Post.Embed = &bsky.FeedDefs_PostView_Embed{
+		EmbedExternal_View: &bsky.EmbedExternal_View{
+			External: &bsky.EmbedExternal_ViewExternal{
+				Title: "Test Link Title",
+				Uri:   "https://example.com",
+			},
+		},
+	}
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "AVEMB\nAVEMB\nAVEMB" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+	lines := strings.Split(rendered, "\n")
+
+	indent := strings.Repeat(" ", shared.GutterWidth)
+	embedLineFound := false
+	for _, line := range lines {
+		if strings.Contains(line, "Test Link Title") {
+			embedLineFound = true
+			// Each line starts with "▎ " (border + padding), then our content.
+			// After stripping that prefix, check GutterWidth spaces precede the embed box.
+			afterBorder := strings.TrimPrefix(line, "▎ ")
+			if afterBorder == line {
+				t.Errorf("embed line missing border prefix: %q", line)
+				continue
+			}
+			if !strings.HasPrefix(afterBorder, indent) {
+				t.Errorf("embed line not indented by GutterWidth (%d) after border: got %q", shared.GutterWidth, afterBorder)
+			}
+		}
+	}
+	if !embedLineFound {
+		t.Fatal("expected embed title 'Test Link Title' in rendered output")
+	}
+}
+
 func TestPostWidgetBodyWrappedToAvatarWidth(t *testing.T) {
 	t.Parallel()
 

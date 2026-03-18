@@ -131,7 +131,7 @@ func createTestPostView(uri, cid, handle, text string) *bsky.FeedDefs_PostView {
 func TestComposeNewPost(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	v := m.View()
 	content := v.Content
@@ -153,7 +153,7 @@ func TestComposeReply(t *testing.T) {
 	client := &mockBlueskyClient{}
 	parentPost := createTestPostView("at://did:plc:test/app.bsky.feed.post/123", "parentcid", "alice.bsky.social", "Original post content")
 
-	m := NewComposeModel(client, ModeReply, parentPost, 80, 24)
+	m := NewComposeModel(client, ModeReply, parentPost, 80, 24, nil)
 
 	v := m.View()
 	content := v.Content
@@ -175,7 +175,7 @@ func TestComposeQuote(t *testing.T) {
 	client := &mockBlueskyClient{}
 	quotedPost := createTestPostView("at://did:plc:test/app.bsky.feed.post/456", "quotecid", "bob.bsky.social", "Post to be quoted")
 
-	m := NewComposeModel(client, ModeQuote, quotedPost, 80, 24)
+	m := NewComposeModel(client, ModeQuote, quotedPost, 80, 24, nil)
 
 	v := m.View()
 	content := v.Content
@@ -195,7 +195,7 @@ func TestComposeQuote(t *testing.T) {
 func TestCharCounter(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Initial state - empty
 	v := m.View()
@@ -221,7 +221,7 @@ func TestCharCounter(t *testing.T) {
 func TestCharCounterLimit(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Set text that exceeds limit
 	longText := strings.Repeat("x", 350)
@@ -247,7 +247,7 @@ func TestMentionAutoDetect(t *testing.T) {
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
 	}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Set text with mention
 	m.SetText("Hello @alice.bsky.social!")
@@ -301,7 +301,7 @@ func TestLinkAutoDetect(t *testing.T) {
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
 	}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Set text with URL
 	m.SetText("Check out https://example.com for more info")
@@ -352,7 +352,7 @@ func TestSubmitPost(t *testing.T) {
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
 	}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Set text
 	m.SetText("This is a test post")
@@ -396,7 +396,7 @@ func TestSubmitReply(t *testing.T) {
 	}
 	parentPost := createTestPostView("at://did:plc:parent/app.bsky.feed.post/123", "parentcid", "parent.bsky.social", "Original post")
 
-	m := NewComposeModel(client, ModeReply, parentPost, 80, 24)
+	m := NewComposeModel(client, ModeReply, parentPost, 80, 24, nil)
 	m.SetText("This is a reply")
 
 	// Simulate Ctrl+Enter
@@ -439,7 +439,7 @@ func TestSubmitReply(t *testing.T) {
 func TestCancelCompose(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Simulate Esc
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "esc"})
@@ -462,7 +462,7 @@ func TestComposeLoadingState(t *testing.T) {
 		createPostURI: "at://did:plc:test/app.bsky.feed.post/new",
 		createPostCID: "newcid",
 	}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 	m.SetText("Test post")
 
 	// Before loading
@@ -488,7 +488,7 @@ func TestComposeError(t *testing.T) {
 	client := &mockBlueskyClient{
 		createPostErr: errors.New("network error"),
 	}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 	m.SetText("Test post")
 
 	// Simulate Ctrl+Enter (will fail)
@@ -523,7 +523,7 @@ func TestComposeError(t *testing.T) {
 func TestComposeInit(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	cmd := m.Init()
 	if cmd == nil {
@@ -535,7 +535,7 @@ func TestComposeInit(t *testing.T) {
 func TestCharCounterUnicode(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Set text with Unicode characters (emoji, etc.)
 	// "Hello 👋 World 🌍" should be 15 runes, not bytes
@@ -559,20 +559,20 @@ func TestModeAccessor(t *testing.T) {
 	client := &mockBlueskyClient{}
 
 	// Test NewPost mode
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 	if m.Mode() != ModeNewPost {
 		t.Errorf("Expected ModeNewPost, got %v", m.Mode())
 	}
 
 	// Test Reply mode
 	parentPost := createTestPostView("at://test", "cid", "user", "text")
-	m = NewComposeModel(client, ModeReply, parentPost, 80, 24)
+	m = NewComposeModel(client, ModeReply, parentPost, 80, 24, nil)
 	if m.Mode() != ModeReply {
 		t.Errorf("Expected ModeReply, got %v", m.Mode())
 	}
 
 	// Test Quote mode
-	m = NewComposeModel(client, ModeQuote, parentPost, 80, 24)
+	m = NewComposeModel(client, ModeQuote, parentPost, 80, 24, nil)
 	if m.Mode() != ModeQuote {
 		t.Errorf("Expected ModeQuote, got %v", m.Mode())
 	}
@@ -582,7 +582,7 @@ func TestModeAccessor(t *testing.T) {
 func TestTextAccessor(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Initial text should be empty
 	if m.Text() != "" {
@@ -600,7 +600,7 @@ func TestTextAccessor(t *testing.T) {
 func TestWindowSizeResize(t *testing.T) {
 	t.Parallel()
 	client := &mockBlueskyClient{}
-	m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+	m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 
 	// Simulate window resize
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -633,7 +633,7 @@ func TestCharCount_Emoji(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			m := NewComposeModel(client, ModeNewPost, nil, 80, 24)
+			m := NewComposeModel(client, ModeNewPost, nil, 80, 24, nil)
 			m.SetText(tt.input)
 			got := m.CharCount()
 			if got != tt.want {

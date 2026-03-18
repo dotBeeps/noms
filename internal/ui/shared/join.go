@@ -1,10 +1,16 @@
 package shared
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // JoinHorizontalRaw joins two multi-line strings side by side with a separator.
 // Unlike lipgloss.JoinHorizontal, this does NOT pad lines to equal width,
 // avoiding width miscalculation with Kitty Unicode placeholder characters.
+// When left has fewer rows than right, the missing left rows are padded to the
+// visual width of the left content so the right column stays aligned.
 func JoinHorizontalRaw(left, right, sep string) string {
 	leftLines := strings.Split(strings.TrimRight(left, "\n"), "\n")
 	rightLines := strings.Split(strings.TrimRight(right, "\n"), "\n")
@@ -12,6 +18,16 @@ func JoinHorizontalRaw(left, right, sep string) string {
 	maxLines := len(leftLines)
 	if len(rightLines) > maxLines {
 		maxLines = len(rightLines)
+	}
+
+	// Compute left visual width for padding rows where left has no content.
+	// Kitty placeholder chars (U+10EEEE) are private-use but count as 1 cell each.
+	leftWidth := 0
+	if len(leftLines) > 0 {
+		first := leftLines[0]
+		kittyCount := strings.Count(first, "\U0010EEEE")
+		nonKitty := strings.ReplaceAll(first, "\U0010EEEE", "")
+		leftWidth = kittyCount + ansi.StringWidth(nonKitty)
 	}
 
 	var result strings.Builder
@@ -22,6 +38,8 @@ func JoinHorizontalRaw(left, right, sep string) string {
 		l, r := "", ""
 		if i < len(leftLines) {
 			l = leftLines[i]
+		} else {
+			l = strings.Repeat(" ", leftWidth)
 		}
 		if i < len(rightLines) {
 			r = rightLines[i]

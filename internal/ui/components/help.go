@@ -45,7 +45,7 @@ var loginKeyBindings = []KeyBinding{
 }
 
 var globalKeyBindings = []KeyBinding{
-	{Key: "1-6", Description: "Switch tabs"},
+	{Key: "tab / shift+tab", Description: "Switch tabs"},
 	{Key: "j/k", Description: "Navigate up/down"},
 	{Key: "[ / ]", Description: "Previous/next theme"},
 	{Key: "Ctrl+T", Description: "Theme picker"},
@@ -62,6 +62,7 @@ var feedKeyBindings = []KeyBinding{
 	{Key: "r", Description: "Reply to post"},
 	{Key: "c", Description: "Compose new post"},
 	{Key: "d d", Description: "Delete your post"},
+	{Key: "i", Description: "View images"},
 }
 
 var threadKeyBindings = []KeyBinding{

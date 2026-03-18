@@ -15,6 +15,7 @@ import (
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
 	"github.com/dotBeeps/noms/internal/ui/feed"
+	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 	"github.com/rivo/uniseg"
@@ -63,6 +64,7 @@ type ComposeModel struct {
 	mode            ComposeMode
 	parentPost      *bsky.FeedDefs_PostView
 	client          bluesky.BlueskyClient
+	imageCache      images.ImageRenderer
 	width           int
 	height          int
 	loading         bool
@@ -71,9 +73,9 @@ type ComposeModel struct {
 }
 
 // NewComposeModel creates a new compose model
-func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost *bsky.FeedDefs_PostView, width, height int) ComposeModel {
+func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost *bsky.FeedDefs_PostView, width, height int, imageCache images.ImageRenderer) ComposeModel {
 	ta := textarea.New()
-	ta.SetWidth(max(1, width-4))
+	ta.SetWidth(max(1, width-10))
 	ta.SetHeight(6)
 	ta.Placeholder = "What's on your mind?"
 	ta.Focus()
@@ -84,6 +86,7 @@ func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost 
 		mode:       mode,
 		parentPost: parentPost,
 		client:     client,
+		imageCache: imageCache,
 		width:      width,
 		height:     height,
 	}
@@ -108,7 +111,7 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.textarea.SetWidth(max(1, m.width-4))
+		m.textarea.SetWidth(max(1, m.width-10))
 		return m, nil
 
 	case postSuccessMsg:
@@ -217,7 +220,7 @@ func (m ComposeModel) View() tea.View {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.ColorPrimary).
 		Padding(1, 2).
-		Width(m.width - 4)
+		Width(m.width - 6)
 
 	// Header based on mode
 	var header string
@@ -237,7 +240,7 @@ func (m ComposeModel) View() tea.View {
 		parentFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
 		}
-		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false, nil, m.avatarOverrides)
+		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false, m.imageCache, m.avatarOverrides)
 		b.WriteString(theme.StyleMuted().Render("Replying to:"))
 		b.WriteString("\n")
 		b.WriteString(parentRendered)
@@ -271,7 +274,7 @@ func (m ComposeModel) View() tea.View {
 		quotedFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
 		}
-		quotedRendered := feed.RenderPost(quotedFeedPost, m.width-8, false, nil, m.avatarOverrides)
+		quotedRendered := feed.RenderPost(quotedFeedPost, m.width-8, false, m.imageCache, m.avatarOverrides)
 		b.WriteString(quotedRendered)
 	}
 

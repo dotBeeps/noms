@@ -59,6 +59,11 @@ All UI lives under `internal/ui/`. Each screen is its own package with a model i
 
 `internal/config/` — TOML config at `~/.config/noms/config.toml`. Handles theme selection, default account, image protocol. Keyring integration for credential storage.
 
+## Working Style
+
+- This is a Go TUI project using Bubble Tea and Lipgloss. Always run `go build ./...` and `go test ./...` after making changes. Be careful with lipgloss v2 type differences and ANSI escape codes in test assertions.
+- When fixing TUI rendering/animation bugs, prefer using existing Charm library abstractions (lipgloss, bubbletea) over manual ANSI manipulation. Research library capabilities before proposing raw escape code solutions.
+
 ## Key Patterns
 
 - **Interface-based API mocking**: `bluesky.BlueskyClient` interface allows all UI tests to run without network calls. Tests create mock structs implementing this interface.

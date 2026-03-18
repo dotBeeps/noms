@@ -97,7 +97,7 @@ func TestHelpModelViewWhenVisibleMainContext(t *testing.T) {
 		t.Errorf("Expected help to contain 'Feed' title, got %q", content)
 	}
 
-	if !strings.Contains(content, "1-6") {
-		t.Errorf("Expected help to contain '1-6' key binding, got %q", content)
+	if !strings.Contains(content, "tab / shift+tab") {
+		t.Errorf("Expected help to contain 'tab / shift+tab' key binding, got %q", content)
 	}
 }

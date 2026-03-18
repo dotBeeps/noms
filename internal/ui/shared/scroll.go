@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 
@@ -13,8 +14,12 @@ import (
 // LeftAccent is a border definition with only a left-side accent character.
 var LeftAccent = lipgloss.Border{Left: "▎"}
 
+// GutterWidth is the avatar column width + 1 separator space.
+// Content in post bodies should indent to this column for visual rhythm.
+var GutterWidth = AvatarCols + 1
+
 func RenderItemWithBorder(content string, selected bool, width int) string {
-	borderColor := theme.ColorBorder
+	borderColor := theme.ColorSurface
 	panelBg := theme.ColorSurface
 	panelBgCode := theme.SurfaceCode()
 	if selected {
@@ -95,4 +100,71 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	result.WriteString("\x1b[0m\n\n")
 
 	return result.String()
+}
+
+// RenderItemWithBorderColor renders a bordered panel with a specific border color (used for delete flash).
+func RenderItemWithBorderColor(content string, width int, borderColor color.Color) string {
+	panelBg := theme.ColorSurface
+	panelBgCode := theme.SurfaceCode()
+	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
+
+	panelStyle := lipgloss.NewStyle().
+		Border(LeftAccent, false, false, false, true).
+		Width(width).
+		Background(panelBg).
+		PaddingLeft(1).
+		BorderLeftForeground(borderColor)
+	contentWidth := max(0, width-2)
+
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	var processed strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			processed.WriteString("\n")
+		}
+		stabilized := StabilizeBg(line, bgSeq)
+		truncated := ansi.Truncate(stabilized, contentWidth, "")
+		processed.WriteString(truncated)
+	}
+	return panelStyle.Render(processed.String()) + "\n\n"
+}
+
+// RenderItemWithBorderMuted renders a panel with a muted border (for staggered entrance).
+func RenderItemWithBorderMuted(content string, selected bool, width int) string {
+	borderColor := theme.ColorMuted
+	panelBg := theme.ColorSurface
+	panelBgCode := theme.SurfaceCode()
+	if selected {
+		panelBg = theme.ColorSurfaceAlt
+		panelBgCode = theme.SurfaceAltCode()
+	}
+	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
+
+	panelStyle := lipgloss.NewStyle().
+		Border(LeftAccent, false, false, false, true).
+		Width(width).
+		Background(panelBg).
+		PaddingLeft(1).
+		BorderLeftForeground(borderColor)
+	contentWidth := max(0, width-2)
+
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	var processed strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			processed.WriteString("\n")
+		}
+		stabilized := StabilizeBg(line, bgSeq)
+		truncated := ansi.Truncate(stabilized, contentWidth, "")
+		processed.WriteString(truncated)
+	}
+	return panelStyle.Render(processed.String()) + "\n\n"
 }

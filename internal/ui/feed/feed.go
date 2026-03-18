@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
@@ -48,6 +49,16 @@ type FeedModel struct {
 	viewport        shared.ItemViewport
 	likeAnim        map[string]float64
 	repostAnim      map[string]float64
+
+	// Delete flash animation: URI -> anim value (1.0 → removed)
+	deleteAnim map[string]float64
+
+	// Staggered entrance animation
+	entranceStart     time.Time
+	entranceBaseIndex int
+	entranceActive    bool
+
+	gallery components.GalleryModel
 }
 
 func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int, cache *images.Cache) FeedModel {
@@ -63,6 +74,7 @@ func NewFeedModel(client bluesky.BlueskyClient, ownDID string, width, height int
 		imageCache:    cache,
 		keys:          DefaultKeyMap,
 		viewport:      shared.NewItemViewport(width, height),
+		gallery:       components.NewGalleryModel(cache),
 	}
 }
 
@@ -83,16 +95,31 @@ func (m FeedModel) fetchTimeline(cursor string) tea.Cmd {
 }
 
 func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Gallery captures input when visible
+	if m.gallery.Visible {
+		var cmd tea.Cmd
+		m.gallery, cmd = m.gallery.Update(msg)
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, msg.Height)
+		m.gallery.Width = msg.Width
+		m.gallery.Height = msg.Height
 		m.rebuildViewport()
 		return m, nil
 
 	case FeedLoadedMsg:
 		m.loading = false
+
+		// Start staggered entrance animation for new posts
+		m.entranceBaseIndex = len(m.posts)
+		m.entranceStart = time.Now()
+		m.entranceActive = true
+
 		if m.cursor == "" || m.posts == nil {
 			m.posts = msg.Posts
 		} else {
@@ -119,10 +146,11 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.rebuildViewport()
-		if len(fetchCmds) > 0 {
-			return m, tea.Batch(append(fetchCmds, m.spinner.Tick)...)
+		fetchCmds = append(fetchCmds, feedAnimTick())
+		if m.loading || (m.imageCache != nil && m.imageCache.PendingCount() > 0) {
+			fetchCmds = append(fetchCmds, m.spinner.Tick)
 		}
-		return m, nil
+		return m, tea.Batch(fetchCmds...)
 
 	case FeedErrorMsg:
 		m.loading = false
@@ -147,6 +175,8 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = ""
 		m.err = nil
 		m.confirmDelete = -1
+		m.entranceActive = false
+		m.deleteAnim = nil
 		m.viewport.Reset()
 		if m.imageCache != nil {
 			m.imageCache.InvalidateTransmissions()
@@ -239,23 +269,53 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case feedAnimTickMsg:
 		still := false
 		for uri, v := range m.likeAnim {
-			v *= 0.72
-			if v < 0.01 {
+			nv, active := shared.Decay(v, 0.72, 0.01)
+			if !active {
 				delete(m.likeAnim, uri)
 			} else {
-				m.likeAnim[uri] = v
+				m.likeAnim[uri] = nv
 				still = true
 			}
 		}
 		for uri, v := range m.repostAnim {
-			v *= 0.72
-			if v < 0.01 {
+			nv, active := shared.Decay(v, 0.72, 0.01)
+			if !active {
 				delete(m.repostAnim, uri)
 			} else {
-				m.repostAnim[uri] = v
+				m.repostAnim[uri] = nv
 				still = true
 			}
 		}
+
+		// Delete flash: remove posts whose flash has played
+		for uri := range m.deleteAnim {
+			delete(m.deleteAnim, uri)
+			for i, p := range m.posts {
+				if p.Post != nil && p.Post.Uri == uri {
+					m.posts = append(m.posts[:i], m.posts[i+1:]...)
+					idx := m.viewport.SelectedIndex()
+					if idx >= len(m.posts) && idx > 0 {
+						m.viewport.SetSelectedIndex(len(m.posts) - 1)
+					}
+					break
+				}
+			}
+		}
+		if len(m.deleteAnim) == 0 {
+			m.deleteAnim = nil
+		}
+
+		// Staggered entrance: check if still active
+		if m.entranceActive {
+			maxIndex := len(m.posts) - m.entranceBaseIndex
+			totalDuration := time.Duration(maxIndex)*30*time.Millisecond + 200*time.Millisecond
+			if time.Since(m.entranceStart) >= totalDuration {
+				m.entranceActive = false
+			} else {
+				still = true
+			}
+		}
+
 		m.rebuildViewport()
 		if still {
 			return m, feedAnimTick()
@@ -267,19 +327,14 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 			return m, nil
 		}
-		for i, p := range m.posts {
-			if p.Post != nil && p.Post.Uri == msg.URI {
-				m.posts = append(m.posts[:i], m.posts[i+1:]...)
-				idx := m.viewport.SelectedIndex()
-				if idx >= len(m.posts) && idx > 0 {
-					m.viewport.SetSelectedIndex(len(m.posts) - 1)
-				}
-				break
-			}
+		// Start delete flash animation — post removed on next anim tick
+		if m.deleteAnim == nil {
+			m.deleteAnim = make(map[string]float64)
 		}
+		m.deleteAnim[msg.URI] = 1.0
 		m.confirmDelete = -1
 		m.rebuildViewport()
-		return m, nil
+		return m, feedAnimTick()
 
 	case shared.ScrollTickMsg:
 		if m.viewport.UpdateSpring() {
@@ -366,6 +421,23 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, km.Compose):
 			return m, func() tea.Msg { return ComposeMsg{} }
+		case key.Matches(msg, km.ViewImages):
+			if idx < len(m.posts) {
+				galleryImgs := ExtractGalleryImages(m.posts[idx])
+				if len(galleryImgs) > 0 {
+					m.gallery.Width = m.width
+					m.gallery.Height = m.height
+					m.gallery.Open(galleryImgs, 0)
+					var fetchCmds []tea.Cmd
+					for _, gi := range galleryImgs {
+						if cmd := images.Fetch(m.imageCache, gi.URL); cmd != nil {
+							fetchCmds = append(fetchCmds, cmd)
+						}
+					}
+					return m, tea.Batch(fetchCmds...)
+				}
+			}
+			return m, nil
 		case key.Matches(msg, km.Delete):
 			if idx < len(m.posts) {
 				post := m.posts[idx]
@@ -389,8 +461,8 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *FeedModel) rebuildViewport() {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.posts), func(index int, selected bool) string {
-		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 		post := m.posts[index]
+		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 		la, ra := float64(0), float64(0)
 		if m.likeAnim != nil && post.Post != nil {
 			la = m.likeAnim[post.Post.Uri]
@@ -398,7 +470,30 @@ func (m *FeedModel) rebuildViewport() {
 		if m.repostAnim != nil && post.Post != nil {
 			ra = m.repostAnim[post.Post.Uri]
 		}
-		return RenderPostAnimated(post, m.width, selected, lazy, m.avatarOverrides, la, ra)
+
+		// Delete flash: pass to renderer
+		da := float64(0)
+		if m.deleteAnim != nil && post.Post != nil {
+			da = m.deleteAnim[post.Post.Uri]
+		}
+
+		// Staggered entrance progress
+		ep := float64(1)
+		if m.entranceActive && index >= m.entranceBaseIndex {
+			relIdx := index - m.entranceBaseIndex
+			elapsed := time.Since(m.entranceStart)
+			staggerDelay := time.Duration(relIdx) * 30 * time.Millisecond
+			progress := float64(elapsed-staggerDelay) / float64(200*time.Millisecond)
+			if progress < 0 {
+				progress = 0
+			}
+			if progress > 1 {
+				progress = 1
+			}
+			ep = progress
+		}
+
+		return RenderPostFull(post, m.width, selected, lazy, m.avatarOverrides, la, ra, da, ep)
 	})
 }
 
@@ -429,6 +524,13 @@ func (m FeedModel) View() tea.View {
 				confirmStyle.Render("Press d to confirm delete, any other key to cancel"))
 		}
 		content = rendered
+	}
+
+	if m.gallery.Visible {
+		galleryContent := m.gallery.View()
+		v := tea.NewView(galleryContent)
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
 	v := tea.NewView(content)

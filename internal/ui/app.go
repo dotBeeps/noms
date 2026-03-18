@@ -31,6 +31,7 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/notifications"
 	"github.com/dotBeeps/noms/internal/ui/profile"
 	"github.com/dotBeeps/noms/internal/ui/search"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 	"github.com/dotBeeps/noms/internal/ui/thread"
 	"github.com/dotBeeps/noms/internal/ui/vnotifications"
@@ -102,6 +103,13 @@ type App struct {
 	tabBar    components.TabBar
 	help      help.Model
 	showHelp  bool
+	toast     shared.ToastModel
+
+	// Screen transition animation
+	transitionSnapshot string
+	transitionDir      int // +1 push (slide up), -1 pop (slide down)
+	transitionStart    time.Time
+	transitionActive   bool
 
 	showThemePicker  bool
 	themePickerIndex int
@@ -141,6 +149,11 @@ func (m App) Init() tea.Cmd {
 }
 
 type sessionRestoreFailedMsg struct{ err error }
+type transitionTickMsg struct{}
+
+func transitionTick() tea.Cmd {
+	return tea.Tick(time.Second/60, func(time.Time) tea.Msg { return transitionTickMsg{} })
+}
 
 func (m App) tryRestoreSession() tea.Msg {
 	dpopKeyPath := filepath.Join(config.DataDir(), "dpop.key")
@@ -154,6 +167,38 @@ func (m App) tryRestoreSession() tea.Msg {
 func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Always route to toast model (handles its own tick type)
+	{
+		updated, cmd := m.toast.Update(msg)
+		m.toast = updated
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
+	// Always route to tab bar (handles its own tick type for underline slide)
+	{
+		var cmd tea.Cmd
+		m.tabBar, cmd = updateTabBar(m.tabBar, msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
+	// Screen transition animation
+	if m.transitionActive {
+		if _, ok := msg.(transitionTickMsg); ok {
+			progress := shared.AnimProgress(m.transitionStart, 150*time.Millisecond)
+			if progress >= 1 {
+				m.transitionActive = false
+				m.transitionSnapshot = ""
+			} else {
+				cmds = append(cmds, transitionTick())
+			}
+			return m, tea.Batch(cmds...)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		theme.SetDarkMode(msg.IsDark())
@@ -164,7 +209,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 		m.login, _ = updateLogin(m.login, msg)
-		m.tabBar, _ = updateTabBar(m.tabBar, msg)
+		// tabBar is updated above (always-routed)
 		m.statusBar, _ = updateStatusBar(m.statusBar, msg)
 		m.help.SetWidth(msg.Width - 8)
 
@@ -292,8 +337,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case vsetup.SkipMsg:
 		m.screen = m.prevScreen
-		m.updateTabBarForScreen()
-		return m, nil
+		return m, m.updateTabBarForScreen()
 
 	case login.StartBrowserAuthMsg:
 		return m, handleBrowserAuth(msg.Handle)
@@ -340,6 +384,11 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+		if msg.Err != nil {
+			cmds = append(cmds, func() tea.Msg { return shared.ToastMsg{Text: "Delete failed", IsError: true} })
+		} else {
+			cmds = append(cmds, func() tea.Msg { return shared.ToastMsg{Text: "Post deleted"} })
+		}
 		return m, tea.Batch(cmds...)
 
 	case feed.LikePostMsg, feed.RepostMsg:
@@ -370,6 +419,17 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				updated, cmd := m.profileModel.Update(msg)
 				m.profileModel = updated.(profile.ProfileModel)
 				cmds = append(cmds, cmd)
+			}
+		}
+		// Toast on errors
+		switch v := msg.(type) {
+		case feed.LikeResultMsg:
+			if v.Err != nil {
+				cmds = append(cmds, func() tea.Msg { return shared.ToastMsg{Text: "Like failed", IsError: true} })
+			}
+		case feed.RepostResultMsg:
+			if v.Err != nil {
+				cmds = append(cmds, func() tea.Msg { return shared.ToastMsg{Text: "Repost failed", IsError: true} })
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -425,10 +485,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Thread messages ---
 	case thread.BackMsg:
+		m.startTransition(-1) // pop (slide down)
 		m.screen = m.prevScreen
 		m.prevScreen = ScreenFeed
-		m.updateTabBarForScreen()
-		return m, nil
+		return m, tea.Batch(m.updateTabBarForScreen(), transitionTick())
 
 	case thread.ComposeReplyMsg:
 		return m.navigateToComposeReply(msg.URI)
@@ -459,18 +519,20 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Compose messages ---
 	case compose.PostCreatedMsg:
+		m.startTransition(-1) // pop (slide down)
 		m.screen = m.prevScreen
 		m.prevScreen = ScreenFeed
-		m.updateTabBarForScreen()
-		// Refresh feed after posting
+		cmds = append(cmds, m.updateTabBarForScreen())
 		cmds = append(cmds, func() tea.Msg { return feed.FeedRefreshMsg{} })
+		cmds = append(cmds, func() tea.Msg { return shared.ToastMsg{Text: "Post sent!"} })
+		cmds = append(cmds, transitionTick())
 		return m, tea.Batch(cmds...)
 
 	case compose.CancelComposeMsg:
+		m.startTransition(-1) // pop (slide down)
 		m.screen = m.prevScreen
 		m.prevScreen = ScreenFeed
-		m.updateTabBarForScreen()
-		return m, nil
+		return m, tea.Batch(m.updateTabBarForScreen(), transitionTick())
 
 	case compose.ComposeErrorMsg:
 		if m.client != nil {
@@ -487,8 +549,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case profile.BackMsg:
 		m.screen = m.prevScreen
 		m.prevScreen = ScreenFeed
-		m.updateTabBarForScreen()
-		return m, nil
+		return m, m.updateTabBarForScreen()
 
 	case profile.AuthorFeedLoadedMsg:
 		if m.client != nil {
@@ -601,7 +662,10 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
-	// Broadcast ImageFetchedMsg to all persistent models so off-screen tabs update.
+	// Broadcast ImageFetchedMsg to all models that show images. Persistent models
+	// are always updated so off-screen tabs stay fresh. Non-persistent models only
+	// need it when they're the active screen. Return early to prevent the generic
+	// active-screen delegation below from double-updating persistent models.
 	if _, ok := msg.(images.ImageFetchedMsg); ok && m.client != nil {
 		updated, cmd := m.feedModel.Update(msg)
 		m.feedModel = updated.(feed.FeedModel)
@@ -617,6 +681,22 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vnotifModel = updated4.(vnotifications.VNotificationsModel)
 			cmds = append(cmds, cmd4)
 		}
+		// Also update the active non-persistent screen when it shows images.
+		switch m.screen {
+		case ScreenSearch:
+			updated, cmd := m.searchModel.Update(msg)
+			m.searchModel = updated.(search.SearchModel)
+			cmds = append(cmds, cmd)
+		case ScreenProfile:
+			updated, cmd := m.profileModel.Update(msg)
+			m.profileModel = updated.(profile.ProfileModel)
+			cmds = append(cmds, cmd)
+		case ScreenThread:
+			updated, cmd := m.threadModel.Update(msg)
+			m.threadModel = updated.(thread.ThreadModel)
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	// Delegate remaining messages to login screen if active
@@ -676,6 +756,7 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- Navigation helpers ---
 
 func (m App) navigateToThread(uri string) (App, tea.Cmd) {
+	m.startTransition(1) // push (slide up)
 	m.prevScreen = m.screen
 	m.screen = ScreenThread
 	contentHeight := m.contentHeight()
@@ -686,7 +767,7 @@ func (m App) navigateToThread(uri string) (App, tea.Cmd) {
 	m.threadModel = thread.NewThreadModel(m.client, uri, ownDID, m.width, contentHeight, m.imageCache)
 	m.threadModel.SetAvatarOverrides(m.buildAvatarOverrides())
 
-	return m, m.threadModel.Init()
+	return m, tea.Batch(m.threadModel.Init(), transitionTick())
 }
 
 func (m App) navigateToProfile(did string) (App, tea.Cmd) {
@@ -704,24 +785,26 @@ func (m App) navigateToProfile(did string) (App, tea.Cmd) {
 }
 
 func (m App) navigateToCompose(mode compose.ComposeMode, parentPost interface{}) (App, tea.Cmd) {
+	m.startTransition(1) // push (slide up)
 	m.prevScreen = m.screen
 	m.screen = ScreenCompose
 	contentHeight := m.contentHeight()
-	m.composeModel = compose.NewComposeModel(m.client, mode, nil, m.width, contentHeight)
+	m.composeModel = compose.NewComposeModel(m.client, mode, nil, m.width, contentHeight, m.imageCache)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
 
-	return m, m.composeModel.Init()
+	return m, tea.Batch(m.composeModel.Init(), transitionTick())
 }
 
 func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
+	m.startTransition(1) // push (slide up)
 	m.prevScreen = m.screen
 	m.screen = ScreenCompose
 	contentHeight := m.contentHeight()
 	client := m.client
-	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight)
+	m.composeModel = compose.NewComposeModel(m.client, compose.ModeReply, nil, m.width, contentHeight, m.imageCache)
 	m.composeModel.SetAvatarOverrides(m.buildAvatarOverrides())
 
-	return m, func() tea.Msg {
+	return m, tea.Batch(transitionTick(), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		post, err := client.GetPost(ctx, uri)
@@ -729,24 +812,114 @@ func (m App) navigateToComposeReply(uri string) (App, tea.Cmd) {
 			return compose.ComposeErrorMsg{Err: fmt.Errorf("loading parent post: %w", err)}
 		}
 		return compose.ParentPostLoadedMsg{Post: post}
-	}
+	})
 }
 
-func (m *App) updateTabBarForScreen() {
+func (m *App) updateTabBarForScreen() tea.Cmd {
 	switch m.screen {
 	case ScreenFeed:
-		m.tabBar.SetActiveTab(components.TabFeed)
+		return m.tabBar.SetActiveTab(components.TabFeed)
 	case ScreenNotifications:
-		m.tabBar.SetActiveTab(components.TabNotifications)
+		return m.tabBar.SetActiveTab(components.TabNotifications)
 	case ScreenProfile:
-		m.tabBar.SetActiveTab(components.TabProfile)
+		return m.tabBar.SetActiveTab(components.TabProfile)
 	case ScreenSearch:
-		m.tabBar.SetActiveTab(components.TabSearch)
+		return m.tabBar.SetActiveTab(components.TabSearch)
 	case ScreenVoresky:
-		m.tabBar.SetActiveTab(components.TabVoresky)
+		return m.tabBar.SetActiveTab(components.TabVoresky)
 	case ScreenVoreskyNotifications:
-		m.tabBar.SetActiveTab(components.TabVoreskyNotifications)
+		return m.tabBar.SetActiveTab(components.TabVoreskyNotifications)
 	}
+	return nil
+}
+
+func (m App) availableTabs() []components.Tab {
+	tabs := []components.Tab{
+		components.TabFeed, components.TabNotifications,
+		components.TabProfile, components.TabSearch,
+	}
+	if m.voreskyClient != nil {
+		tabs = append(tabs, components.TabVoresky, components.TabVoreskyNotifications)
+	}
+	return tabs
+}
+
+func (m *App) switchToTab(tab components.Tab) tea.Cmd {
+	var cmds []tea.Cmd
+	sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
+	switch tab {
+	case components.TabFeed:
+		m.screen = ScreenFeed
+		updated, cmd := m.feedModel.Update(sizeMsg)
+		m.feedModel = updated.(feed.FeedModel)
+		cmds = append(cmds, cmd)
+	case components.TabNotifications:
+		m.screen = ScreenNotifications
+		updated, cmd := m.notifModel.Update(sizeMsg)
+		m.notifModel = updated.(notifications.NotificationsModel)
+		cmds = append(cmds, cmd)
+		if m.client != nil && !m.notifInitialized {
+			m.notifInitialized = true
+			cmds = append(cmds, m.notifModel.Init())
+		}
+	case components.TabProfile:
+		m.screen = ScreenProfile
+		if m.client != nil && !m.selfProfileCreated {
+			m.selfProfileCreated = true
+			contentHeight := m.contentHeight()
+			m.profileModel = profile.NewProfileModel(m.client, m.session.DID, m.session.DID, m.width, contentHeight, m.imageCache)
+			m.profileModel.SetAvatarOverrides(m.buildAvatarOverrides())
+			cmds = append(cmds, m.profileModel.Init())
+		}
+	case components.TabSearch:
+		m.screen = ScreenSearch
+		updated, cmd := m.searchModel.Update(sizeMsg)
+		m.searchModel = updated.(search.SearchModel)
+		cmds = append(cmds, cmd)
+	case components.TabVoresky:
+		if m.voreskyClient == nil {
+			return nil
+		}
+		m.screen = ScreenVoresky
+		updated, cmd := m.voreskyTabModel.Update(sizeMsg)
+		m.voreskyTabModel = updated.(vtab.VoreskyModel)
+		cmds = append(cmds, cmd)
+		if !m.voreskyTabInit {
+			m.voreskyTabInit = true
+			cmds = append(cmds, m.voreskyTabModel.Init())
+		}
+	case components.TabVoreskyNotifications:
+		if m.voreskyClient == nil {
+			return nil
+		}
+		m.screen = ScreenVoreskyNotifications
+		updated, cmd := m.vnotifModel.Update(sizeMsg)
+		m.vnotifModel = updated.(vnotifications.VNotificationsModel)
+		cmds = append(cmds, cmd)
+		if !m.vnotifInit {
+			m.vnotifInit = true
+			cmds = append(cmds, m.vnotifModel.Init())
+		}
+	}
+	cmds = append(cmds, m.tabBar.SetActiveTab(tab))
+	return tea.Batch(cmds...)
+}
+
+func (m *App) cycleTab(forward bool) tea.Cmd {
+	tabs := m.availableTabs()
+	idx := 0
+	for i, t := range tabs {
+		if t == m.tabBar.ActiveTab {
+			idx = i
+			break
+		}
+	}
+	if forward {
+		idx = (idx + 1) % len(tabs)
+	} else {
+		idx = (idx - 1 + len(tabs)) % len(tabs)
+	}
+	return m.switchToTab(tabs[idx])
 }
 
 func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -871,82 +1044,11 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Tab switching takes priority (from main screens, not thread/compose)
 	if m.loggedIn && m.screen != ScreenThread && m.screen != ScreenCompose {
-		var cmds []tea.Cmd
 		switch k {
-		case "1":
-			m.screen = ScreenFeed
-			m.tabBar.SetActiveTab(components.TabFeed)
-
-			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
-			updated, cmd := m.feedModel.Update(sizeMsg)
-			m.feedModel = updated.(feed.FeedModel)
-			return m, cmd
-		case "2":
-			m.screen = ScreenNotifications
-			m.tabBar.SetActiveTab(components.TabNotifications)
-
-			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
-			updated, cmd := m.notifModel.Update(sizeMsg)
-			m.notifModel = updated.(notifications.NotificationsModel)
-			cmds = append(cmds, cmd)
-
-			if m.client != nil && !m.notifInitialized {
-				m.notifInitialized = true
-				cmds = append(cmds, m.notifModel.Init())
-			}
-			return m, tea.Batch(cmds...)
-		case "3":
-			m.screen = ScreenProfile
-			m.tabBar.SetActiveTab(components.TabProfile)
-
-			if m.client != nil && !m.selfProfileCreated {
-				m.selfProfileCreated = true
-				contentHeight := m.contentHeight()
-				m.profileModel = profile.NewProfileModel(m.client, m.session.DID, m.session.DID, m.width, contentHeight, m.imageCache)
-				m.profileModel.SetAvatarOverrides(m.buildAvatarOverrides())
-				cmds = append(cmds, m.profileModel.Init())
-			}
-			return m, tea.Batch(cmds...)
-		case "4":
-			m.screen = ScreenSearch
-			m.tabBar.SetActiveTab(components.TabSearch)
-
-			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
-			updated, cmd := m.searchModel.Update(sizeMsg)
-			m.searchModel = updated.(search.SearchModel)
-			return m, cmd
-		case "5":
-			if m.voreskyClient != nil {
-				m.screen = ScreenVoresky
-				m.updateTabBarForScreen()
-
-				sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
-				updated, cmd := m.voreskyTabModel.Update(sizeMsg)
-				m.voreskyTabModel = updated.(vtab.VoreskyModel)
-				cmds = append(cmds, cmd)
-
-				if !m.voreskyTabInit {
-					m.voreskyTabInit = true
-					cmds = append(cmds, m.voreskyTabModel.Init())
-				}
-			}
-			return m, tea.Batch(cmds...)
-		case "6":
-			if m.voreskyClient != nil {
-				m.screen = ScreenVoreskyNotifications
-				m.updateTabBarForScreen()
-
-				sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.contentHeight()}
-				updated, cmd := m.vnotifModel.Update(sizeMsg)
-				m.vnotifModel = updated.(vnotifications.VNotificationsModel)
-				cmds = append(cmds, cmd)
-
-				if !m.vnotifInit {
-					m.vnotifInit = true
-					cmds = append(cmds, m.vnotifModel.Init())
-				}
-			}
-			return m, tea.Batch(cmds...)
+		case "tab":
+			return m, m.cycleTab(true)
+		case "shift+tab":
+			return m, m.cycleTab(false)
 		case "v":
 			m.prevScreen = m.screen
 			m.screen = ScreenVoreskySetup
@@ -958,10 +1060,10 @@ func (m App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Esc in overlay screens: go back
 	if k == "esc" && m.loggedIn {
 		if m.screen == ScreenThread || m.screen == ScreenProfile {
+			m.startTransition(-1) // pop (slide down)
 			m.screen = m.prevScreen
 			m.prevScreen = ScreenFeed
-			m.updateTabBarForScreen()
-			return m, nil
+			return m, tea.Batch(m.updateTabBarForScreen(), transitionTick())
 		}
 	}
 
@@ -1015,14 +1117,32 @@ func (m App) View() tea.View {
 	content.WriteString(tabBarView.Content)
 	content.WriteString("\n")
 
-	mainHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
+	toastLine := m.toast.View(m.width)
+	toastHeight := 0
+	if toastLine != "" {
+		toastHeight = 1
+	}
+
+	mainHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight - toastHeight
 	if mainHeight < 1 {
 		mainHeight = 1
 	}
 
 	mainContent := m.renderMainContent(mainHeight)
+
+	// Apply screen transition if active
+	if m.transitionActive {
+		progress := shared.EaseOutQuad(shared.AnimProgress(m.transitionStart, 150*time.Millisecond))
+		mainContent = m.compositeTransition(mainContent, mainHeight, progress)
+	}
+
 	content.WriteString(mainContent)
 	content.WriteString("\n")
+
+	if toastLine != "" {
+		content.WriteString(toastLine)
+		content.WriteString("\n")
+	}
 
 	statusBarView := m.statusBar.View()
 	content.WriteString(statusBarView.Content)
@@ -1449,8 +1569,7 @@ func (m *App) initVoresky(va *voresky.VoreskyAuth, returnScreen Screen) tea.Cmd 
 	m.voreskyTabInit = false
 	m.vnotifInit = false
 	m.screen = returnScreen
-	m.updateTabBarForScreen()
-	return m.fetchMainCharacter()
+	return tea.Batch(m.updateTabBarForScreen(), m.fetchMainCharacter())
 }
 
 func (m *App) fetchMainCharacter() tea.Cmd {
@@ -1653,6 +1772,44 @@ func (m *App) fetchSnapshot(hash string) tea.Cmd {
 		}
 		return snapshotResultMsg{hash: hash, blob: blob}
 	}
+}
+
+// startTransition captures a snapshot of the current main content and begins
+// a slide transition. dir: +1 = push (new slides up from bottom), -1 = pop (old slides down).
+func (m *App) startTransition(dir int) { //nolint:govet
+	mainHeight := m.height - theme.TabBarHeight - theme.StatusBarHeight
+	if mainHeight < 1 {
+		mainHeight = 1
+	}
+	m.transitionSnapshot = m.renderMainContent(mainHeight)
+	m.transitionDir = dir
+	m.transitionStart = time.Now()
+	m.transitionActive = true
+}
+
+// compositeTransition blends old and new content for a vertical slide transition.
+// For push (+1): new content slides up from the bottom (old scrolls up).
+// For pop (-1): old content slides down from the top (new is revealed underneath).
+func (m App) compositeTransition(newContent string, height int, progress float64) string {
+	old := shared.PadToHeight(m.transitionSnapshot, height)
+	new := shared.PadToHeight(newContent, height)
+
+	// splitLine = how many lines of "new" content are visible
+	splitLine := int(progress * float64(height))
+	if splitLine > height {
+		splitLine = height
+	}
+
+	if m.transitionDir > 0 {
+		// Push: new slides up from bottom. Top shows old (scrolling up), bottom shows new.
+		topPart := shared.SliceContent(old, splitLine, height)
+		bottomPart := shared.SliceContent(new, height-splitLine, height)
+		return topPart + "\n" + bottomPart
+	}
+	// Pop: old slides down. Top shows new (being revealed), bottom shows old (sliding away).
+	topPart := shared.SliceContent(new, 0, splitLine)
+	bottomPart := shared.SliceContent(old, 0, height-splitLine)
+	return topPart + "\n" + bottomPart
 }
 
 func (m App) contentHeight() int {

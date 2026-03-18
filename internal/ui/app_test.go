@@ -164,8 +164,8 @@ func TestTabBarIntegration(t *testing.T) {
 	v := app.View()
 	content := v.Content
 
-	if !strings.Contains(stripAnsiApp(content), "[1]") {
-		t.Errorf("Expected view to contain tab bar with [1], got %q", content)
+	if !strings.Contains(stripAnsiApp(content), "Feed") {
+		t.Errorf("Expected view to contain tab bar with Feed, got %q", content)
 	}
 }
 

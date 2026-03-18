@@ -23,7 +23,7 @@ func TestStatusBarRender(t *testing.T) {
 	v := sb.View()
 	content := v.Content
 
-	if !strings.Contains(content, "alice (did:plc:123)") {
+	if !strings.Contains(content, "@alice") {
 		t.Errorf("Expected status bar to contain account info, got %q", content)
 	}
 }

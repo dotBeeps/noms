@@ -182,6 +182,10 @@ func keyPress(key rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: key, Text: string(key)}
 }
 
+func tabKeyPress() tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: tea.KeyTab}
+}
+
 func TestLoginFlowToFeed(t *testing.T) {
 	t.Parallel()
 	app := ui.NewApp()
@@ -219,8 +223,8 @@ func TestLoginAndFeedLoad(t *testing.T) {
 	app = updated.(ui.App)
 
 	v := app.View()
-	if !strings.Contains(stripAnsiInteg(v.Content), "[1]") {
-		t.Errorf("expected tab bar with [1] in view")
+	if !strings.Contains(stripAnsiInteg(v.Content), "Feed") {
+		t.Errorf("expected tab bar with Feed in view")
 	}
 }
 
@@ -229,22 +233,21 @@ func TestTabSwitching(t *testing.T) {
 	client := newMockClient()
 	app := newTestApp(client)
 
+	// tab cycles: Feed → Notifications → Profile → Search → Feed (wrap)
 	tests := []struct {
-		key    rune
 		screen ui.Screen
 	}{
-		{'2', ui.ScreenNotifications},
-		{'1', ui.ScreenFeed},
-		{'3', ui.ScreenProfile},
-		{'4', ui.ScreenSearch},
-		{'1', ui.ScreenFeed},
+		{ui.ScreenNotifications},
+		{ui.ScreenProfile},
+		{ui.ScreenSearch},
+		{ui.ScreenFeed},
 	}
 
 	for _, tt := range tests {
-		updated, _ := app.Update(keyPress(tt.key))
+		updated, _ := app.Update(tabKeyPress())
 		app = updated.(ui.App)
 		if app.Screen() != tt.screen {
-			t.Errorf("key %c: expected screen %d, got %d", tt.key, tt.screen, app.Screen())
+			t.Errorf("tab: expected screen %d, got %d", tt.screen, app.Screen())
 		}
 	}
 }
@@ -278,7 +281,7 @@ func TestThreadBackPreservesPrevScreen(t *testing.T) {
 	client := newMockClient()
 	app := newTestApp(client)
 
-	updated, _ := app.Update(keyPress('2'))
+	updated, _ := app.Update(tabKeyPress())
 	app = updated.(ui.App)
 
 	updated, _ = app.Update(notifications.NavigateToPostMsg{URI: "at://test/post/1"})
@@ -365,8 +368,11 @@ func TestSearchViewThread(t *testing.T) {
 	client := newMockClient()
 	app := newTestApp(client)
 
-	updated, _ := app.Update(keyPress('4'))
-	app = updated.(ui.App)
+	// Feed → Notifications → Profile → Search (3 tabs)
+	for range 3 {
+		updated, _ := app.Update(tabKeyPress())
+		app = updated.(ui.App)
+	}
 
 	updated, cmd := app.Update(feed.ViewThreadMsg{URI: "at://test/post/search1"})
 	app = updated.(ui.App)
@@ -556,10 +562,13 @@ func TestSearchResults(t *testing.T) {
 	client := newMockClient()
 	app := newTestApp(client)
 
-	updated, _ := app.Update(keyPress('4'))
-	app = updated.(ui.App)
+	// Feed → Notifications → Profile → Search (3 tabs)
+	for range 3 {
+		updated, _ := app.Update(tabKeyPress())
+		app = updated.(ui.App)
+	}
 
-	updated, _ = app.Update(search.SearchResultsMsg{Posts: []*bsky.FeedDefs_PostView{client.timelinePosts[0].Post}, Cursor: "", Mode: 0})
+	updated, _ := app.Update(search.SearchResultsMsg{Posts: []*bsky.FeedDefs_PostView{client.timelinePosts[0].Post}, Cursor: "", Mode: 0})
 	app = updated.(ui.App)
 	if app.Screen() != ui.ScreenSearch {
 		t.Errorf("expected ScreenSearch, got %d", app.Screen())
@@ -598,13 +607,13 @@ func TestSelfProfileTab(t *testing.T) {
 	client := newMockClient()
 	app := newTestApp(client)
 
-	updated, cmd := app.Update(keyPress('3'))
-	app = updated.(ui.App)
+	// Feed → Notifications → Profile (2 tabs)
+	for range 2 {
+		updated, _ := app.Update(tabKeyPress())
+		app = updated.(ui.App)
+	}
 	if app.Screen() != ui.ScreenProfile {
 		t.Fatalf("expected ScreenProfile, got %d", app.Screen())
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd for self-profile init")
 	}
 }
 

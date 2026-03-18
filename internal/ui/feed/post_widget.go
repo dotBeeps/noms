@@ -10,6 +10,7 @@ import (
 
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/dotBeeps/noms/internal/api/bluesky"
+	"github.com/dotBeeps/noms/internal/ui/components"
 	"github.com/dotBeeps/noms/internal/ui/images"
 	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
@@ -124,6 +125,43 @@ func ExtractImageURLs(post *bsky.FeedDefs_FeedViewPost) []string {
 	return urls
 }
 
+// ExtractGalleryImages returns gallery-ready image data for all images in a post's embed.
+func ExtractGalleryImages(post *bsky.FeedDefs_FeedViewPost) []components.GalleryImage {
+	if post == nil || post.Post == nil || post.Post.Embed == nil {
+		return nil
+	}
+	embed := post.Post.Embed
+	var imgs []components.GalleryImage
+
+	appendFromImages := func(views []*bsky.EmbedImages_ViewImage) {
+		for _, img := range views {
+			if img.Thumb == "" && img.Fullsize == "" {
+				continue
+			}
+			url := img.Fullsize
+			if url == "" {
+				url = img.Thumb
+			}
+			gi := components.GalleryImage{URL: url, ThumbURL: img.Thumb, AltText: img.Alt}
+			if img.AspectRatio != nil {
+				gi.AspectWidth = img.AspectRatio.Width
+				gi.AspectHeight = img.AspectRatio.Height
+			}
+			imgs = append(imgs, gi)
+		}
+	}
+
+	switch {
+	case embed.EmbedImages_View != nil:
+		appendFromImages(embed.EmbedImages_View.Images)
+	case embed.EmbedRecordWithMedia_View != nil:
+		if m := embed.EmbedRecordWithMedia_View.Media; m != nil && m.EmbedImages_View != nil {
+			appendFromImages(m.EmbedImages_View.Images)
+		}
+	}
+	return imgs
+}
+
 func ExtractAvatarURL(post *bsky.FeedDefs_FeedViewPost) string {
 	if post == nil || post.Post == nil || post.Post.Author == nil || post.Post.Author.Avatar == nil {
 		return ""
@@ -146,7 +184,8 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 	} else if post.Reply != nil && post.Reply.Parent != nil {
 		if parent := post.Reply.Parent.FeedDefs_PostView; parent != nil && parent.Author != nil {
 			handle := parent.Author.Handle
-			b.WriteString(theme.StyleMuted().Render(fmt.Sprintf("↩ Replying to @%s", handle)))
+			indent := strings.Repeat(" ", shared.GutterWidth)
+			b.WriteString(indent + theme.StyleMuted().Render(fmt.Sprintf("↩ Replying to @%s", handle)))
 			b.WriteString("\n")
 		}
 	}
@@ -239,7 +278,17 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 			embedWidth = avatarContentWidth
 		}
 		if embedStr := strings.TrimRight(renderEmbed(post.Post.Embed, embedWidth, cache), "\n "); embedStr != "" {
-			b.WriteString(embedStr)
+			if avatarStr != "" {
+				indent := strings.Repeat(" ", shared.GutterWidth)
+				for i, line := range strings.Split(embedStr, "\n") {
+					if i > 0 {
+						b.WriteString("\n")
+					}
+					b.WriteString(indent + line)
+				}
+			} else {
+				b.WriteString(embedStr)
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -274,7 +323,8 @@ func RenderPostContent(post *bsky.FeedDefs_FeedViewPost, width int, cache images
 		repostStyle = lipgloss.NewStyle().Foreground(theme.ColorSuccess)
 	}
 
-	engLine := likeStyle.Render(fmt.Sprintf("%s %d", likeIcon, likeCount)) +
+	indent := strings.Repeat(" ", shared.GutterWidth)
+	engLine := indent + likeStyle.Render(fmt.Sprintf("%s %d", likeIcon, likeCount)) +
 		"  " + repostStyle.Render(fmt.Sprintf("%s %d", repostIcon, repostCount)) +
 		"  " + theme.StyleMuted().Render(fmt.Sprintf("↩ %d", replyCount))
 	b.WriteString(engLine)
@@ -291,6 +341,19 @@ func RenderPost(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cach
 // RenderPostAnimated renders a post with like/repost pulse animation values (0–1).
 func RenderPostAnimated(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string, likeAnim, repostAnim float64) string {
 	content := RenderPostContent(post, width-2, cache, avatarOverrides, likeAnim, repostAnim)
+	return shared.RenderItemWithBorder(content, selected, width)
+}
+
+// RenderPostFull renders a post with all animation parameters: like/repost pulse,
+// delete flash (border → warning color), and entrance progress (muted → full color).
+func RenderPostFull(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string, likeAnim, repostAnim, deleteAnim, entranceProgress float64) string {
+	content := RenderPostContent(post, width-2, cache, avatarOverrides, likeAnim, repostAnim)
+	if deleteAnim > 0 {
+		return shared.RenderItemWithBorderColor(content, width, theme.ColorWarning)
+	}
+	if entranceProgress < 1 {
+		return shared.RenderItemWithBorderMuted(content, selected, width)
+	}
 	return shared.RenderItemWithBorder(content, selected, width)
 }
 

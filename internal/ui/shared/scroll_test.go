@@ -132,7 +132,7 @@ func TestRenderItemWithBorderMixedKittyAndPlainLines(t *testing.T) {
 }
 
 func borderStyles(selected bool, _ int) (styledBorder, gap, bgSeq string) {
-	borderColor := theme.ColorBorder
+	borderColor := theme.ColorSurface
 	panelBg := theme.ColorSurface
 	panelBgCode := theme.SurfaceCode()
 	if selected {
