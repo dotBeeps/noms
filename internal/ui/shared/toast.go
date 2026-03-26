@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/harmonica"
 
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
@@ -26,33 +27,41 @@ func toastTick() tea.Cmd {
 type ToastModel struct {
 	text    string
 	isError bool
-	anim    float64 // 1.0 → 0.0 via exponential decay
+	anim    float64 // 1.0 → 0.0 via spring
+	animVel float64
+	spring  harmonica.Spring
 }
 
 func NewToast() ToastModel {
-	return ToastModel{}
+	return ToastModel{
+		spring: harmonica.NewSpring(harmonica.FPS(30), 6.0, 0.8),
+	}
 }
 
 func (m ToastModel) Update(msg tea.Msg) (ToastModel, tea.Cmd) {
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case ToastMsg:
-		t := msg.(ToastMsg)
-		m.text = t.Text
-		m.isError = t.IsError
+		if msg.IsError {
+			m.text = "✗ " + msg.Text
+		} else {
+			m.text = "✓ " + msg.Text
+		}
+		m.isError = msg.IsError
 		m.anim = 1.0
+		m.animVel = 0
 		return m, toastTick()
 
 	case toastTickMsg:
 		if m.anim <= 0 {
 			return m, nil
 		}
-		var still bool
-		m.anim, still = Decay(m.anim, 0.92, 0.01)
-		if still {
-			return m, toastTick()
+		m.anim, m.animVel = m.spring.Update(m.anim, m.animVel, 0)
+		if m.anim < 0.01 {
+			m.anim = 0
+			m.text = ""
+			return m, nil
 		}
-		m.text = ""
-		return m, nil
+		return m, toastTick()
 	}
 	return m, nil
 }

@@ -64,7 +64,7 @@ type VoreskyModel struct {
 }
 
 func NewVoreskyModel(client *voresky.VoreskyClient, width, height int, imageCache images.ImageRenderer) VoreskyModel {
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 	headerHeight := 1
 	return VoreskyModel{
 		client:       client,

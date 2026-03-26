@@ -61,7 +61,7 @@ type VNotificationsModel struct {
 }
 
 func NewVNotificationsModel(client *voresky.VoreskyClient, width, height int, imageCache images.ImageRenderer) VNotificationsModel {
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 	headerHeight := 2
 	return VNotificationsModel{
 		client:        client,

@@ -27,25 +27,71 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 		panelBg = theme.ColorSurfaceAlt
 		panelBgCode = theme.SurfaceAltCode()
 	}
+
+	opts := borderOpts{
+		borderColor: borderColor,
+		panelBg:     panelBg,
+		panelBgCode: panelBgCode,
+		width:       width,
+	}
+	if selected {
+		opts.blendBorder = true
+	}
+	return renderBorderedPanel(content, opts)
+}
+
+// RenderItemWithBorderColor renders a bordered panel with a specific border color (used for delete flash).
+func RenderItemWithBorderColor(content string, width int, borderColor color.Color) string {
+	return renderBorderedPanel(content, borderOpts{
+		borderColor: borderColor,
+		panelBg:     theme.ColorSurface,
+		panelBgCode: theme.SurfaceCode(),
+		width:       width,
+	})
+}
+
+// RenderItemWithBorderMuted renders a panel with a muted border (for staggered entrance).
+func RenderItemWithBorderMuted(content string, selected bool, width int) string {
+	panelBg := theme.ColorSurface
+	panelBgCode := theme.SurfaceCode()
+	if selected {
+		panelBg = theme.ColorSurfaceAlt
+		panelBgCode = theme.SurfaceAltCode()
+	}
+	return renderBorderedPanel(content, borderOpts{
+		borderColor: theme.ColorMuted,
+		panelBg:     panelBg,
+		panelBgCode: panelBgCode,
+		width:       width,
+	})
+}
+
+type borderOpts struct {
+	borderColor color.Color
+	panelBg     color.Color
+	panelBgCode string
+	width       int
+	blendBorder bool // use BorderForegroundBlend (accent+primary) instead of solid color
+}
+
+func renderBorderedPanel(content string, opts borderOpts) string {
 	// NOTE: This uses ANSI-256 escape syntax directly. All terminals that
 	// support Bubble Tea + Kitty graphics also support 256 colors, so this
 	// is safe in practice. If noms ever needs 16-color terminal support,
 	// this should be rendered through lipgloss's color profile system.
-	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
+	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", opts.panelBgCode)
 
-	// Single lipgloss style owns the entire panel: border, padding, background, width.
-	// Width(w) includes border in v2, so content area = w - border(1) - paddingLeft(1).
 	panelStyle := lipgloss.NewStyle().
 		Border(LeftAccent, false, false, false, true).
-		Width(width).
-		Background(panelBg).
+		Width(opts.width).
+		Background(opts.panelBg).
 		PaddingLeft(1)
-	if selected {
+	if opts.blendBorder {
 		panelStyle = panelStyle.BorderForegroundBlend(theme.ColorAccent, theme.ColorPrimary)
 	} else {
-		panelStyle = panelStyle.BorderLeftForeground(borderColor)
+		panelStyle = panelStyle.BorderLeftForeground(opts.borderColor)
 	}
-	contentWidth := max(0, width-2)
+	contentWidth := max(0, opts.width-2)
 
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) == 0 {
@@ -57,7 +103,6 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	hasKitty := slices.ContainsFunc(lines, IsKittyPlaceholderLine)
 
 	if !hasKitty {
-		// Happy path: stabilize bg, truncate, let lipgloss handle everything.
 		var processed strings.Builder
 		for i, line := range lines {
 			if i > 0 {
@@ -71,12 +116,12 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 	}
 
 	// Kitty path: manual padding for ALL lines in block (consistent alignment).
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-	if selected {
+	borderStyle := lipgloss.NewStyle().Foreground(opts.borderColor)
+	if opts.blendBorder {
 		borderStyle = borderStyle.Foreground(theme.ColorAccent)
 	}
 	styledBorder := borderStyle.Render("▎")
-	gap := lipgloss.NewStyle().Background(panelBg).Render(" ")
+	gap := lipgloss.NewStyle().Background(opts.panelBg).Render(" ")
 
 	var result strings.Builder
 	for i, line := range lines {
@@ -97,74 +142,7 @@ func RenderItemWithBorder(content string, selected bool, width int) string {
 			result.WriteString(styledBorder + gap + bgSeq + truncated + bgSeq + strings.Repeat(" ", padRight))
 		}
 	}
-	result.WriteString("\x1b[0m\n\n")
+	result.WriteString(ansi.ResetStyle + "\n\n")
 
 	return result.String()
-}
-
-// RenderItemWithBorderColor renders a bordered panel with a specific border color (used for delete flash).
-func RenderItemWithBorderColor(content string, width int, borderColor color.Color) string {
-	panelBg := theme.ColorSurface
-	panelBgCode := theme.SurfaceCode()
-	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
-
-	panelStyle := lipgloss.NewStyle().
-		Border(LeftAccent, false, false, false, true).
-		Width(width).
-		Background(panelBg).
-		PaddingLeft(1).
-		BorderLeftForeground(borderColor)
-	contentWidth := max(0, width-2)
-
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
-
-	var processed strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			processed.WriteString("\n")
-		}
-		stabilized := StabilizeBg(line, bgSeq)
-		truncated := ansi.Truncate(stabilized, contentWidth, "")
-		processed.WriteString(truncated)
-	}
-	return panelStyle.Render(processed.String()) + "\n\n"
-}
-
-// RenderItemWithBorderMuted renders a panel with a muted border (for staggered entrance).
-func RenderItemWithBorderMuted(content string, selected bool, width int) string {
-	borderColor := theme.ColorMuted
-	panelBg := theme.ColorSurface
-	panelBgCode := theme.SurfaceCode()
-	if selected {
-		panelBg = theme.ColorSurfaceAlt
-		panelBgCode = theme.SurfaceAltCode()
-	}
-	bgSeq := fmt.Sprintf("\x1b[48;5;%sm", panelBgCode)
-
-	panelStyle := lipgloss.NewStyle().
-		Border(LeftAccent, false, false, false, true).
-		Width(width).
-		Background(panelBg).
-		PaddingLeft(1).
-		BorderLeftForeground(borderColor)
-	contentWidth := max(0, width-2)
-
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
-
-	var processed strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			processed.WriteString("\n")
-		}
-		stabilized := StabilizeBg(line, bgSeq)
-		truncated := ansi.Truncate(stabilized, contentWidth, "")
-		processed.WriteString(truncated)
-	}
-	return panelStyle.Render(processed.String()) + "\n\n"
 }

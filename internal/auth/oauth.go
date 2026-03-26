@@ -70,7 +70,19 @@ func GeneratePKCEChallenge(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
-func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Session, error) {
+// PreparedAuth holds intermediate state between Prepare and Complete phases.
+type PreparedAuth struct {
+	AuthURL     string
+	RedirectURI string
+	Verifier    string
+	State       string
+	Meta        *AuthServerMetadata
+	PDSURL      string
+}
+
+// Prepare resolves identity, fetches auth server metadata, generates PKCE parameters,
+// and builds the authorization URL. It does NOT open the browser or wait for a callback.
+func (m *OAuthManager) Prepare(ctx context.Context, handle string) (*PreparedAuth, error) {
 	redirectURI := m.Config.RedirectURI
 	if provider, ok := m.Flow.(interface{ RedirectURI() (string, error) }); ok && redirectURI == "" {
 		var err error
@@ -129,30 +141,69 @@ func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Sessio
 		authURL = meta.AuthorizationEndpoint + "?" + params.Encode()
 	}
 
-	if err := m.Flow.Start(ctx, authURL); err != nil {
-		return nil, fmt.Errorf("starting auth flow: %w", err)
-	}
+	return &PreparedAuth{
+		AuthURL:     authURL,
+		RedirectURI: redirectURI,
+		Verifier:    verifier,
+		State:       state,
+		Meta:        meta,
+		PDSURL:      pdsURL,
+	}, nil
+}
 
+// OpenBrowser opens the authorization URL in the user's browser.
+func (m *OAuthManager) OpenBrowser(ctx context.Context, prepared *PreparedAuth) error {
+	return m.Flow.Start(ctx, prepared.AuthURL)
+}
+
+// WaitForCallback blocks until the user completes authorization in the browser
+// and the OAuth callback is received. Returns the authorization code.
+func (m *OAuthManager) WaitForCallback(ctx context.Context, prepared *PreparedAuth) (string, error) {
 	code, receivedState, err := m.Flow.WaitForCallback(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("waiting for callback: %w", err)
+		return "", fmt.Errorf("waiting for callback: %w", err)
 	}
 
-	if receivedState != state {
-		return nil, fmt.Errorf("state mismatch: expected %s, got %s", state, receivedState)
+	if receivedState != prepared.State {
+		return "", fmt.Errorf("state mismatch: expected %s, got %s", prepared.State, receivedState)
 	}
 
-	tokens, err := m.exchangeCode(ctx, meta, code, verifier, redirectURI)
+	return code, nil
+}
+
+// ExchangeToken exchanges an authorization code for tokens and creates a session.
+func (m *OAuthManager) ExchangeToken(ctx context.Context, handle, code string, prepared *PreparedAuth) (*Session, error) {
+	tokens, err := m.exchangeCode(ctx, prepared.Meta, code, prepared.Verifier, prepared.RedirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
 
-	session := NewSession(tokens.Sub, handle, pdsURL, tokens, m.DPoP)
-	tm := NewTokenManager(meta.TokenEndpoint, m.Config.ClientID, tokens, m.DPoP)
+	session := NewSession(tokens.Sub, handle, prepared.PDSURL, tokens, m.DPoP)
+	tm := NewTokenManager(prepared.Meta.TokenEndpoint, m.Config.ClientID, tokens, m.DPoP)
 	tm.HTTPClient = m.HTTPClient
 	session.TokenManager = tm
 
 	return session, nil
+}
+
+// Authenticate runs the full OAuth flow in one call (resolve → browser → callback → token exchange).
+// For step-by-step progress, use Prepare, OpenBrowser, WaitForCallback, and ExchangeToken individually.
+func (m *OAuthManager) Authenticate(ctx context.Context, handle string) (*Session, error) {
+	prepared, err := m.Prepare(ctx, handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := m.OpenBrowser(ctx, prepared); err != nil {
+		return nil, fmt.Errorf("starting auth flow: %w", err)
+	}
+
+	code, err := m.WaitForCallback(ctx, prepared)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.ExchangeToken(ctx, handle, code, prepared)
 }
 
 func (m *OAuthManager) resolvePDS(ctx context.Context, handle string) (string, error) {

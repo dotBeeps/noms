@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -174,6 +176,38 @@ func parseATURI(uri string) (repo, collection, rkey string, err error) {
 		return "", "", "", fmt.Errorf("invalid AT-URI: expected at://repo/collection/rkey: %s", uri)
 	}
 	return parts[0], parts[1], parts[2], nil
+}
+
+// IsRateLimited reports whether err is a 429 rate limit error.
+func IsRateLimited(err error) bool {
+	return isRateLimited(err)
+}
+
+// IsNetworkError reports whether err is a network-level failure
+// (timeout, DNS, connection refused, etc.) as opposed to an API error.
+func IsNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// If it's a known API error (got an HTTP response), it's not a network error
+	if _, ok := asAPIError(err); ok {
+		return false
+	}
+	// Context deadline/cancellation counts as network-level
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	// Check for net.Error (timeouts, DNS failures, connection refused)
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	// Unwrap and check for url.Error (wraps net errors from http.Client)
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return true
+	}
+	return false
 }
 
 // Compile-time interface assertion.

@@ -122,16 +122,63 @@ func TestLoginErrorMsg(t *testing.T) {
 	}
 }
 
-func TestLoginLoadingState(t *testing.T) {
+func TestLoginLoadingStateBrowser(t *testing.T) {
 	t.Parallel()
 	m := NewLoginModel()
 	m.state = LoginStateLoading
+	m.authMethod = AuthMethodBrowser
+	m.authStep = 0
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "Resolving identity") {
+		t.Errorf("Expected loading screen to contain 'Resolving identity', got %q", content)
+	}
+	if !strings.Contains(content, "Opening browser") {
+		t.Errorf("Expected loading screen to show pending 'Opening browser' step, got %q", content)
+	}
+}
+
+func TestLoginLoadingStateAppPassword(t *testing.T) {
+	t.Parallel()
+	m := NewLoginModel()
+	m.state = LoginStateLoading
+	m.authMethod = AuthMethodAppPassword
+	m.authStep = 0
 
 	v := m.View()
 	content := v.Content
 
 	if !strings.Contains(content, "Authenticating") {
 		t.Errorf("Expected loading screen to contain 'Authenticating', got %q", content)
+	}
+}
+
+func TestLoginLoadingStateStepAdvance(t *testing.T) {
+	t.Parallel()
+	m := NewLoginModel()
+	m.state = LoginStateLoading
+	m.authMethod = AuthMethodBrowser
+	m.authStep = 0
+
+	// Advance to step 2
+	updated, _ := m.Update(AuthStepMsg{Method: AuthMethodBrowser, Step: 2})
+	m = updated.(LoginModel)
+
+	if m.authStep != 2 {
+		t.Errorf("Expected authStep to be 2, got %d", m.authStep)
+	}
+
+	v := m.View()
+	content := v.Content
+
+	// Steps 0 and 1 should show checkmarks
+	if !strings.Contains(content, "\u2713") {
+		t.Errorf("Expected completed steps to show checkmarks, got %q", content)
+	}
+	if !strings.Contains(content, "Waiting for authorization") {
+		t.Errorf("Expected current step 'Waiting for authorization', got %q", content)
 	}
 }
 
@@ -196,10 +243,28 @@ func TestLoginPasswordSubmit(t *testing.T) {
 		t.Fatal("Expected command to be returned after password submit")
 	}
 
+	// Unwrap BatchMsg since password submit returns Batch(spinner.Tick, submitCmd)
 	msg := cmd()
-	authMsg, ok := msg.(StartAppPasswordAuthMsg)
-	if !ok {
-		t.Fatalf("Expected StartAppPasswordAuthMsg, got %T", msg)
+	var authMsg StartAppPasswordAuthMsg
+	if batchMsg, ok := msg.(tea.BatchMsg); ok {
+		found := false
+		for _, c := range batchMsg {
+			if c == nil {
+				continue
+			}
+			if m, ok := c().(StartAppPasswordAuthMsg); ok {
+				authMsg = m
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("Expected StartAppPasswordAuthMsg in BatchMsg")
+		}
+	} else if m, ok := msg.(StartAppPasswordAuthMsg); ok {
+		authMsg = m
+	} else {
+		t.Fatalf("Expected StartAppPasswordAuthMsg or BatchMsg, got %T", msg)
 	}
 	if authMsg.Handle != "alice.bsky.social" {
 		t.Errorf("Expected handle 'alice.bsky.social', got %q", authMsg.Handle)

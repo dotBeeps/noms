@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -40,7 +41,7 @@ func TestRenderItemWithBorderKittyLines(t *testing.T) {
 	kittyLine := "left\U0010EEEEright"
 	width := 12
 	got := RenderItemWithBorder(kittyLine, false, width)
-	lines := strings.Split(strings.TrimSuffix(got, "\x1b[0m\n\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(got, ansi.ResetStyle+"\n\n"), "\n")
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 line, got %d", len(lines))
 	}
@@ -71,7 +72,7 @@ func TestRenderItemWithBorderMixedLines(t *testing.T) {
 	content := normal1 + "\n" + kitty + "\n" + normal2
 	width := 12
 	got := RenderItemWithBorder(content, true, width)
-	lines := strings.Split(strings.TrimSuffix(got, "\x1b[0m\n\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(got, ansi.ResetStyle+"\n\n"), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d", len(lines))
 	}
@@ -118,7 +119,7 @@ func TestRenderItemWithBorderMixedKittyAndPlainLines(t *testing.T) {
 	width := 30
 
 	got := RenderItemWithBorder(content, false, width)
-	lines := strings.Split(strings.TrimSuffix(got, "\x1b[0m\n\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(got, ansi.ResetStyle+"\n\n"), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d", len(lines))
 	}

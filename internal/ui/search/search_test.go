@@ -338,9 +338,9 @@ func TestSearchToggleMode(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	// When in Posts mode, Posts tab should be active
-	if !strings.Contains(content, "[Posts]") {
-		t.Errorf("Expected view to contain '[Posts]' tab, got %q", content)
+	// When in Posts mode, Posts tab should be visible
+	if !strings.Contains(content, "Posts") {
+		t.Errorf("Expected view to contain 'Posts' tab, got %q", content)
 	}
 }
 
@@ -420,8 +420,8 @@ func TestSearchEmpty(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Type to search...") {
-		t.Errorf("Expected placeholder 'Type to search...', got %q", content)
+	if !strings.Contains(content, "Type to search") {
+		t.Errorf("Expected placeholder 'Type to search', got %q", content)
 	}
 }
 

@@ -344,14 +344,21 @@ func RenderPostAnimated(post *bsky.FeedDefs_FeedViewPost, width int, selected bo
 	return shared.RenderItemWithBorder(content, selected, width)
 }
 
-// RenderPostFull renders a post with all animation parameters: like/repost pulse,
-// delete flash (border → warning color), and entrance progress (muted → full color).
-func RenderPostFull(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string, likeAnim, repostAnim, deleteAnim, entranceProgress float64) string {
-	content := RenderPostContent(post, width-2, cache, avatarOverrides, likeAnim, repostAnim)
-	if deleteAnim > 0 {
+// PostAnims holds animation state for a single post render.
+type PostAnims struct {
+	Like     float64 // like pulse (1→0)
+	Repost   float64 // repost pulse (1→0)
+	Delete   float64 // delete flash (>0 = flash)
+	Entrance float64 // entrance progress (0→1, 1 = fully visible)
+}
+
+// RenderPostFull renders a post with all animation parameters.
+func RenderPostFull(post *bsky.FeedDefs_FeedViewPost, width int, selected bool, cache images.ImageRenderer, avatarOverrides map[string]string, anims PostAnims) string {
+	content := RenderPostContent(post, width-2, cache, avatarOverrides, anims.Like, anims.Repost)
+	if anims.Delete > 0 {
 		return shared.RenderItemWithBorderColor(content, width, theme.ColorWarning)
 	}
-	if entranceProgress < 1 {
+	if anims.Entrance < 1 {
 		return shared.RenderItemWithBorderMuted(content, selected, width)
 	}
 	return shared.RenderItemWithBorder(content, selected, width)

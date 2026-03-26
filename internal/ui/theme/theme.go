@@ -9,259 +9,276 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// ColorPair holds dark and light variants of a color (ANSI 256 code strings).
+// When both values are the same, the color is mode-invariant.
+type ColorPair struct {
+	Dark  string
+	Light string
+}
+
+// C is a shorthand constructor for a dark-only ColorPair (light = dark).
+func C(code string) ColorPair {
+	return ColorPair{Dark: code, Light: code}
+}
+
+// DL constructs a ColorPair with distinct dark and light values.
+func DL(dark, light string) ColorPair {
+	return ColorPair{Dark: dark, Light: light}
+}
+
 type Palette struct {
 	Name       string
-	Primary    string
-	Secondary  string
-	Accent     string
-	Error      string
-	Success    string
-	Muted      string
-	Highlight  string
-	Text       string
-	TextStrong string
-	Surface    string
-	SurfaceAlt string
-	Border     string
-	Mention    string
-	Link       string
-	Tag        string
-	Warning    string
-	OnPrimary  string
-	OnAccent   string
+	Primary    ColorPair
+	Secondary  ColorPair
+	Accent     ColorPair
+	Error      ColorPair
+	Success    ColorPair
+	Muted      ColorPair
+	Highlight  ColorPair
+	Text       ColorPair
+	TextStrong ColorPair
+	Surface    ColorPair
+	SurfaceAlt ColorPair
+	Border     ColorPair
+	Mention    ColorPair
+	Link       ColorPair
+	Tag        ColorPair
+	Warning    ColorPair
+	OnPrimary  ColorPair
+	OnAccent   ColorPair
 }
 
 var palettes = map[string]Palette{
 	"default": {
 		Name:       "default",
-		Primary:    "62",
-		Secondary:  "243",
-		Accent:     "205",
-		Error:      "196",
-		Success:    "78",
-		Muted:      "241",
-		Highlight:  "229",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "236",
-		SurfaceAlt: "237",
-		Border:     "240",
-		Mention:    "33",
-		Link:       "45",
-		Tag:        "141",
-		Warning:    "203",
-		OnPrimary:  "229",
-		OnAccent:   "255",
+		Primary:    DL("62", "61"),
+		Secondary:  DL("243", "247"),
+		Accent:     DL("205", "162"),
+		Error:      DL("196", "160"),
+		Success:    DL("78", "28"),
+		Muted:      DL("241", "249"),
+		Highlight:  DL("229", "94"),
+		Text:       DL("252", "235"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("236", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("240", "250"),
+		Mention:    DL("33", "25"),
+		Link:       DL("45", "27"),
+		Tag:        DL("141", "97"),
+		Warning:    DL("203", "166"),
+		OnPrimary:  DL("229", "255"),
+		OnAccent:   DL("255", "255"),
 	},
 	"terminal": {
 		Name:       "terminal",
-		Primary:    "4",
-		Secondary:  "8",
-		Accent:     "6",
-		Error:      "1",
-		Success:    "2",
-		Muted:      "8",
-		Highlight:  "11",
-		Text:       "7",
-		TextStrong: "15",
-		Surface:    "0",
-		SurfaceAlt: "8",
-		Border:     "8",
-		Mention:    "14",
-		Link:       "12",
-		Tag:        "13",
-		Warning:    "3",
-		OnPrimary:  "15",
-		OnAccent:   "0",
+		Primary:    C("4"),
+		Secondary:  C("8"),
+		Accent:     C("6"),
+		Error:      C("1"),
+		Success:    C("2"),
+		Muted:      C("8"),
+		Highlight:  C("11"),
+		Text:       C("7"),
+		TextStrong: C("15"),
+		Surface:    C("0"),
+		SurfaceAlt: C("8"),
+		Border:     C("8"),
+		Mention:    C("14"),
+		Link:       C("12"),
+		Tag:        C("13"),
+		Warning:    C("3"),
+		OnPrimary:  C("15"),
+		OnAccent:   C("0"),
 	},
 	"dracula": {
 		Name:       "dracula",
-		Primary:    "141",
-		Secondary:  "240",
-		Accent:     "212",
-		Error:      "203",
-		Success:    "84",
-		Muted:      "245",
-		Highlight:  "228",
-		Text:       "253",
-		TextStrong: "255",
-		Surface:    "236",
-		SurfaceAlt: "237",
-		Border:     "61",
-		Mention:    "117",
-		Link:       "81",
-		Tag:        "176",
-		Warning:    "215",
-		OnPrimary:  "255",
-		OnAccent:   "236",
+		Primary:    DL("141", "98"),
+		Secondary:  DL("240", "248"),
+		Accent:     DL("212", "162"),
+		Error:      DL("203", "160"),
+		Success:    DL("84", "28"),
+		Muted:      DL("245", "249"),
+		Highlight:  DL("228", "94"),
+		Text:       DL("253", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("236", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("61", "146"),
+		Mention:    DL("117", "25"),
+		Link:       DL("81", "27"),
+		Tag:        DL("176", "133"),
+		Warning:    DL("215", "172"),
+		OnPrimary:  DL("255", "255"),
+		OnAccent:   DL("236", "254"),
 	},
 	"nord": {
 		Name:       "nord",
-		Primary:    "110",
-		Secondary:  "102",
-		Accent:     "81",
-		Error:      "203",
-		Success:    "114",
-		Muted:      "244",
-		Highlight:  "223",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "236",
-		SurfaceAlt: "237",
-		Border:     "67",
-		Mention:    "81",
-		Link:       "110",
-		Tag:        "180",
-		Warning:    "215",
-		OnPrimary:  "236",
-		OnAccent:   "236",
+		Primary:    DL("110", "67"),
+		Secondary:  DL("102", "248"),
+		Accent:     DL("81", "31"),
+		Error:      DL("203", "160"),
+		Success:    DL("114", "28"),
+		Muted:      DL("244", "249"),
+		Highlight:  DL("223", "130"),
+		Text:       DL("252", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("236", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("67", "110"),
+		Mention:    DL("81", "31"),
+		Link:       DL("110", "67"),
+		Tag:        DL("180", "137"),
+		Warning:    DL("215", "172"),
+		OnPrimary:  DL("236", "255"),
+		OnAccent:   DL("236", "255"),
 	},
 	"tokyo-night": {
 		Name:       "tokyo-night",
-		Primary:    "111",
-		Secondary:  "60",
-		Accent:     "183",
-		Error:      "203",
-		Success:    "114",
-		Muted:      "146",
-		Highlight:  "223",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "235",
-		SurfaceAlt: "237",
-		Border:     "60",
-		Mention:    "117",
-		Link:       "117",
-		Tag:        "183",
-		Warning:    "214",
-		OnPrimary:  "235",
-		OnAccent:   "235",
+		Primary:    DL("111", "62"),
+		Secondary:  DL("60", "248"),
+		Accent:     DL("183", "133"),
+		Error:      DL("203", "160"),
+		Success:    DL("114", "28"),
+		Muted:      DL("146", "249"),
+		Highlight:  DL("223", "130"),
+		Text:       DL("252", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("235", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("60", "146"),
+		Mention:    DL("117", "25"),
+		Link:       DL("117", "25"),
+		Tag:        DL("183", "133"),
+		Warning:    DL("214", "172"),
+		OnPrimary:  DL("235", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 	"rose-pine": {
 		Name:       "rose-pine",
-		Primary:    "181",
-		Secondary:  "102",
-		Accent:     "175",
-		Error:      "174",
-		Success:    "108",
-		Muted:      "245",
-		Highlight:  "223",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "235",
-		SurfaceAlt: "237",
-		Border:     "102",
-		Mention:    "152",
-		Link:       "153",
-		Tag:        "181",
-		Warning:    "216",
-		OnPrimary:  "235",
-		OnAccent:   "235",
+		Primary:    DL("181", "132"),
+		Secondary:  DL("102", "248"),
+		Accent:     DL("175", "132"),
+		Error:      DL("174", "131"),
+		Success:    DL("108", "65"),
+		Muted:      DL("245", "249"),
+		Highlight:  DL("223", "130"),
+		Text:       DL("252", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("235", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("102", "181"),
+		Mention:    DL("152", "67"),
+		Link:       DL("153", "68"),
+		Tag:        DL("181", "132"),
+		Warning:    DL("216", "173"),
+		OnPrimary:  DL("235", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 	"forest-night": {
 		Name:       "forest-night",
-		Primary:    "114",
-		Secondary:  "65",
-		Accent:     "150",
-		Error:      "203",
-		Success:    "108",
-		Muted:      "242",
-		Highlight:  "187",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "235",
-		SurfaceAlt: "236",
-		Border:     "65",
-		Mention:    "109",
-		Link:       "115",
-		Tag:        "151",
-		Warning:    "179",
-		OnPrimary:  "235",
-		OnAccent:   "235",
+		Primary:    DL("114", "28"),
+		Secondary:  DL("65", "248"),
+		Accent:     DL("150", "65"),
+		Error:      DL("203", "160"),
+		Success:    DL("108", "22"),
+		Muted:      DL("242", "249"),
+		Highlight:  DL("187", "94"),
+		Text:       DL("252", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("235", "254"),
+		SurfaceAlt: DL("236", "253"),
+		Border:     DL("65", "114"),
+		Mention:    DL("109", "30"),
+		Link:       DL("115", "29"),
+		Tag:        DL("151", "65"),
+		Warning:    DL("179", "136"),
+		OnPrimary:  DL("235", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 	"neon-ember": {
 		Name:       "neon-ember",
-		Primary:    "208",
-		Secondary:  "240",
-		Accent:     "198",
-		Error:      "196",
-		Success:    "118",
-		Muted:      "246",
-		Highlight:  "227",
-		Text:       "252",
-		TextStrong: "255",
-		Surface:    "234",
-		SurfaceAlt: "236",
-		Border:     "239",
-		Mention:    "45",
-		Link:       "51",
-		Tag:        "177",
-		Warning:    "208",
-		OnPrimary:  "234",
-		OnAccent:   "234",
+		Primary:    DL("208", "166"),
+		Secondary:  DL("240", "248"),
+		Accent:     DL("198", "161"),
+		Error:      DL("196", "160"),
+		Success:    DL("118", "28"),
+		Muted:      DL("246", "249"),
+		Highlight:  DL("227", "130"),
+		Text:       DL("252", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("234", "254"),
+		SurfaceAlt: DL("236", "253"),
+		Border:     DL("239", "250"),
+		Mention:    DL("45", "27"),
+		Link:       DL("51", "21"),
+		Tag:        DL("177", "133"),
+		Warning:    DL("208", "166"),
+		OnPrimary:  DL("234", "255"),
+		OnAccent:   DL("234", "255"),
 	},
 	"retro-amber": {
 		Name:       "retro-amber",
-		Primary:    "214",
-		Secondary:  "136",
-		Accent:     "221",
-		Error:      "166",
-		Success:    "178",
-		Muted:      "243",
-		Highlight:  "230",
-		Text:       "223",
-		TextStrong: "230",
-		Surface:    "235",
-		SurfaceAlt: "237",
-		Border:     "137",
-		Mention:    "215",
-		Link:       "221",
-		Tag:        "180",
-		Warning:    "214",
-		OnPrimary:  "234",
-		OnAccent:   "235",
+		Primary:    DL("214", "130"),
+		Secondary:  DL("136", "248"),
+		Accent:     DL("221", "136"),
+		Error:      DL("166", "124"),
+		Success:    DL("178", "100"),
+		Muted:      DL("243", "249"),
+		Highlight:  DL("230", "94"),
+		Text:       DL("223", "236"),
+		TextStrong: DL("230", "232"),
+		Surface:    DL("235", "254"),
+		SurfaceAlt: DL("237", "253"),
+		Border:     DL("137", "179"),
+		Mention:    DL("215", "130"),
+		Link:       DL("221", "136"),
+		Tag:        DL("180", "137"),
+		Warning:    DL("214", "172"),
+		OnPrimary:  DL("234", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 	"iceberg": {
 		Name:       "iceberg",
-		Primary:    "110",
-		Secondary:  "66",
-		Accent:     "117",
-		Error:      "204",
-		Success:    "114",
-		Muted:      "246",
-		Highlight:  "153",
-		Text:       "254",
-		TextStrong: "255",
-		Surface:    "235",
-		SurfaceAlt: "236",
-		Border:     "67",
-		Mention:    "117",
-		Link:       "153",
-		Tag:        "146",
-		Warning:    "216",
-		OnPrimary:  "235",
-		OnAccent:   "235",
+		Primary:    DL("110", "67"),
+		Secondary:  DL("66", "248"),
+		Accent:     DL("117", "31"),
+		Error:      DL("204", "161"),
+		Success:    DL("114", "28"),
+		Muted:      DL("246", "249"),
+		Highlight:  DL("153", "68"),
+		Text:       DL("254", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("235", "254"),
+		SurfaceAlt: DL("236", "253"),
+		Border:     DL("67", "110"),
+		Mention:    DL("117", "25"),
+		Link:       DL("153", "68"),
+		Tag:        DL("146", "97"),
+		Warning:    DL("216", "173"),
+		OnPrimary:  DL("235", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 	"mint-latte": {
 		Name:       "mint-latte",
-		Primary:    "78",
-		Secondary:  "145",
-		Accent:     "151",
-		Error:      "203",
-		Success:    "71",
-		Muted:      "248",
-		Highlight:  "229",
-		Text:       "254",
-		TextStrong: "255",
-		Surface:    "237",
-		SurfaceAlt: "238",
-		Border:     "109",
-		Mention:    "79",
-		Link:       "116",
-		Tag:        "150",
-		Warning:    "215",
-		OnPrimary:  "235",
-		OnAccent:   "235",
+		Primary:    DL("78", "29"),
+		Secondary:  DL("145", "248"),
+		Accent:     DL("151", "65"),
+		Error:      DL("203", "160"),
+		Success:    DL("71", "22"),
+		Muted:      DL("248", "243"),
+		Highlight:  DL("229", "94"),
+		Text:       DL("254", "236"),
+		TextStrong: DL("255", "232"),
+		Surface:    DL("237", "254"),
+		SurfaceAlt: DL("238", "253"),
+		Border:     DL("109", "151"),
+		Mention:    DL("79", "29"),
+		Link:       DL("116", "30"),
+		Tag:        DL("150", "65"),
+		Warning:    DL("215", "172"),
+		OnPrimary:  DL("235", "255"),
+		OnAccent:   DL("235", "255"),
 	},
 }
 
@@ -296,7 +313,11 @@ var paletteAliases = map[string]string{
 var activePalette = palettes["default"]
 var isDark = true // assume dark until terminal reports otherwise
 var applyMu sync.Mutex
-var currentThemeName atomic.Value // stores string; set by Apply
+var currentThemeKey atomic.Value // stores string "name:dark|light"; set by Apply
+
+// Resolved surface codes for ANSI escape sequences.
+var resolvedSurfaceCode string
+var resolvedSurfaceAltCode string
 
 // Color palette constants
 var (
@@ -328,7 +349,7 @@ const (
 	StatusBarHeight = 1
 )
 
-// Style factory functions — constructed on call so they always reflect the active theme.
+// Style factory functions -- constructed on call so they always reflect the active theme.
 
 func StylePost() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(ColorText)
@@ -348,6 +369,10 @@ func StyleMuted() lipgloss.Style {
 
 func StyleError() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(ColorError)
+}
+
+func StyleWarning() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorWarning)
 }
 
 func StyleHeaderSubtle() lipgloss.Style {
@@ -389,18 +414,34 @@ func IsDark() bool {
 }
 
 // SetDarkMode stores the terminal background darkness and re-applies the
-// active theme so that any LightDark-aware colors are updated.
+// active theme so that LightDark-aware colors are updated.
 func SetDarkMode(dark bool) string {
 	isDark = dark
 	return Apply(activePalette.Name)
 }
 
 func SurfaceCode() string {
-	return activePalette.Surface
+	return resolvedSurfaceCode
 }
 
 func SurfaceAltCode() string {
-	return activePalette.SurfaceAlt
+	return resolvedSurfaceAltCode
+}
+
+// themeKey returns a cache key that encodes both theme name and dark/light mode.
+func themeKey(name string) string {
+	if isDark {
+		return name + ":dark"
+	}
+	return name + ":light"
+}
+
+// resolve picks the dark or light value from a ColorPair based on isDark.
+func resolve(pair ColorPair) string {
+	if isDark {
+		return pair.Dark
+	}
+	return pair.Light
 }
 
 func Apply(name string) string {
@@ -409,10 +450,12 @@ func Apply(name string) string {
 		p = palettes["default"]
 	}
 
-	// Fast path: skip all writes if the theme hasn't changed.
+	key := themeKey(p.Name)
+
+	// Fast path: skip all writes if theme + mode haven't changed.
 	// This prevents data races when parallel tests all call Apply("default")
 	// after init() has already applied it.
-	if cur, _ := currentThemeName.Load().(string); cur == p.Name {
+	if cur, _ := currentThemeKey.Load().(string); cur == key {
 		return p.Name
 	}
 
@@ -420,32 +463,37 @@ func Apply(name string) string {
 	defer applyMu.Unlock()
 
 	// Re-check under write lock.
-	if cur, _ := currentThemeName.Load().(string); cur == p.Name {
+	if cur, _ := currentThemeKey.Load().(string); cur == key {
 		return p.Name
 	}
 
 	activePalette = p
 
-	ColorPrimary = lipgloss.Color(p.Primary)
-	ColorSecondary = lipgloss.Color(p.Secondary)
-	ColorAccent = lipgloss.Color(p.Accent)
-	ColorError = lipgloss.Color(p.Error)
-	ColorSuccess = lipgloss.Color(p.Success)
-	ColorMuted = lipgloss.Color(p.Muted)
-	ColorHighlight = lipgloss.Color(p.Highlight)
-	ColorText = lipgloss.Color(p.Text)
-	ColorTextStrong = lipgloss.Color(p.TextStrong)
-	ColorSurface = lipgloss.Color(p.Surface)
-	ColorSurfaceAlt = lipgloss.Color(p.SurfaceAlt)
-	ColorBorder = lipgloss.Color(p.Border)
-	ColorMention = lipgloss.Color(p.Mention)
-	ColorLink = lipgloss.Color(p.Link)
-	ColorTag = lipgloss.Color(p.Tag)
-	ColorWarning = lipgloss.Color(p.Warning)
-	ColorOnPrimary = lipgloss.Color(p.OnPrimary)
-	ColorOnAccent = lipgloss.Color(p.OnAccent)
+	pick := lipgloss.LightDark(isDark)
 
-	currentThemeName.Store(activePalette.Name)
+	ColorPrimary = pick(lipgloss.Color(p.Primary.Light), lipgloss.Color(p.Primary.Dark))
+	ColorSecondary = pick(lipgloss.Color(p.Secondary.Light), lipgloss.Color(p.Secondary.Dark))
+	ColorAccent = pick(lipgloss.Color(p.Accent.Light), lipgloss.Color(p.Accent.Dark))
+	ColorError = pick(lipgloss.Color(p.Error.Light), lipgloss.Color(p.Error.Dark))
+	ColorSuccess = pick(lipgloss.Color(p.Success.Light), lipgloss.Color(p.Success.Dark))
+	ColorMuted = pick(lipgloss.Color(p.Muted.Light), lipgloss.Color(p.Muted.Dark))
+	ColorHighlight = pick(lipgloss.Color(p.Highlight.Light), lipgloss.Color(p.Highlight.Dark))
+	ColorText = pick(lipgloss.Color(p.Text.Light), lipgloss.Color(p.Text.Dark))
+	ColorTextStrong = pick(lipgloss.Color(p.TextStrong.Light), lipgloss.Color(p.TextStrong.Dark))
+	ColorSurface = pick(lipgloss.Color(p.Surface.Light), lipgloss.Color(p.Surface.Dark))
+	ColorSurfaceAlt = pick(lipgloss.Color(p.SurfaceAlt.Light), lipgloss.Color(p.SurfaceAlt.Dark))
+	ColorBorder = pick(lipgloss.Color(p.Border.Light), lipgloss.Color(p.Border.Dark))
+	ColorMention = pick(lipgloss.Color(p.Mention.Light), lipgloss.Color(p.Mention.Dark))
+	ColorLink = pick(lipgloss.Color(p.Link.Light), lipgloss.Color(p.Link.Dark))
+	ColorTag = pick(lipgloss.Color(p.Tag.Light), lipgloss.Color(p.Tag.Dark))
+	ColorWarning = pick(lipgloss.Color(p.Warning.Light), lipgloss.Color(p.Warning.Dark))
+	ColorOnPrimary = pick(lipgloss.Color(p.OnPrimary.Light), lipgloss.Color(p.OnPrimary.Dark))
+	ColorOnAccent = pick(lipgloss.Color(p.OnAccent.Light), lipgloss.Color(p.OnAccent.Dark))
+
+	resolvedSurfaceCode = resolve(p.Surface)
+	resolvedSurfaceAltCode = resolve(p.SurfaceAlt)
+
+	currentThemeKey.Store(key)
 	return activePalette.Name
 }
 

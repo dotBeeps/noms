@@ -2,16 +2,6 @@ package shared
 
 import "time"
 
-// Decay applies exponential decay: value *= factor. Returns the new value and
-// whether the animation is still active (above threshold).
-func Decay(value, factor, threshold float64) (float64, bool) {
-	value *= factor
-	if value < threshold {
-		return 0, false
-	}
-	return value, true
-}
-
 // EaseOutQuad returns the ease-out quadratic value for t in [0,1].
 // Fast start, smooth deceleration: t*(2-t).
 func EaseOutQuad(t float64) float64 {

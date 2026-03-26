@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/dotBeeps/noms/internal/auth"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
-
-// Style factory functions — constructed on call so they always reflect the active theme.
 
 func titleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(1, 0)
@@ -44,6 +44,19 @@ const (
 	LoginStateError
 )
 
+type AuthMethod int
+
+const (
+	AuthMethodBrowser AuthMethod = iota
+	AuthMethodAppPassword
+)
+
+// AuthStepMsg updates the login model's progress display during authentication.
+type AuthStepMsg struct {
+	Method AuthMethod
+	Step   int
+}
+
 type LoginSuccessMsg struct {
 	Session *auth.Session
 }
@@ -70,14 +83,31 @@ type StartAppPasswordAuthMsg struct {
 	Password string
 }
 
+// BrowserAuthSteps are the progress steps shown during browser OAuth.
+var BrowserAuthSteps = []string{
+	"Resolving identity...",
+	"Opening browser...",
+	"Waiting for authorization...",
+	"Exchanging token...",
+}
+
+// AppPasswordAuthSteps are the progress steps shown during app password login.
+var AppPasswordAuthSteps = []string{
+	"Authenticating...",
+}
+
 type LoginModel struct {
 	handleInput    textinput.Model
 	passwordInput  textinput.Model
+	spinner        spinner.Model
 	state          LoginState
 	selectedOption int
 	err            error
 	width          int
 	height         int
+
+	authMethod AuthMethod
+	authStep   int
 }
 
 func NewLoginModel() LoginModel {
@@ -98,6 +128,7 @@ func NewLoginModel() LoginModel {
 	return LoginModel{
 		handleInput:    ti,
 		passwordInput:  pi,
+		spinner:        shared.NewNetworkSpinner(),
 		state:          LoginStateInput,
 		selectedOption: 0,
 	}
@@ -122,9 +153,22 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
+	case AuthStepMsg:
+		m.authMethod = msg.Method
+		m.authStep = msg.Step
+		return m, nil
+
 	case LoginErrorMsg:
 		m.err = msg.Err
 		m.state = LoginStateError
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.state == LoginStateLoading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
 		return m, nil
 	}
 
@@ -190,9 +234,11 @@ func (m LoginModel) handleChoosingState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		handle := strings.TrimSpace(m.handleInput.Value())
 		if m.selectedOption == 0 {
 			m.state = LoginStateLoading
-			return m, func() tea.Msg {
+			m.authMethod = AuthMethodBrowser
+			m.authStep = 0
+			return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
 				return StartBrowserAuthMsg{Handle: handle}
-			}
+			})
 		}
 		// App password — transition to password input
 		m.state = LoginStatePassword
@@ -216,10 +262,12 @@ func (m LoginModel) handlePasswordState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		}
 		handle := strings.TrimSpace(m.handleInput.Value())
 		m.state = LoginStateLoading
+		m.authMethod = AuthMethodAppPassword
+		m.authStep = 0
 		m.passwordInput.Blur()
-		return m, func() tea.Msg {
+		return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
 			return StartAppPasswordAuthMsg{Handle: handle, Password: password}
-		}
+		})
 	case "esc":
 		m.state = LoginStateChoosing
 		m.passwordInput.Blur()
@@ -287,7 +335,28 @@ func (m LoginModel) View() tea.View {
 		content.WriteString(optionStyle().Render("Press Enter to login, Esc to go back"))
 
 	case LoginStateLoading:
-		content.WriteString(loadingStyle().Render("Authenticating..."))
+		var steps []string
+		switch m.authMethod {
+		case AuthMethodBrowser:
+			steps = BrowserAuthSteps
+		case AuthMethodAppPassword:
+			steps = AppPasswordAuthSteps
+		}
+
+		doneStyle := lipgloss.NewStyle().Foreground(theme.ColorSuccess).Padding(0, 1)
+		activeStyle := lipgloss.NewStyle().Foreground(theme.ColorAccent).Padding(0, 1)
+		pendingStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 1)
+
+		for i, label := range steps {
+			if i < m.authStep {
+				content.WriteString(doneStyle.Render("✓ " + label))
+			} else if i == m.authStep {
+				content.WriteString(activeStyle.Render(m.spinner.View() + " " + label))
+			} else {
+				content.WriteString(pendingStyle.Render("  " + label))
+			}
+			content.WriteString("\n")
+		}
 		content.WriteString("\n")
 		content.WriteString(optionStyle().Render("Please wait while we log you in."))
 

@@ -55,7 +55,7 @@ type ThreadModel struct {
 }
 
 func NewThreadModel(client bluesky.BlueskyClient, uri, ownDID string, width, height int, cache *images.Cache) ThreadModel {
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 	return ThreadModel{
 		client:        client,
 		targetURI:     uri,
@@ -358,16 +358,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fvp := &bsky.FeedDefs_FeedViewPost{Post: p.Post}
 					galleryImgs := feed.ExtractGalleryImages(fvp)
 					if len(galleryImgs) > 0 {
-						m.gallery.Width = m.width
-						m.gallery.Height = m.height
-						m.gallery.Open(galleryImgs, 0)
-						var fetchCmds []tea.Cmd
-						for _, gi := range galleryImgs {
-							if cmd := images.Fetch(m.imageCache, gi.URL); cmd != nil {
-								fetchCmds = append(fetchCmds, cmd)
-							}
-						}
-						return m, tea.Batch(fetchCmds...)
+						return m, m.gallery.OpenAndFetch(galleryImgs, 0, m.width, m.height, m.imageCache)
 					}
 				}
 			}
@@ -408,19 +399,17 @@ func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.
 	tp := m.threadPosts[index]
 
 	if tp.NotFound {
-		content := "[Deleted post]"
-		if selected {
-			return theme.StyleSelected().Render("▶ "+content) + "\n\n"
-		}
-		return theme.StyleMuted().Render("  "+content) + "\n\n"
+		label := theme.StyleMuted().Render("  ·  ") +
+			lipgloss.NewStyle().Foreground(theme.ColorSecondary).Italic(true).Render("This post was deleted or doesn't exist") +
+			theme.StyleMuted().Render("  ·")
+		return shared.RenderItemWithBorder(label, selected, m.width)
 	}
 
 	if tp.Blocked {
-		content := "[Blocked post]"
-		if selected {
-			return theme.StyleSelected().Render("▶ "+content) + "\n\n"
-		}
-		return theme.StyleMuted().Render("  "+content) + "\n\n"
+		label := theme.StyleMuted().Render("  ·  ") +
+			lipgloss.NewStyle().Foreground(theme.ColorSecondary).Italic(true).Render("This post is from a blocked account") +
+			theme.StyleMuted().Render("  ·")
+		return shared.RenderItemWithBorder(label, selected, m.width)
 	}
 
 	if tp.Post == nil {
@@ -488,8 +477,7 @@ func (m ThreadModel) View() tea.View {
 	}
 
 	if m.err != nil {
-		s := theme.StyleError().Render("Error: "+m.err.Error()) + "\n\nPress 'esc' to go back"
-		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s))
+		return mouseView(shared.RenderErrorBox(m.width, m.height, m.err.Error(), "Press 'esc' to go back"))
 	}
 
 	if m.loading {
@@ -497,7 +485,7 @@ func (m ThreadModel) View() tea.View {
 	}
 
 	if len(m.threadPosts) == 0 {
-		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, "No posts found"))
+		return mouseView(shared.RenderEmptyState(m.width, m.height, "Thread not found", "Press esc to go back"))
 	}
 
 	content := m.viewport.View()

@@ -6,9 +6,11 @@ package vsetup
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -38,8 +40,6 @@ const (
 	stateError
 )
 
-// Style factory functions — constructed on call so they always reflect the active theme.
-
 func titleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(1, 0)
 }
@@ -65,6 +65,7 @@ func hintStyle() lipgloss.Style {
 // Model is the BubbleTea model for the Voresky cookie setup screen.
 type Model struct {
 	cookieInput textinput.Model
+	spinner     spinner.Model
 	state       state
 	err         error
 	width       int
@@ -82,6 +83,7 @@ func New() Model {
 
 	return Model{
 		cookieInput: ti,
+		spinner:     shared.NewNetworkSpinner(),
 		state:       stateInput,
 	}
 }
@@ -114,6 +116,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case VoreskyConnectedMsg:
 		// Stored session loaded — parent handles screen transition.
 		return m, nil
+
+	case spinner.TickMsg:
+		if m.state == stateValidating {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 
 	if m.state == stateInput {
@@ -134,9 +144,9 @@ func (m Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if cookie != "" {
 				m.state = stateValidating
 				m.cookieInput.Blur()
-				return m, func() tea.Msg {
+				return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
 					return CookieSubmitMsg{Cookie: cookie}
-				}
+				})
 			}
 		case "esc":
 			return m, func() tea.Msg { return SkipMsg{} }
@@ -195,7 +205,7 @@ func (m Model) View() tea.View {
 		}
 
 	case stateValidating:
-		b.WriteString(loadingStyle().Render("Validating cookie..."))
+		b.WriteString(loadingStyle().Render(m.spinner.View() + " Validating cookie..."))
 		b.WriteString("\n")
 		b.WriteString(hintStyle().Render("Checking session with Voresky server"))
 	}

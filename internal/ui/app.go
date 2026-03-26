@@ -56,6 +56,43 @@ const (
 
 const defaultVoreskyURL = "https://voresky.app"
 
+func helpStyles() help.Styles {
+	return help.Styles{
+		ShortKey:       lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
+		ShortDesc:      lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		ShortSeparator: lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		FullKey:        lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
+		FullDesc:       lipgloss.NewStyle().Foreground(theme.ColorMuted),
+		FullSeparator:  lipgloss.NewStyle().Foreground(theme.ColorMuted),
+	}
+}
+func overlayStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.ColorText).
+		Background(theme.ColorSurface).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ColorPrimary)
+}
+func overlayWhitespaceStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorSurface)
+}
+func themePickerTitleStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary)
+}
+func themePickerSelectedStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true)
+}
+func themePickerRowStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorText)
+}
+func themePickerHintStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorMuted)
+}
+func waitingStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorText).Padding(1, 2)
+}
+
 type App struct {
 	screen     Screen
 	prevScreen Screen // for back navigation
@@ -151,6 +188,35 @@ func (m App) Init() tea.Cmd {
 type sessionRestoreFailedMsg struct{ err error }
 type transitionTickMsg struct{}
 
+// browserAuthPreparedMsg carries intermediate state between browser auth phases.
+// Phase 1 (setup + resolve) produces this so phase 2 can open the browser.
+type browserAuthPreparedMsg struct {
+	manager  *auth.OAuthManager
+	ctx      context.Context
+	cancel   context.CancelFunc
+	handle   string
+	prepared *auth.PreparedAuth
+}
+
+// browserAuthWaitingMsg signals that the browser has opened and we're waiting for the user.
+type browserAuthWaitingMsg struct {
+	manager  *auth.OAuthManager
+	ctx      context.Context
+	cancel   context.CancelFunc
+	handle   string
+	prepared *auth.PreparedAuth
+}
+
+// browserAuthCallbackMsg carries the auth code received from the browser callback.
+type browserAuthCallbackMsg struct {
+	manager  *auth.OAuthManager
+	ctx      context.Context
+	cancel   context.CancelFunc
+	handle   string
+	prepared *auth.PreparedAuth
+	code     string
+}
+
 func transitionTick() tea.Cmd {
 	return tea.Tick(time.Second/60, func(time.Time) tea.Msg { return transitionTickMsg{} })
 }
@@ -180,6 +246,15 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	{
 		var cmd tea.Cmd
 		m.tabBar, cmd = updateTabBar(m.tabBar, msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
+	// Always route to status bar (handles status clear ticks)
+	{
+		var cmd tea.Cmd
+		m.statusBar, cmd = updateStatusBar(m.statusBar, msg)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -340,7 +415,19 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updateTabBarForScreen()
 
 	case login.StartBrowserAuthMsg:
-		return m, handleBrowserAuth(msg.Handle)
+		return m, browserAuthPrepare(msg.Handle)
+
+	case browserAuthPreparedMsg:
+		m.login, _ = updateLogin(m.login, login.AuthStepMsg{Method: login.AuthMethodBrowser, Step: 1})
+		return m, browserAuthOpen(msg)
+
+	case browserAuthWaitingMsg:
+		m.login, _ = updateLogin(m.login, login.AuthStepMsg{Method: login.AuthMethodBrowser, Step: 2})
+		return m, browserAuthWait(msg)
+
+	case browserAuthCallbackMsg:
+		m.login, _ = updateLogin(m.login, login.AuthStepMsg{Method: login.AuthMethodBrowser, Step: 3})
+		return m, browserAuthExchange(msg)
 
 	case login.StartAppPasswordAuthMsg:
 		return m, handleAppPasswordAuth(msg.Handle, msg.Password)
@@ -443,9 +530,29 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+		// Successful load → restore connected status
+		m.statusBar, _ = updateStatusBar(m.statusBar, components.StatusUpdateMsg{Status: components.StatusNormal})
 		return m, tea.Batch(cmds...)
 
-	case feed.FeedErrorMsg, feed.FeedRefreshMsg:
+	case feed.FeedErrorMsg:
+		if m.client != nil {
+			updated, cmd := m.feedModel.Update(msg)
+			m.feedModel = updated.(feed.FeedModel)
+			cmds = append(cmds, cmd)
+		}
+		// Surface the error type in the status bar
+		statusMsg := components.StatusUpdateMsg{Status: components.StatusOffline}
+		if bluesky.IsRateLimited(msg.Err) {
+			statusMsg.Status = components.StatusRateLimited
+		}
+		var statusCmd tea.Cmd
+		m.statusBar, statusCmd = updateStatusBar(m.statusBar, statusMsg)
+		if statusCmd != nil {
+			cmds = append(cmds, statusCmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case feed.FeedRefreshMsg:
 		if m.client != nil {
 			updated, cmd := m.feedModel.Update(msg)
 			m.feedModel = updated.(feed.FeedModel)
@@ -1168,10 +1275,6 @@ func (m App) renderMainContent(height int) string {
 	}
 
 	if m.client == nil {
-		style := lipgloss.NewStyle().
-			Foreground(theme.ColorText).
-			Padding(1, 2)
-
 		var content string
 		switch m.screen {
 		case ScreenFeed:
@@ -1194,7 +1297,7 @@ func (m App) renderMainContent(height int) string {
 			content = "Unknown view"
 		}
 
-		return style.Height(height).Render(content)
+		return waitingStyle().Height(height).Render(content)
 	}
 
 	switch m.screen {
@@ -1247,29 +1350,14 @@ func (m App) activeKeyMap() help.KeyMap {
 func (m App) renderHelpOverlay(baseView tea.View) tea.View {
 	h := m.help
 	h.ShowAll = true
-	h.Styles = help.Styles{
-		ShortKey:       lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
-		ShortDesc:      lipgloss.NewStyle().Foreground(theme.ColorMuted),
-		ShortSeparator: lipgloss.NewStyle().Foreground(theme.ColorMuted),
-		FullKey:        lipgloss.NewStyle().Foreground(theme.ColorAccent).Bold(true),
-		FullDesc:       lipgloss.NewStyle().Foreground(theme.ColorMuted),
-		FullSeparator:  lipgloss.NewStyle().Foreground(theme.ColorMuted),
-	}
+	h.Styles = helpStyles()
 	h.SetWidth(m.width - 8)
 
 	helpContent := h.View(m.activeKeyMap())
 
-	overlayStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorText).
-		Background(theme.ColorSurface).
-		Padding(1, 2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.ColorPrimary)
+	overlay := overlayStyle().Render(helpContent)
 
-	overlay := overlayStyle.Render(helpContent)
-
-	whitespaceStyle := lipgloss.NewStyle().Foreground(theme.ColorSurface)
-	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(whitespaceStyle)))
+	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(overlayWhitespaceStyle())))
 }
 
 func (m App) renderThemePickerOverlay(baseView tea.View) tea.View {
@@ -1284,13 +1372,9 @@ func (m App) renderThemePickerOverlay(baseView tea.View) tea.View {
 	}
 
 	active := theme.ActiveTheme()
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorPrimary)
-	selectedStyle := lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true)
-	rowStyle := lipgloss.NewStyle().Foreground(theme.ColorText)
-	hintStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted)
 
 	var lines []string
-	lines = append(lines, titleStyle.Render("Theme Picker"))
+	lines = append(lines, themePickerTitleStyle().Render("Theme Picker"))
 	lines = append(lines, "")
 
 	for i, name := range themes {
@@ -1304,28 +1388,21 @@ func (m App) renderThemePickerOverlay(baseView tea.View) tea.View {
 			if name == active {
 				line += " (current)"
 			}
-			lines = append(lines, selectedStyle.Render(line))
+			lines = append(lines, themePickerSelectedStyle().Render(line))
 			continue
 		}
 
-		lines = append(lines, rowStyle.Render(line))
+		lines = append(lines, themePickerRowStyle().Render(line))
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, hintStyle.Render("j/k or ↑/↓: move  •  Enter: apply  •  [ ]: cycle  •  Esc: close"))
+	lines = append(lines, themePickerHintStyle().Render("j/k or ↑/↓: move  •  Enter: apply  •  [ ]: cycle  •  Esc: close"))
 
 	content := strings.Join(lines, "\n")
-	overlayStyle := lipgloss.NewStyle().
-		Foreground(theme.ColorText).
-		Background(theme.ColorSurface).
-		Padding(1, 2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.ColorPrimary)
 
-	overlay := overlayStyle.Render(content)
-	whitespaceStyle := lipgloss.NewStyle().Foreground(theme.ColorSurface)
+	overlay := overlayStyle().Render(content)
 
-	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(whitespaceStyle)))
+	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceStyle(overlayWhitespaceStyle())))
 }
 
 func (m *App) applyTheme(name string) {
@@ -1396,7 +1473,9 @@ func oauthSetup() (string, *auth.DPoPSigner, error) {
 	return clientID, dpop, nil
 }
 
-func handleBrowserAuth(handle string) tea.Cmd {
+// browserAuthPrepare sets up OAuth and resolves identity + auth server metadata.
+// Returns a browserAuthPreparedMsg carrying the prepared state.
+func browserAuthPrepare(handle string) tea.Cmd {
 	return func() tea.Msg {
 		clientID, dpop, err := oauthSetup()
 		if err != nil {
@@ -1410,11 +1489,62 @@ func handleBrowserAuth(handle string) tea.Cmd {
 		}
 
 		manager := auth.NewOAuthManager(oauthCfg, flow, dpop)
-
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
 
-		session, err := manager.Authenticate(ctx, handle)
+		prepared, err := manager.Prepare(ctx, handle)
+		if err != nil {
+			cancel()
+			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
+
+		return browserAuthPreparedMsg{
+			manager:  manager,
+			ctx:      ctx,
+			cancel:   cancel,
+			handle:   handle,
+			prepared: prepared,
+		}
+	}
+}
+
+// browserAuthOpen opens the browser with the authorization URL.
+func browserAuthOpen(msg browserAuthPreparedMsg) tea.Cmd {
+	return func() tea.Msg {
+		if err := msg.manager.OpenBrowser(msg.ctx, msg.prepared); err != nil {
+			msg.cancel()
+			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
+
+		return browserAuthWaitingMsg(msg)
+	}
+}
+
+// browserAuthWait waits for the OAuth callback from the browser.
+func browserAuthWait(msg browserAuthWaitingMsg) tea.Cmd {
+	return func() tea.Msg {
+		code, err := msg.manager.WaitForCallback(msg.ctx, msg.prepared)
+		if err != nil {
+			msg.cancel()
+			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
+
+		return browserAuthCallbackMsg{
+			manager:  msg.manager,
+			ctx:      msg.ctx,
+			cancel:   msg.cancel,
+			handle:   msg.handle,
+			prepared: msg.prepared,
+			code:     code,
+		}
+	}
+}
+
+// browserAuthExchange exchanges the authorization code for tokens.
+func browserAuthExchange(msg browserAuthCallbackMsg) tea.Cmd {
+	return func() tea.Msg {
+		defer msg.cancel()
+
+		session, err := msg.manager.ExchangeToken(msg.ctx, msg.handle, msg.code, msg.prepared)
 		if err != nil {
 			return login.LoginErrorMsg{Err: fmt.Errorf("authentication failed: %w", err)}
 		}
@@ -1833,7 +1963,6 @@ func (m App) finishLogin(client bluesky.BlueskyClient, did, handle string) (App,
 
 	m.statusBar.Handle = handle
 	m.statusBar.DID = did
-	m.statusBar.Connected = true
 	m.ownDID = did
 
 	m.prevScreen = ScreenFeed

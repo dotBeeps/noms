@@ -340,8 +340,8 @@ func TestThreadMissingParent(t *testing.T) {
 	}
 
 	view := m.View().Content
-	if !strings.Contains(view, "[Deleted post]") {
-		t.Errorf("Expected '[Deleted post]' in view")
+	if !strings.Contains(view, "This post was deleted") {
+		t.Errorf("Expected 'This post was deleted' in view")
 	}
 }
 
@@ -437,8 +437,8 @@ func TestThreadBlockedParent(t *testing.T) {
 	}
 
 	view := m.View().Content
-	if !strings.Contains(view, "[Blocked post]") {
-		t.Errorf("Expected '[Blocked post]' in view")
+	if !strings.Contains(view, "This post is from a blocked account") {
+		t.Errorf("Expected 'This post is from a blocked account' in view")
 	}
 }
 

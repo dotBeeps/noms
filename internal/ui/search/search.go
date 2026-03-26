@@ -77,9 +77,9 @@ func NewSearchModel(client bluesky.BlueskyClient, width, height int, cache *imag
 	ti.Focus()
 	ti.Prompt = "🔍 "
 
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 
-	contentHeight := max(1, height-5)
+	contentHeight := max(1, height-6)
 	return SearchModel{
 		client:       client,
 		input:        ti,
@@ -114,7 +114,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.input.SetWidth(m.width - 4)
-		m.viewport.SetSize(m.width, max(1, m.height-5))
+		m.viewport.SetSize(m.width, max(1, m.height-6))
 		m.rebuildViewport()
 
 	case tea.KeyPressMsg:
@@ -387,32 +387,43 @@ func (m SearchModel) View() tea.View {
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
 
-	// Mode tabs
-	postsTab := "[Posts]"
-	peopleTab := "[People]"
+	// Mode tabs — pill style matching the main tab bar
+	activeStyle := lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true)
+	inactiveStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted).Background(theme.ColorSurfaceAlt)
+	var tabs string
 	if m.mode == ModePosts {
-		postsTab = theme.StyleTabActive().Render(postsTab)
-		peopleTab = theme.StyleTabInactive().Render(peopleTab)
+		tabs = activeStyle.Render("  Posts  ") + inactiveStyle.Render("  People  ")
 	} else {
-		postsTab = theme.StyleTabInactive().Render(postsTab)
-		peopleTab = theme.StyleTabActive().Render(peopleTab)
+		tabs = inactiveStyle.Render("  Posts  ") + activeStyle.Render("  People  ")
 	}
-	_, _ = fmt.Fprintf(&b, "%s  %s (Press Tab to toggle)\n\n", postsTab, peopleTab)
+	tabs += inactiveStyle.Render(" Tab to toggle ")
+	tabRow := lipgloss.Place(m.width, 1, lipgloss.Left, lipgloss.Top, tabs,
+		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(theme.ColorSurfaceAlt)))
+	b.WriteString(tabRow)
+	b.WriteString("\n\n")
 	availableHeight := max(1, m.height-5)
 
 	// Content area
+	hasResults := (m.mode == ModePosts && len(m.postResults) > 0) || (m.mode == ModePeople && len(m.actorResults) > 0)
 	if m.err != nil {
 		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleError().Render(fmt.Sprintf("Error: %v", m.err))))
 	} else if m.query == "" {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render("Type to search...")))
-	} else if m.loading && len(m.postResults) == 0 && len(m.actorResults) == 0 {
+		b.WriteString(shared.RenderEmptyState(m.width, availableHeight, "Type to search", "Enter a query above to get started"))
+	} else if m.loading && !hasResults {
 		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, m.spinner.View()+" Searching..."))
 	} else if m.mode == ModePosts && len(m.postResults) == 0 {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render(fmt.Sprintf("No results for '%s'", m.query))))
+		b.WriteString(shared.RenderEmptyState(m.width, availableHeight, fmt.Sprintf("No results for '%s'", m.query), "Try a different search term"))
 	} else if m.mode == ModePeople && len(m.actorResults) == 0 {
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, theme.StyleMuted().Render(fmt.Sprintf("No results for '%s'", m.query))))
+		b.WriteString(shared.RenderEmptyState(m.width, availableHeight, fmt.Sprintf("No results for '%s'", m.query), "Try a different search term"))
 	} else {
 		b.WriteString(m.viewport.View())
+		if m.loading {
+			b.WriteString(shared.RenderLoadingPill(m.spinner.View(), "Searching...", m.width))
+		} else if m.cursor == "" {
+			b.WriteString(shared.RenderEndDivider(m.width))
+		} else {
+			b.WriteString(shared.RenderMoreIndicator(m.width))
+		}
 	}
 
 	b.WriteString("\n")

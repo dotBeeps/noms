@@ -178,7 +178,6 @@ func TestStatusBarIntegration(t *testing.T) {
 	app.height = 24
 	app.statusBar.Handle = "test.bsky.social"
 	app.statusBar.DID = "did:plc:test123"
-	app.statusBar.Connected = true
 
 	v := app.View()
 	content := v.Content

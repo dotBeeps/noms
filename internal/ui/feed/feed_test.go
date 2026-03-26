@@ -448,8 +448,8 @@ func TestEmptyFeed(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	if !strings.Contains(content, "No posts yet") {
-		t.Errorf("Expected empty feed to show 'No posts yet', got %q", content)
+	if !strings.Contains(content, "Nothing here yet") {
+		t.Errorf("Expected empty feed to show 'Nothing here yet', got %q", content)
 	}
 }
 

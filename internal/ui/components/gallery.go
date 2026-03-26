@@ -51,6 +51,21 @@ func (m *GalleryModel) Open(imgs []GalleryImage, startIndex int) {
 	m.Visible = true
 }
 
+// OpenAndFetch opens the gallery and returns fetch commands for fullsize images
+// not yet in cache. Consolidates the open+fetch pattern used by feed and thread.
+func (m *GalleryModel) OpenAndFetch(imgs []GalleryImage, startIndex, width, height int, cache *images.Cache) tea.Cmd {
+	m.Width = width
+	m.Height = height
+	m.Open(imgs, startIndex)
+	var cmds []tea.Cmd
+	for _, gi := range imgs {
+		if cmd := images.Fetch(cache, gi.URL); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
 func (m *GalleryModel) Close() {
 	m.Visible = false
 }

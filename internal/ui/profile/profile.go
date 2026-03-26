@@ -45,7 +45,7 @@ type ProfileModel struct {
 
 // NewProfileModel creates a new profile model.
 func NewProfileModel(client bluesky.BlueskyClient, viewDID, ownDID string, width, height int, cache *images.Cache) ProfileModel {
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 	return ProfileModel{
 		client:        client,
 		viewDID:       viewDID,
@@ -419,10 +419,7 @@ func (m ProfileModel) View() tea.View {
 	}
 
 	if m.err != nil {
-		errorText := lipgloss.NewStyle().
-			Foreground(theme.ColorError).
-			Render(fmt.Sprintf("Error: %v\n\nPress 'r' to retry or 'esc' to go back", m.err))
-		return mouseView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, errorText))
+		return mouseView(shared.RenderErrorBox(m.width, m.height, m.err.Error(), "Press 'r' to retry or 'esc' to go back"))
 	}
 
 	if m.loading && m.profile == nil {
@@ -452,19 +449,17 @@ func (m ProfileModel) View() tea.View {
 
 	// Render feed
 	if len(m.authorFeed) == 0 && !m.loadingFeed {
-		emptyText := lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Render("No posts yet")
-		b.WriteString(lipgloss.Place(m.width, availableHeight, lipgloss.Center, lipgloss.Center, emptyText))
+		b.WriteString(shared.RenderEmptyState(m.width, availableHeight, "No posts yet", "Press r to refresh"))
 	} else {
 		b.WriteString(m.viewport.View())
 	}
 
 	if m.loadingFeed {
-		loadingStyle := lipgloss.NewStyle().
-			Foreground(theme.ColorMuted).
-			Padding(0, 2)
-		b.WriteString(loadingStyle.Render(m.spinner.View() + " Loading more posts..."))
+		b.WriteString(shared.RenderLoadingPill(m.spinner.View(), "Loading more posts...", m.width))
+	} else if len(m.authorFeed) > 0 && m.cursor == "" {
+		b.WriteString(shared.RenderEndDivider(m.width))
+	} else if len(m.authorFeed) > 0 && m.cursor != "" {
+		b.WriteString(shared.RenderMoreIndicator(m.width))
 	}
 
 	if m.confirmDelete >= 0 {
@@ -615,7 +610,7 @@ func (m *ProfileModel) rebuildViewport() {
 		m.renderHeader(&b)
 		headerHeight = strings.Count(b.String(), "\n") + 1
 	}
-	m.viewport.SetSize(m.width, max(1, m.height-headerHeight))
+	m.viewport.SetSize(m.width, max(1, m.height-headerHeight-1))
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.authorFeed), func(index int, selected bool) string {
 		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())

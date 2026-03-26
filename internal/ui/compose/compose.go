@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -29,7 +30,8 @@ const (
 	ModeReply
 	ModeQuote
 
-	maxPostChars = 300
+	maxPostChars    = 300
+	warnCharsThresh = 270
 )
 
 // PostCreatedMsg is emitted when a post is successfully created
@@ -61,6 +63,7 @@ type postSuccessMsg struct {
 type ComposeModel struct {
 	textarea        textarea.Model
 	spinner         spinner.Model
+	progress        progress.Model
 	mode            ComposeMode
 	parentPost      *bsky.FeedDefs_PostView
 	client          bluesky.BlueskyClient
@@ -80,9 +83,16 @@ func NewComposeModel(client bluesky.BlueskyClient, mode ComposeMode, parentPost 
 	ta.Placeholder = "What's on your mind?"
 	ta.Focus()
 
+	prog := progress.New(
+		progress.WithColors(theme.ColorPrimary),
+		progress.WithoutPercentage(),
+	)
+	prog.SetWidth(max(1, width-10))
+
 	return ComposeModel{
 		textarea:   ta,
 		spinner:    shared.NewSpinner(),
+		progress:   prog,
 		mode:       mode,
 		parentPost: parentPost,
 		client:     client,
@@ -112,6 +122,7 @@ func (m ComposeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.textarea.SetWidth(max(1, m.width-10))
+		m.progress.SetWidth(max(1, m.width-10))
 		return m, nil
 
 	case postSuccessMsg:
@@ -213,8 +224,6 @@ func (m ComposeModel) submitPost() tea.Cmd {
 
 // View renders the compose screen
 func (m ComposeModel) View() tea.View {
-	var b strings.Builder
-
 	// Modal overlay style
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -232,8 +241,9 @@ func (m ComposeModel) View() tea.View {
 	case ModeQuote:
 		header = theme.StyleHeader().Render("Quote Post")
 	}
-	b.WriteString(header)
-	b.WriteString("\n\n")
+
+	var sections []string
+	sections = append(sections, header, "") // blank line after header
 
 	// For reply mode, show parent post above textarea
 	if m.mode == ModeReply && m.parentPost != nil {
@@ -241,58 +251,68 @@ func (m ComposeModel) View() tea.View {
 			Post: m.parentPost,
 		}
 		parentRendered := feed.RenderPost(parentFeedPost, m.width-8, false, m.imageCache, m.avatarOverrides)
-		b.WriteString(theme.StyleMuted().Render("Replying to:"))
-		b.WriteString("\n")
-		b.WriteString(parentRendered)
-		b.WriteString("\n")
+		sections = append(sections,
+			theme.StyleMuted().Render("Replying to:"),
+			parentRendered,
+		)
 	}
 
 	// Textarea
-	b.WriteString(m.textarea.View())
-	b.WriteString("\n\n")
+	sections = append(sections, m.textarea.View(), "") // blank line after textarea
 
-	// Character counter
+	// Character counter + key hints
 	text := m.textarea.Value()
 	charCount := uniseg.GraphemeClusterCount(text)
 	counterStyle := theme.StyleMuted()
-	if charCount > maxPostChars {
+	progressColor := theme.ColorPrimary
+	switch {
+	case charCount > maxPostChars:
 		counterStyle = theme.StyleError()
+		progressColor = theme.ColorError
+	case charCount >= warnCharsThresh:
+		counterStyle = theme.StyleWarning()
+		progressColor = theme.ColorWarning
 	}
 	counter := counterStyle.Render(fmt.Sprintf("%d/%d", charCount, maxPostChars))
-	b.WriteString(counter)
-
-	// Key hints
 	hints := theme.StyleMuted().Render("  Ctrl+Enter: Submit  |  Esc: Cancel")
-	b.WriteString(hints)
-	b.WriteString("\n")
+	sections = append(sections, counter+hints)
+
+	// Progress bar
+	pct := min(float64(charCount)/float64(maxPostChars), 1.0)
+	m.progress.FullColor = progressColor
+	sections = append(sections, m.progress.ViewAs(pct))
 
 	// For quote mode, show quoted post below textarea
 	if m.mode == ModeQuote && m.parentPost != nil {
-		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted().Render("Quoting:"))
-		b.WriteString("\n")
 		quotedFeedPost := &bsky.FeedDefs_FeedViewPost{
 			Post: m.parentPost,
 		}
 		quotedRendered := feed.RenderPost(quotedFeedPost, m.width-8, false, m.imageCache, m.avatarOverrides)
-		b.WriteString(quotedRendered)
+		sections = append(sections,
+			"",
+			theme.StyleMuted().Render("Quoting:"),
+			quotedRendered,
+		)
 	}
 
 	// Error display
 	if m.err != nil {
-		b.WriteString("\n")
-		b.WriteString(theme.StyleError().Render("Error: " + m.err.Error()))
-		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted().Render("Press Esc to clear error"))
+		sections = append(sections,
+			"",
+			theme.StyleError().Render("Error: "+m.err.Error()),
+			theme.StyleMuted().Render("Press Esc to clear error"),
+		)
 	}
 
 	// Loading indicator
 	if m.loading {
-		b.WriteString("\n")
-		b.WriteString(theme.StyleMuted().Render(m.spinner.View() + " Posting..."))
+		sections = append(sections,
+			"",
+			theme.StyleMuted().Render(m.spinner.View()+" Posting..."),
+		)
 	}
 
-	content := style.Render(b.String())
+	content := style.Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
 	return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content))
 }
 

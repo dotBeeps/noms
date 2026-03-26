@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/harmonica"
 
-	"github.com/dotBeeps/noms/internal/ui/shared"
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
@@ -43,16 +43,19 @@ type TabBar struct {
 	ActiveTab     Tab
 	VoreskyActive bool
 
-	// Underline slide animation
-	prevTab       Tab
-	animStartTime time.Time
-	animActive    bool
+	// Spring-driven pill slide animation
+	animActive bool
+	pillPos    float64
+	pillPosVel float64
+	pillWid    float64
+	pillWidVel float64
+	spring     harmonica.Spring
 }
 
 func NewTabBar() TabBar {
 	return TabBar{
 		ActiveTab: TabFeed,
-		prevTab:   TabFeed,
+		spring:    harmonica.NewSpring(harmonica.FPS(30), 7.0, 0.7),
 	}
 }
 
@@ -61,15 +64,22 @@ func (m TabBar) Init() tea.Cmd {
 }
 
 func (m TabBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.Width = msg.(tea.WindowSizeMsg).Width
+		m.Width = msg.Width
 	case tabBarTickMsg:
 		if !m.animActive {
 			return m, nil
 		}
-		progress := shared.AnimProgress(m.animStartTime, 150*time.Millisecond)
-		if progress >= 1 {
+		// Compute target position and width for the active tab
+		targetPos, targetWid := m.tabTarget()
+		m.pillPos, m.pillPosVel = m.spring.Update(m.pillPos, m.pillPosVel, float64(targetPos))
+		m.pillWid, m.pillWidVel = m.spring.Update(m.pillWid, m.pillWidVel, float64(targetWid))
+
+		// Settle when close enough
+		posDiff := m.pillPos - float64(targetPos)
+		widDiff := m.pillWid - float64(targetWid)
+		if posDiff < 0.5 && posDiff > -0.5 && widDiff < 0.5 && widDiff > -0.5 {
 			m.animActive = false
 			return m, nil
 		}
@@ -91,7 +101,7 @@ func (m TabBar) View() tea.View {
 		}
 		visibleTabs = append(visibleTabs, i)
 		label := "  " + tabNames[i] + "  "
-		w := len([]rune(label))
+		w := lipgloss.Width(label)
 		tabPositions = append(tabPositions, pos)
 		tabWidths = append(tabWidths, w)
 		tabLabels = append(tabLabels, label)
@@ -139,39 +149,52 @@ func (m TabBar) View() tea.View {
 }
 
 func (m TabBar) interpolatePill(visibleTabs []Tab, positions, widths []int) (int, int) {
-	activePos, activeWidth := 0, 0
-	prevPos, prevWidth := 0, 0
-	for i, tab := range visibleTabs {
-		if tab == m.ActiveTab {
-			activePos = positions[i]
-			activeWidth = widths[i]
+	if !m.animActive {
+		// No animation — snap to active tab
+		for i, tab := range visibleTabs {
+			if tab == m.ActiveTab {
+				return positions[i], widths[i]
+			}
 		}
-		if tab == m.prevTab {
-			prevPos = positions[i]
-			prevWidth = widths[i]
-		}
+		return 0, 1
 	}
 
-	progress := float64(1)
-	if m.animActive {
-		progress = shared.EaseOutQuad(shared.AnimProgress(m.animStartTime, 150*time.Millisecond))
+	pos := int(m.pillPos)
+	wid := int(m.pillWid)
+	if wid < 1 {
+		wid = 1
 	}
+	return pos, wid
+}
 
-	currentPos := int(float64(prevPos) + float64(activePos-prevPos)*progress)
-	currentWidth := int(float64(prevWidth) + float64(activeWidth-prevWidth)*progress)
-	if currentWidth < 1 {
-		currentWidth = 1
+// tabTarget returns the character position and width for the current active tab.
+func (m TabBar) tabTarget() (int, int) {
+	pos := 0
+	for i := Tab(0); i < TabCount; i++ {
+		if !m.VoreskyActive && (i == TabVoresky || i == TabVoreskyNotifications) {
+			continue
+		}
+		label := "  " + tabNames[i] + "  "
+		w := lipgloss.Width(label)
+		if i == m.ActiveTab {
+			return pos, w
+		}
+		pos += w
 	}
-	return currentPos, currentWidth
+	return 0, 1
 }
 
 func (m *TabBar) SetActiveTab(tab Tab) tea.Cmd {
 	if tab >= 0 && tab < TabCount {
 		if tab != m.ActiveTab {
-			m.prevTab = m.ActiveTab
-			m.animStartTime = time.Now()
-			m.animActive = true
+			// Snapshot current pill position as spring start
+			prevPos, prevWid := m.tabTarget()
 			m.ActiveTab = tab
+			m.pillPos = float64(prevPos)
+			m.pillWid = float64(prevWid)
+			m.pillPosVel = 0
+			m.pillWidVel = 0
+			m.animActive = true
 			return tabBarTick()
 		}
 		m.ActiveTab = tab

@@ -100,7 +100,7 @@ type NotificationsModel struct {
 
 // NewNotificationsModel creates a new notifications model
 func NewNotificationsModel(client bluesky.BlueskyClient, width, height int, imageCache images.ImageRenderer) NotificationsModel {
-	sp := shared.NewSpinner()
+	sp := shared.NewNetworkSpinner()
 	headerHeight := 2
 	return NotificationsModel{
 		client:        client,
@@ -111,7 +111,7 @@ func NewNotificationsModel(client bluesky.BlueskyClient, width, height int, imag
 		loading:       true,
 		spinner:       sp,
 		keys:          DefaultKeyMap,
-		viewport:      shared.NewItemViewport(width, max(1, height-headerHeight)),
+		viewport:      shared.NewItemViewport(width, max(1, height-headerHeight-1)),
 	}
 }
 
@@ -185,7 +185,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.SetSize(msg.Width, max(1, msg.Height-2))
+		m.viewport.SetSize(msg.Width, max(1, msg.Height-3))
 		m.rebuildViewport()
 		return m, nil
 
@@ -363,16 +363,18 @@ func (m NotificationsModel) View() tea.View {
 	}
 
 	if len(m.groups) == 0 {
-		emptyText := lipgloss.NewStyle().Foreground(theme.ColorMuted).Italic(true).Render("No notifications yet")
-		content.WriteString(lipgloss.Place(m.width, m.height-headerHeight, lipgloss.Center, lipgloss.Center, emptyText))
+		content.WriteString(shared.RenderEmptyState(m.width, m.height-headerHeight, "No notifications yet", "Press r to refresh"))
 		return mouseView(content.String())
 	}
 
 	content.WriteString(m.viewport.View())
 
 	if m.loading {
-		content.WriteString("\n")
-		content.WriteString(theme.StyleMuted().Render(m.spinner.View() + " Loading more..."))
+		content.WriteString(shared.RenderLoadingPill(m.spinner.View(), "Loading more...", m.width))
+	} else if m.cursor == "" {
+		content.WriteString(shared.RenderEndDivider(m.width))
+	} else {
+		content.WriteString(shared.RenderMoreIndicator(m.width))
 	}
 
 	return mouseView(content.String())

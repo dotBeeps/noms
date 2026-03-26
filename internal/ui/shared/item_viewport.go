@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/harmonica"
 )
 
 // ScrollTickMsg drives the spring scroll animation.
@@ -29,13 +30,12 @@ type ItemViewport struct {
 	// lineOffsets[itemCount] = total line count (sentinel).
 	lineOffsets []int
 
-	// Easing scroll state
-	scrollPos     float64
-	scrollStart   float64
-	scrollTarget  float64
-	animDuration  time.Duration
-	animating     bool
-	animStartTime time.Time
+	// Spring scroll state
+	scrollPos    float64
+	scrollVel    float64
+	scrollTarget float64
+	animating    bool
+	spring       harmonica.Spring
 }
 
 // NewItemViewport creates an ItemViewport with the given dimensions.
@@ -44,8 +44,9 @@ func NewItemViewport(width, height int) ItemViewport {
 	vp.MouseWheelEnabled = false
 	vp.KeyMap = viewport.KeyMap{}
 	return ItemViewport{
-		vp:    vp,
-		width: width,
+		vp:     vp,
+		width:  width,
+		spring: harmonica.NewSpring(harmonica.FPS(60), 7.0, 0.8),
 	}
 }
 
@@ -95,11 +96,8 @@ func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bo
 	iv.ensureVisible()
 
 	if wasAnimating {
-		iv.scrollStart = savedPos
 		iv.scrollPos = savedPos
 		iv.scrollTarget = float64(iv.vp.YOffset())
-		iv.animStartTime = time.Now()
-		iv.animDuration = 200 * time.Millisecond
 		iv.animating = true
 	}
 }
@@ -194,13 +192,11 @@ func (iv *ItemViewport) AnimateFrom(prevOffset int) {
 	if newOffset == prevOffset {
 		return
 	}
-	iv.scrollStart = float64(prevOffset)
 	iv.scrollPos = float64(prevOffset)
+	iv.scrollVel = 0
 	iv.scrollTarget = float64(newOffset)
 	iv.vp.SetYOffset(prevOffset)
 	iv.animating = true
-	iv.animStartTime = time.Now()
-	iv.animDuration = 200 * time.Millisecond
 }
 
 // UpdateSpring advances the spring animation one frame.
@@ -209,15 +205,14 @@ func (iv *ItemViewport) UpdateSpring() bool {
 	if !iv.animating {
 		return false
 	}
-	t := float64(time.Since(iv.animStartTime)) / float64(iv.animDuration)
-	if t >= 1.0 {
+	iv.scrollPos, iv.scrollVel = iv.spring.Update(iv.scrollPos, iv.scrollVel, iv.scrollTarget)
+	diff := iv.scrollPos - iv.scrollTarget
+	if diff < 0.5 && diff > -0.5 {
 		iv.scrollPos = iv.scrollTarget
 		iv.vp.SetYOffset(int(iv.scrollTarget))
 		iv.animating = false
 		return false
 	}
-	eased := t * (2 - t) // ease-out quadratic: fast start, smooth stop
-	iv.scrollPos = iv.scrollStart + (iv.scrollTarget-iv.scrollStart)*eased
 	iv.vp.SetYOffset(int(iv.scrollPos))
 	return true
 }
