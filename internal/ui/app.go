@@ -142,6 +142,17 @@ type App struct {
 	showHelp  bool
 	toast     shared.ToastModel
 
+	// Image rebuild debouncing: coalesce rapid ImageFetchedMsg bursts
+	imageDirty          bool // at least one image arrived since last rebuild
+	imageRebuildPending bool // a coalescing timer is already running
+
+	// Per-model dirty flags for lazy rebuild on tab switch
+	feedDirty   bool
+	notifDirty  bool
+	searchDirty bool
+	vtabDirty   bool
+	vnotifDirty bool
+
 	// Screen transition animation
 	transitionSnapshot string
 	transitionDir      int // +1 push (slide up), -1 pop (slide down)
@@ -187,6 +198,7 @@ func (m App) Init() tea.Cmd {
 
 type sessionRestoreFailedMsg struct{ err error }
 type transitionTickMsg struct{}
+type imageRebuildTickMsg struct{}
 
 // browserAuthPreparedMsg carries intermediate state between browser auth phases.
 // Phase 1 (setup + resolve) produces this so phase 2 can open the browser.
@@ -769,40 +781,77 @@ func (m App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
-	// Broadcast ImageFetchedMsg to all models that show images. Persistent models
-	// are always updated so off-screen tabs stay fresh. Non-persistent models only
-	// need it when they're the active screen. Return early to prevent the generic
-	// active-screen delegation below from double-updating persistent models.
+	// Debounced image rebuild: coalesce rapid ImageFetchedMsg into a single
+	// rebuild tick, and only rebuild the active screen (mark others dirty).
 	if _, ok := msg.(images.ImageFetchedMsg); ok && m.client != nil {
-		updated, cmd := m.feedModel.Update(msg)
-		m.feedModel = updated.(feed.FeedModel)
-		cmds = append(cmds, cmd)
-		updated2, cmd2 := m.notifModel.Update(msg)
-		m.notifModel = updated2.(notifications.NotificationsModel)
-		cmds = append(cmds, cmd2)
-		if m.voreskyClient != nil {
-			updated3, cmd3 := m.voreskyTabModel.Update(msg)
-			m.voreskyTabModel = updated3.(vtab.VoreskyModel)
-			cmds = append(cmds, cmd3)
-			updated4, cmd4 := m.vnotifModel.Update(msg)
-			m.vnotifModel = updated4.(vnotifications.VNotificationsModel)
-			cmds = append(cmds, cmd4)
+		m.imageDirty = true
+		if !m.imageRebuildPending {
+			m.imageRebuildPending = true
+			return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+				return imageRebuildTickMsg{}
+			})
 		}
-		// Also update the active non-persistent screen when it shows images.
+		return m, nil
+	}
+
+	if _, ok := msg.(imageRebuildTickMsg); ok {
+		m.imageRebuildPending = false
+		if !m.imageDirty {
+			return m, nil
+		}
+		m.imageDirty = false
+
+		// Rebuild only the active screen
 		switch m.screen {
+		case ScreenFeed:
+			updated, cmd := m.feedModel.Update(images.ImageFetchedMsg{})
+			m.feedModel = updated.(feed.FeedModel)
+			cmds = append(cmds, cmd)
+		case ScreenNotifications:
+			updated, cmd := m.notifModel.Update(images.ImageFetchedMsg{})
+			m.notifModel = updated.(notifications.NotificationsModel)
+			cmds = append(cmds, cmd)
 		case ScreenSearch:
-			updated, cmd := m.searchModel.Update(msg)
+			updated, cmd := m.searchModel.Update(images.ImageFetchedMsg{})
 			m.searchModel = updated.(search.SearchModel)
 			cmds = append(cmds, cmd)
+		case ScreenVoresky:
+			updated, cmd := m.voreskyTabModel.Update(images.ImageFetchedMsg{})
+			m.voreskyTabModel = updated.(vtab.VoreskyModel)
+			cmds = append(cmds, cmd)
+		case ScreenVoreskyNotifications:
+			updated, cmd := m.vnotifModel.Update(images.ImageFetchedMsg{})
+			m.vnotifModel = updated.(vnotifications.VNotificationsModel)
+			cmds = append(cmds, cmd)
 		case ScreenProfile:
-			updated, cmd := m.profileModel.Update(msg)
+			updated, cmd := m.profileModel.Update(images.ImageFetchedMsg{})
 			m.profileModel = updated.(profile.ProfileModel)
 			cmds = append(cmds, cmd)
 		case ScreenThread:
-			updated, cmd := m.threadModel.Update(msg)
+			updated, cmd := m.threadModel.Update(images.ImageFetchedMsg{})
 			m.threadModel = updated.(thread.ThreadModel)
 			cmds = append(cmds, cmd)
 		}
+
+		// Mark inactive persistent models as dirty
+		if m.screen != ScreenFeed {
+			m.feedDirty = true
+		}
+		if m.screen != ScreenNotifications {
+			m.notifDirty = true
+		}
+		if m.screen != ScreenSearch {
+			m.searchDirty = true
+		}
+		if m.voreskyClient != nil {
+			if m.screen != ScreenVoresky {
+				m.vtabDirty = true
+			}
+			if m.screen != ScreenVoreskyNotifications {
+				m.vnotifDirty = true
+			}
+		}
+
 		return m, tea.Batch(cmds...)
 	}
 
@@ -960,11 +1009,23 @@ func (m *App) switchToTab(tab components.Tab) tea.Cmd {
 		updated, cmd := m.feedModel.Update(sizeMsg)
 		m.feedModel = updated.(feed.FeedModel)
 		cmds = append(cmds, cmd)
+		if m.feedDirty {
+			m.feedDirty = false
+			u, c := m.feedModel.Update(images.ImageFetchedMsg{})
+			m.feedModel = u.(feed.FeedModel)
+			cmds = append(cmds, c)
+		}
 	case components.TabNotifications:
 		m.screen = ScreenNotifications
 		updated, cmd := m.notifModel.Update(sizeMsg)
 		m.notifModel = updated.(notifications.NotificationsModel)
 		cmds = append(cmds, cmd)
+		if m.notifDirty {
+			m.notifDirty = false
+			u, c := m.notifModel.Update(images.ImageFetchedMsg{})
+			m.notifModel = u.(notifications.NotificationsModel)
+			cmds = append(cmds, c)
+		}
 		if m.client != nil && !m.notifInitialized {
 			m.notifInitialized = true
 			cmds = append(cmds, m.notifModel.Init())
@@ -983,6 +1044,12 @@ func (m *App) switchToTab(tab components.Tab) tea.Cmd {
 		updated, cmd := m.searchModel.Update(sizeMsg)
 		m.searchModel = updated.(search.SearchModel)
 		cmds = append(cmds, cmd)
+		if m.searchDirty {
+			m.searchDirty = false
+			u, c := m.searchModel.Update(images.ImageFetchedMsg{})
+			m.searchModel = u.(search.SearchModel)
+			cmds = append(cmds, c)
+		}
 	case components.TabVoresky:
 		if m.voreskyClient == nil {
 			return nil
@@ -991,6 +1058,12 @@ func (m *App) switchToTab(tab components.Tab) tea.Cmd {
 		updated, cmd := m.voreskyTabModel.Update(sizeMsg)
 		m.voreskyTabModel = updated.(vtab.VoreskyModel)
 		cmds = append(cmds, cmd)
+		if m.vtabDirty {
+			m.vtabDirty = false
+			u, c := m.voreskyTabModel.Update(images.ImageFetchedMsg{})
+			m.voreskyTabModel = u.(vtab.VoreskyModel)
+			cmds = append(cmds, c)
+		}
 		if !m.voreskyTabInit {
 			m.voreskyTabInit = true
 			cmds = append(cmds, m.voreskyTabModel.Init())
@@ -1003,6 +1076,12 @@ func (m *App) switchToTab(tab components.Tab) tea.Cmd {
 		updated, cmd := m.vnotifModel.Update(sizeMsg)
 		m.vnotifModel = updated.(vnotifications.VNotificationsModel)
 		cmds = append(cmds, cmd)
+		if m.vnotifDirty {
+			m.vnotifDirty = false
+			u, c := m.vnotifModel.Update(images.ImageFetchedMsg{})
+			m.vnotifModel = u.(vnotifications.VNotificationsModel)
+			cmds = append(cmds, c)
+		}
 		if !m.vnotifInit {
 			m.vnotifInit = true
 			cmds = append(cmds, m.vnotifModel.Init())

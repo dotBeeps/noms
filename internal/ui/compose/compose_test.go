@@ -10,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/lex/util"
+
+	"github.com/dotBeeps/noms/internal/ui/testutil"
 )
 
 // mockBlueskyClient implements bluesky.BlueskyClient for testing
@@ -258,18 +260,7 @@ func TestMentionAutoDetect(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the command
-	msg := cmd()
-	if batchMsg, ok := msg.(tea.BatchMsg); ok {
-		for _, c := range batchMsg {
-			if c == nil {
-				continue
-			}
-			if _, ok := c().(postSuccessMsg); ok {
-				break
-			}
-		}
-	}
+	testutil.ExecBatch(cmd)
 
 	// Check that CreatePost was called with facets
 	if !client.createPostCalled {
@@ -312,15 +303,7 @@ func TestLinkAutoDetect(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
-	msg := cmd()
-	if batchMsg, ok := msg.(tea.BatchMsg); ok {
-		for _, c := range batchMsg {
-			if c != nil {
-				c()
-			}
-		}
-	}
+	testutil.ExecBatch(cmd)
 
 	// Check that CreatePost was called with facets
 	if !client.createPostCalled {
@@ -363,16 +346,8 @@ func TestSubmitPost(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the submit command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
-	if batchMsg, ok := cmd().(tea.BatchMsg); ok {
-		for _, c := range batchMsg {
-			if c != nil {
-				c()
-			}
-		}
-	}
+	testutil.ExecBatch(cmd)
 
-	// Verify CreatePost was called correctly
 	if !client.createPostCalled {
 		t.Error("Expected CreatePost to be called")
 	}
@@ -405,14 +380,7 @@ func TestSubmitReply(t *testing.T) {
 		t.Fatal("Expected command from ctrl+enter")
 	}
 
-	// Execute the submit command (unwrap BatchMsg since submit returns Batch(submitPost, spinner.Tick))
-	if batchMsg, ok := cmd().(tea.BatchMsg); ok {
-		for _, c := range batchMsg {
-			if c != nil {
-				c()
-			}
-		}
-	}
+	testutil.ExecBatch(cmd)
 
 	// Verify CreatePost was called with ReplyRef
 	if !client.createPostCalled {

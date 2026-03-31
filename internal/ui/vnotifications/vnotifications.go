@@ -141,15 +141,13 @@ func (m VNotificationsModel) markSelectedReadCmd() tea.Cmd {
 func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, max(1, msg.Height-2))
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case VNotificationsLoadedMsg:
 		m.loading = false
@@ -172,11 +170,8 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.rebuildViewport()
-		if len(cmds) > 0 {
-			return m, tea.Batch(cmds...)
-		}
-		return m, nil
+		cmds = append(cmds, m.rebuildViewport()...)
+		return m, tea.Batch(cmds...)
 
 	case VNotificationsErrorMsg:
 		m.loading = false
@@ -207,10 +202,11 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
+		var navCmds []tea.Cmd
 		switch mouse.Button {
 		case tea.MouseWheelDown:
 			if m.viewport.MoveDownN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 			if m.viewport.NearBottom(3) && m.cursor != "" && !m.loading {
 				m.loading = true
@@ -218,10 +214,10 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseWheelUp:
 			if m.viewport.MoveUpN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(navCmds...)
 
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
@@ -229,12 +225,13 @@ func (m VNotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
-func (m *VNotificationsModel) rebuildViewport() {
+func (m *VNotificationsModel) rebuildViewport() []tea.Cmd {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.notifications), func(index int, selected bool) string {
 		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 		return m.renderNotification(index, selected, lazy)
 	})
+	return nil
 }
 
 func (m VNotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -243,11 +240,12 @@ func (m VNotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			navCmds := m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 			if m.viewport.NearBottom(3) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
+				navCmds = append(navCmds, m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
+				return m, tea.Batch(navCmds...)
 			}
 		}
 		return m, m.viewport.SpringCmd()
@@ -255,7 +253,7 @@ func (m VNotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		return m, m.viewport.SpringCmd()
@@ -381,6 +379,9 @@ func (m VNotificationsModel) renderNotification(index int, selected bool, render
 			url := n.SourceCharacter.Avatar.URL
 			if renderer.IsCached(url) {
 				sourceAv = renderer.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+				if sourceAv == "" {
+					sourceAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+				}
 			} else {
 				sourceAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 			}
@@ -390,6 +391,9 @@ func (m VNotificationsModel) renderNotification(index int, selected bool, render
 			url := n.TargetCharacter.Avatar.URL
 			if renderer.IsCached(url) {
 				targetAv = renderer.RenderImage(url, shared.AvatarCols, shared.AvatarRows)
+				if targetAv == "" {
+					targetAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+				}
 			} else {
 				targetAv = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 			}

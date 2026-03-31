@@ -6,13 +6,15 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/dotBeeps/noms/internal/ui/testutil"
 )
 
 func TestLoginModelInit(t *testing.T) {
 	t.Parallel()
 	m := NewLoginModel()
 	if cmd := m.Init(); cmd == nil {
-		t.Errorf("Expected non-nil cmd from Init (textinput.Blink)")
+		t.Errorf("Expected non-nil cmd from Init (form init)")
 	}
 }
 
@@ -23,23 +25,25 @@ func TestLoginScreenRender(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Handle:") {
-		t.Errorf("Expected login screen to contain 'Handle:', got %q", content)
-	}
-
 	if !strings.Contains(content, "noms") {
 		t.Errorf("Expected login screen to contain 'noms', got %q", content)
 	}
+
+	// Form fields only render after Init() cmd is processed by the runtime,
+	// so we just verify the title and form state here.
+	if m.state != LoginStateForm {
+		t.Errorf("Expected initial state to be LoginStateForm, got %v", m.state)
+	}
 }
 
-func TestLoginHandleInput(t *testing.T) {
+func TestLoginSetAndGetValue(t *testing.T) {
 	t.Parallel()
 	m := NewLoginModel()
 
 	m.SetValue("alice.bsky.social")
 
 	if m.Value() != "alice.bsky.social" {
-		t.Errorf("Expected handle input to be 'alice.bsky.social', got %q", m.Value())
+		t.Errorf("Expected handle to be 'alice.bsky.social', got %q", m.Value())
 	}
 }
 
@@ -59,33 +63,6 @@ func TestLoginErrorDisplay(t *testing.T) {
 
 	if !strings.Contains(content, "authentication failed") {
 		t.Errorf("Expected error display to contain error message, got %q", content)
-	}
-}
-
-func TestLoginStateTransitionToChoosing(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-
-	updated, _ := m.Update(tea.KeyPressMsg{})
-	m = updated.(LoginModel)
-
-	if m.state != LoginStateInput {
-		t.Errorf("Expected state to remain Input for non-enter key, got %v", m.state)
-	}
-}
-
-func TestLoginChoosingStateNavigation(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-	m.state = LoginStateChoosing
-
-	updated, _ := m.Update(tea.KeyPressMsg{})
-	m = updated.(LoginModel)
-
-	if m.selectedOption != 0 {
-		t.Errorf("Expected selected option to be 0, got %d", m.selectedOption)
 	}
 }
 
@@ -119,6 +96,25 @@ func TestLoginErrorMsg(t *testing.T) {
 
 	if m.state != LoginStateError {
 		t.Errorf("Expected state to be Error, got %v", m.state)
+	}
+}
+
+func TestLoginErrorStateRecoversOnEnter(t *testing.T) {
+	t.Parallel()
+	m := NewLoginModel()
+	m.SetError(errors.New("something broke"))
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
+	m = updated.(LoginModel)
+
+	if m.state != LoginStateForm {
+		t.Errorf("Expected state to be Form after enter in error, got %v", m.state)
+	}
+	if m.err != nil {
+		t.Errorf("Expected err to be nil after recovery, got %v", m.err)
+	}
+	if cmd == nil {
+		t.Error("Expected form init cmd after error recovery")
 	}
 }
 
@@ -162,7 +158,6 @@ func TestLoginLoadingStateStepAdvance(t *testing.T) {
 	m.authMethod = AuthMethodBrowser
 	m.authStep = 0
 
-	// Advance to step 2
 	updated, _ := m.Update(AuthStepMsg{Method: AuthMethodBrowser, Step: 2})
 	m = updated.(LoginModel)
 
@@ -173,7 +168,6 @@ func TestLoginLoadingStateStepAdvance(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	// Steps 0 and 1 should show checkmarks
 	if !strings.Contains(content, "\u2713") {
 		t.Errorf("Expected completed steps to show checkmarks, got %q", content)
 	}
@@ -182,138 +176,77 @@ func TestLoginLoadingStateStepAdvance(t *testing.T) {
 	}
 }
 
-func TestLoginPasswordStateTransition(t *testing.T) {
+func TestLoginFormCompleteBrowser(t *testing.T) {
 	t.Parallel()
 	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
+	m.vals.handle = "alice.bsky.social"
+	m.vals.authChoice = "browser"
 
-	updated, _ := m.Update(tea.KeyPressMsg{Text: "enter"})
-	m = updated.(LoginModel)
-	if m.state != LoginStateChoosing {
-		t.Fatalf("Expected LoginStateChoosing after enter, got %d", m.state)
-	}
-
-	updated, _ = m.Update(tea.KeyPressMsg{Text: "down"})
-	m = updated.(LoginModel)
-	if m.selectedOption != 1 {
-		t.Fatalf("Expected selectedOption 1 after down, got %d", m.selectedOption)
-	}
-
-	updated, _ = m.Update(tea.KeyPressMsg{Text: "enter"})
-	m = updated.(LoginModel)
-	if m.state != LoginStatePassword {
-		t.Errorf("Expected LoginStatePassword after selecting app password, got %d", m.state)
-	}
-}
-
-func TestLoginPasswordStateRender(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-	m.state = LoginStatePassword
-
-	v := m.View()
-	content := v.Content
-
-	if !strings.Contains(content, "alice.bsky.social") {
-		t.Error("Expected handle to be shown in password state")
-	}
-	if !strings.Contains(content, "App Password") {
-		t.Error("Expected 'App Password' label in password state")
-	}
-	if !strings.Contains(content, "Press Enter to login") {
-		t.Error("Expected 'Press Enter to login' instruction in password state")
-	}
-}
-
-func TestLoginPasswordSubmit(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-	m.state = LoginStatePassword
-	m.passwordInput.SetValue("xxxx-xxxx-xxxx-xxxx")
-
-	updated, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
-	m = updated.(LoginModel)
+	model, cmd := m.handleFormComplete()
+	m = model.(LoginModel)
 
 	if m.state != LoginStateLoading {
-		t.Errorf("Expected LoginStateLoading after password submit, got %d", m.state)
+		t.Errorf("Expected LoginStateLoading, got %d", m.state)
+	}
+	if m.authMethod != AuthMethodBrowser {
+		t.Errorf("Expected AuthMethodBrowser, got %d", m.authMethod)
 	}
 	if cmd == nil {
-		t.Fatal("Expected command to be returned after password submit")
+		t.Fatal("Expected command after form complete")
 	}
 
-	// Unwrap BatchMsg since password submit returns Batch(spinner.Tick, submitCmd)
-	msg := cmd()
-	var authMsg StartAppPasswordAuthMsg
-	if batchMsg, ok := msg.(tea.BatchMsg); ok {
-		found := false
-		for _, c := range batchMsg {
-			if c == nil {
-				continue
+	msgs := testutil.ExecBatch(cmd)
+	found := false
+	for _, msg := range msgs {
+		if authMsg, ok := msg.(StartBrowserAuthMsg); ok {
+			if authMsg.Handle != "alice.bsky.social" {
+				t.Errorf("Expected handle 'alice.bsky.social', got %q", authMsg.Handle)
 			}
-			if m, ok := c().(StartAppPasswordAuthMsg); ok {
-				authMsg = m
-				found = true
-				break
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Expected StartBrowserAuthMsg in batch")
+	}
+}
+
+func TestLoginFormCompleteAppPassword(t *testing.T) {
+	t.Parallel()
+	m := NewLoginModel()
+	m.vals.handle = "alice.bsky.social"
+	m.vals.authChoice = "app_password"
+	m.vals.password = "xxxx-xxxx-xxxx-xxxx"
+
+	model, cmd := m.handleFormComplete()
+	m = model.(LoginModel)
+
+	if m.state != LoginStateLoading {
+		t.Errorf("Expected LoginStateLoading, got %d", m.state)
+	}
+	if m.authMethod != AuthMethodAppPassword {
+		t.Errorf("Expected AuthMethodAppPassword, got %d", m.authMethod)
+	}
+	if cmd == nil {
+		t.Fatal("Expected command after form complete")
+	}
+
+	msgs := testutil.ExecBatch(cmd)
+	found := false
+	for _, msg := range msgs {
+		if authMsg, ok := msg.(StartAppPasswordAuthMsg); ok {
+			if authMsg.Handle != "alice.bsky.social" {
+				t.Errorf("Expected handle 'alice.bsky.social', got %q", authMsg.Handle)
 			}
+			if authMsg.Password != "xxxx-xxxx-xxxx-xxxx" {
+				t.Errorf("Expected password 'xxxx-xxxx-xxxx-xxxx', got %q", authMsg.Password)
+			}
+			found = true
+			break
 		}
-		if !found {
-			t.Fatal("Expected StartAppPasswordAuthMsg in BatchMsg")
-		}
-	} else if m, ok := msg.(StartAppPasswordAuthMsg); ok {
-		authMsg = m
-	} else {
-		t.Fatalf("Expected StartAppPasswordAuthMsg or BatchMsg, got %T", msg)
 	}
-	if authMsg.Handle != "alice.bsky.social" {
-		t.Errorf("Expected handle 'alice.bsky.social', got %q", authMsg.Handle)
-	}
-	if authMsg.Password != "xxxx-xxxx-xxxx-xxxx" {
-		t.Errorf("Expected password 'xxxx-xxxx-xxxx-xxxx', got %q", authMsg.Password)
-	}
-}
-
-func TestLoginPasswordEscapeGoesBack(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-	m.state = LoginStatePassword
-
-	updated, _ := m.Update(tea.KeyPressMsg{Text: "esc"})
-	m = updated.(LoginModel)
-
-	if m.state != LoginStateChoosing {
-		t.Errorf("Expected LoginStateChoosing after esc from password, got %d", m.state)
-	}
-}
-
-func TestLoginPasswordEmptyReject(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-	m.handleInput.SetValue("alice.bsky.social")
-	m.state = LoginStatePassword
-
-	updated, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
-	m = updated.(LoginModel)
-
-	if m.state != LoginStatePassword {
-		t.Errorf("Expected to stay in LoginStatePassword with empty password, got %d", m.state)
-	}
-	if cmd != nil {
-		t.Error("Expected no command when submitting empty password")
-	}
-}
-
-func TestLoginTabRequiresHandle(t *testing.T) {
-	t.Parallel()
-	m := NewLoginModel()
-
-	updated, _ := m.Update(tea.KeyPressMsg{Text: "tab"})
-	m = updated.(LoginModel)
-
-	if m.state != LoginStateInput {
-		t.Errorf("Expected to stay in LoginStateInput with empty handle on tab, got %d", m.state)
+	if !found {
+		t.Fatal("Expected StartAppPasswordAuthMsg in batch")
 	}
 }
 

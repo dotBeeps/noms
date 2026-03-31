@@ -171,15 +171,16 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, msg.Height)
-		m.rebuildViewport()
+		cmds = append(cmds, m.rebuildViewport()...)
 
 	case ProfileLoadedMsg:
 		m.profile = msg.Profile
 		m.loading = false
-		m.rebuildViewport() // header height changed
+		cmds = append(cmds, m.rebuildViewport()...) // header height changed
 		if m.profile.Avatar != nil && *m.profile.Avatar != "" {
 			if cmd := images.FetchAvatar(m.imageCache, *m.profile.Avatar); cmd != nil {
-				return m, cmd
+				cmds = append(cmds, cmd)
+				return m, tea.Batch(cmds...)
 			}
 		}
 
@@ -205,14 +206,13 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.rebuildViewport()
+		fetchCmds = append(fetchCmds, m.rebuildViewport()...)
 		if len(fetchCmds) > 0 {
 			return m, tea.Batch(fetchCmds...)
 		}
 
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case ProfileErrorMsg:
 		m.err = msg.Err
@@ -296,8 +296,7 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.confirmDelete = -1
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case shared.ScrollTickMsg:
 		if m.viewport.UpdateSpring() {
@@ -307,10 +306,11 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
+		var navCmds []tea.Cmd
 		switch mouse.Button {
 		case tea.MouseWheelDown:
 			if m.viewport.MoveDownN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loadingFeed {
 				m.loadingFeed = true
@@ -318,10 +318,10 @@ func (m ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseWheelUp:
 			if m.viewport.MoveUpN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(navCmds...)
 
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
@@ -342,7 +342,7 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loadingFeed {
@@ -354,7 +354,7 @@ func (m ProfileModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		return m, m.viewport.SpringCmd()
@@ -602,7 +602,7 @@ func (m ProfileModel) renderFollowButton(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-func (m *ProfileModel) rebuildViewport() {
+func (m *ProfileModel) rebuildViewport() []tea.Cmd {
 	// Adjust viewport height for the header
 	headerHeight := 0
 	if m.profile != nil {
@@ -612,10 +612,34 @@ func (m *ProfileModel) rebuildViewport() {
 	}
 	m.viewport.SetSize(m.width, max(1, m.height-headerHeight-1))
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
+	var refetchCmds []tea.Cmd
 	m.viewport.SetItems(len(m.authorFeed), func(index int, selected bool) string {
-		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		nearVisible := m.viewport.IsNearVisible(index, m.viewport.Height())
+		lazy.NearVisible = nearVisible
+
+		if nearVisible && m.imageCache != nil {
+			p := m.authorFeed[index]
+			for _, url := range feed.ExtractImageURLs(p) {
+				if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+					refetchCmds = append(refetchCmds, cmd)
+				}
+			}
+			avatarURL := feed.ExtractAvatarURL(p)
+			if p != nil && p.Post != nil && p.Post.Author != nil {
+				if override, ok := m.avatarOverrides[p.Post.Author.Did]; ok && override != "" {
+					avatarURL = override
+				}
+			}
+			if avatarURL != "" {
+				if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+					refetchCmds = append(refetchCmds, cmd)
+				}
+			}
+		}
+
 		return feed.RenderPost(m.authorFeed[index], m.width, selected, lazy, m.avatarOverrides)
 	})
+	return refetchCmds
 }
 
 // formatCount formats large numbers with K/M suffixes.

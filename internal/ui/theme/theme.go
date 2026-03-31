@@ -379,6 +379,26 @@ func StyleHeaderSubtle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(ColorPrimary)
 }
 
+func StyleTitle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(1, 0)
+}
+
+func StyleHint() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorMuted).Padding(0, 2)
+}
+
+func StyleStepDone() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorSuccess).Padding(0, 1)
+}
+
+func StyleStepActive() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorAccent).Padding(0, 1)
+}
+
+func StyleStepPending() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(ColorMuted).Padding(0, 1)
+}
+
 func StyleTabActive() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(ColorAccent).

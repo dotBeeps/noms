@@ -132,8 +132,8 @@ func TestAppViewLogin(t *testing.T) {
 	v := app.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Handle:") {
-		t.Errorf("Expected login view to contain 'Handle:', got %q", content)
+	if !strings.Contains(content, "noms") {
+		t.Errorf("Expected login view to contain 'noms', got %q", content)
 	}
 }
 

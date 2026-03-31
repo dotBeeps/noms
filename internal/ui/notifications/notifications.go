@@ -179,15 +179,15 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, m.spinner.Tick
+		cmds = append(cmds, m.rebuildViewport()...)
+		cmds = append(cmds, m.spinner.Tick)
+		return m, tea.Batch(cmds...)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, max(1, msg.Height-3))
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case NotificationsLoadedMsg:
 		m.loading = false
@@ -198,7 +198,7 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notifications = append(m.notifications, msg.Notifications...)
 		}
 		m.buildGroups()
-		m.rebuildViewport()
+		cmds = append(cmds, m.rebuildViewport()...)
 		if m.imageCache != nil && m.imageCache.Enabled() {
 			for _, notif := range msg.Notifications {
 				if notif.Author != nil && notif.Author.Avatar != nil {
@@ -233,10 +233,11 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
+		var navCmds []tea.Cmd
 		switch mouse.Button {
 		case tea.MouseWheelDown:
 			if m.viewport.MoveDownN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 				m.loading = true
@@ -244,10 +245,10 @@ func (m NotificationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseWheelUp:
 			if m.viewport.MoveUpN(3) {
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(navCmds...)
 
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
@@ -262,11 +263,12 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			navCmds := m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 			if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 				m.loading = true
-				return m, tea.Batch(m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
+				navCmds = append(navCmds, m.fetchNotificationsCmd(), m.spinner.Tick, m.viewport.SpringCmd())
+				return m, tea.Batch(navCmds...)
 			}
 		}
 		return m, m.viewport.SpringCmd()
@@ -274,7 +276,7 @@ func (m NotificationsModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		return m, m.viewport.SpringCmd()
@@ -380,12 +382,13 @@ func (m NotificationsModel) View() tea.View {
 	return mouseView(content.String())
 }
 
-func (m *NotificationsModel) rebuildViewport() {
+func (m *NotificationsModel) rebuildViewport() []tea.Cmd {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
 	m.viewport.SetItems(len(m.groups), func(index int, selected bool) string {
 		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 		return m.renderGroup(index, selected, lazy)
 	})
+	return nil
 }
 
 func (m *NotificationsModel) buildGroups() {
@@ -489,6 +492,9 @@ func (m NotificationsModel) renderGroup(index int, selected bool, renderer image
 		avatarURL := *g.notif.Author.Avatar
 		if renderer.IsCached(avatarURL) {
 			avatarBlock = renderer.RenderImage(avatarURL, shared.AvatarCols, shared.AvatarRows)
+			if avatarBlock == "" {
+				avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+			}
 		} else {
 			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 		}

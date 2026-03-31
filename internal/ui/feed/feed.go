@@ -128,8 +128,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetSize(msg.Width, msg.Height-1)
 		m.gallery.Width = msg.Width
 		m.gallery.Height = msg.Height
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case FeedLoadedMsg:
 		m.loading = false
@@ -164,7 +163,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.rebuildViewport()
+		fetchCmds = append(fetchCmds, m.rebuildViewport()...)
 		fetchCmds = append(fetchCmds, feedAnimTick())
 		if m.loading || (m.imageCache != nil && m.imageCache.PendingCount() > 0) {
 			fetchCmds = append(fetchCmds, m.spinner.Tick)
@@ -177,8 +176,9 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, m.spinner.Tick
+		cmds := m.rebuildViewport()
+		cmds = append(cmds, m.spinner.Tick)
+		return m, tea.Batch(cmds...)
 
 	case spinner.TickMsg:
 		if m.loading || (m.imageCache != nil && m.imageCache.PendingCount() > 0) {
@@ -242,12 +242,12 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.likeAnim[msg.PostURI] = 1.0
 				m.likeAnimVel[msg.PostURI] = 0
-				m.rebuildViewport()
-				return m, feedAnimTick()
+				cmds := m.rebuildViewport()
+				cmds = append(cmds, feedAnimTick())
+				return m, tea.Batch(cmds...)
 			}
 		}
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case UnlikeResultMsg:
 		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
@@ -255,8 +255,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				OptimisticLike(post.Post)
 			}
 		}
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case RepostResultMsg:
 		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
@@ -273,12 +272,12 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.repostAnim[msg.PostURI] = 1.0
 				m.repostAnimVel[msg.PostURI] = 0
-				m.rebuildViewport()
-				return m, feedAnimTick()
+				cmds := m.rebuildViewport()
+				cmds = append(cmds, feedAnimTick())
+				return m, tea.Batch(cmds...)
 			}
 		}
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case UnRepostResultMsg:
 		if post := FindPostByURI(m.posts, msg.PostURI); post != nil {
@@ -286,8 +285,7 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				OptimisticRepost(post.Post)
 			}
 		}
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case feedAnimTickMsg:
 		still := false
@@ -345,11 +343,11 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.rebuildViewport()
+		cmds := m.rebuildViewport()
 		if still {
-			return m, feedAnimTick()
+			cmds = append(cmds, feedAnimTick())
 		}
-		return m, nil
+		return m, tea.Batch(cmds...)
 
 	case DeletePostResultMsg:
 		if msg.Err != nil {
@@ -362,8 +360,9 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.deleteAnim[msg.URI] = 1.0
 		m.confirmDelete = -1
-		m.rebuildViewport()
-		return m, feedAnimTick()
+		cmds := m.rebuildViewport()
+		cmds = append(cmds, feedAnimTick())
+		return m, tea.Batch(cmds...)
 
 	case shared.ScrollTickMsg:
 		if m.viewport.UpdateSpring() {
@@ -372,22 +371,23 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseWheelMsg:
+		var scrollCmds []tea.Cmd
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
 			if m.viewport.MoveDownN(3) {
-				m.rebuildViewport()
+				scrollCmds = append(scrollCmds, m.rebuildViewport()...)
 			}
 			if m.viewport.NearBottom(shared.PaginationThreshold) && !m.loading && m.cursor != "" {
 				m.loading = true
-				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick)
+				scrollCmds = append(scrollCmds, m.fetchTimeline(m.cursor), m.spinner.Tick)
 			}
 		case tea.MouseWheelUp:
 			if m.viewport.MoveUpN(3) {
-				m.rebuildViewport()
+				scrollCmds = append(scrollCmds, m.rebuildViewport()...)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(scrollCmds...)
 
 	case tea.KeyPressMsg:
 		km := m.keys
@@ -402,23 +402,27 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		idx := m.viewport.SelectedIndex()
 		switch {
 		case key.Matches(msg, km.Down):
+			var navCmds []tea.Cmd
 			if m.viewport.MoveDown() {
 				prev := m.viewport.YOffset()
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 				m.viewport.AnimateFrom(prev)
 			}
 			if m.viewport.NearBottom(shared.PaginationThreshold) && !m.loading && m.cursor != "" {
 				m.loading = true
-				return m, tea.Batch(m.fetchTimeline(m.cursor), m.spinner.Tick, m.viewport.SpringCmd())
+				navCmds = append(navCmds, m.fetchTimeline(m.cursor), m.spinner.Tick)
 			}
-			return m, m.viewport.SpringCmd()
+			navCmds = append(navCmds, m.viewport.SpringCmd())
+			return m, tea.Batch(navCmds...)
 		case key.Matches(msg, km.Up):
+			var navCmds []tea.Cmd
 			if m.viewport.MoveUp() {
 				prev := m.viewport.YOffset()
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 				m.viewport.AnimateFrom(prev)
 			}
-			return m, m.viewport.SpringCmd()
+			navCmds = append(navCmds, m.viewport.SpringCmd())
+			return m, tea.Batch(navCmds...)
 		case key.Matches(msg, km.Reply):
 			if idx < len(m.posts) {
 				post := m.posts[idx].Post
@@ -478,11 +482,34 @@ func (m FeedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *FeedModel) rebuildViewport() {
+func (m *FeedModel) rebuildViewport() []tea.Cmd {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
+	var refetchCmds []tea.Cmd
 	m.viewport.SetItems(len(m.posts), func(index int, selected bool) string {
 		post := m.posts[index]
-		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		nearVisible := m.viewport.IsNearVisible(index, m.viewport.Height())
+		lazy.NearVisible = nearVisible
+
+		// Re-fetch visible-but-uncached images (failed or evicted)
+		if nearVisible && m.imageCache != nil {
+			for _, url := range ExtractImageURLs(post) {
+				if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+					refetchCmds = append(refetchCmds, cmd)
+				}
+			}
+			avatarURL := ExtractAvatarURL(post)
+			if post != nil && post.Post != nil && post.Post.Author != nil {
+				if override, ok := m.avatarOverrides[post.Post.Author.Did]; ok && override != "" {
+					avatarURL = override
+				}
+			}
+			if avatarURL != "" {
+				if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+					refetchCmds = append(refetchCmds, cmd)
+				}
+			}
+		}
+
 		var anims PostAnims
 		if post.Post != nil {
 			if m.likeAnim != nil {
@@ -499,6 +526,7 @@ func (m *FeedModel) rebuildViewport() {
 
 		return RenderPostFull(post, m.width, selected, lazy, m.avatarOverrides, anims)
 	})
+	return refetchCmds
 }
 
 func (m FeedModel) View() tea.View {

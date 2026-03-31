@@ -105,8 +105,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetSize(msg.Width, msg.Height)
 		m.gallery.Width = msg.Width
 		m.gallery.Height = msg.Height
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case ThreadLoadedMsg:
 		m.loading = false
@@ -119,8 +118,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.rebuildViewport()
-		var fetchCmds []tea.Cmd
+		fetchCmds := m.rebuildViewport()
 		for _, tp := range m.threadPosts {
 			if tp.Post == nil {
 				continue
@@ -153,8 +151,9 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, m.spinner.Tick
+		cmds := m.rebuildViewport()
+		cmds = append(cmds, m.spinner.Tick)
+		return m, tea.Batch(cmds...)
 
 	case ThreadErrorMsg:
 		m.loading = false
@@ -267,8 +266,7 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.confirmDelete = -1
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case tea.KeyPressMsg:
 		km := m.keys
@@ -288,19 +286,23 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, km.Back):
 			return m, func() tea.Msg { return BackMsg{} }
 		case key.Matches(msg, km.Down):
+			var navCmds []tea.Cmd
 			if m.viewport.MoveDown() {
 				prev := m.viewport.YOffset()
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 				m.viewport.AnimateFrom(prev)
 			}
-			return m, m.viewport.SpringCmd()
+			navCmds = append(navCmds, m.viewport.SpringCmd())
+			return m, tea.Batch(navCmds...)
 		case key.Matches(msg, km.Up):
+			var navCmds []tea.Cmd
 			if m.viewport.MoveUp() {
 				prev := m.viewport.YOffset()
-				m.rebuildViewport()
+				navCmds = append(navCmds, m.rebuildViewport()...)
 				m.viewport.AnimateFrom(prev)
 			}
-			return m, m.viewport.SpringCmd()
+			navCmds = append(navCmds, m.viewport.SpringCmd())
+			return m, tea.Batch(navCmds...)
 		case key.Matches(msg, km.Open):
 			if idx < len(m.threadPosts) {
 				p := m.threadPosts[idx]
@@ -371,28 +373,56 @@ func (m ThreadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseWheelMsg:
+		var scrollCmds []tea.Cmd
 		mouse := msg.Mouse()
 		switch mouse.Button {
 		case tea.MouseWheelDown:
 			if m.viewport.MoveDownN(3) {
-				m.rebuildViewport()
+				scrollCmds = append(scrollCmds, m.rebuildViewport()...)
 			}
 		case tea.MouseWheelUp:
 			if m.viewport.MoveUpN(3) {
-				m.rebuildViewport()
+				scrollCmds = append(scrollCmds, m.rebuildViewport()...)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(scrollCmds...)
 	}
 	return m, nil
 }
 
-func (m *ThreadModel) rebuildViewport() {
+func (m *ThreadModel) rebuildViewport() []tea.Cmd {
 	lazy := &images.LazyRenderer{Inner: m.imageCache}
+	var refetchCmds []tea.Cmd
 	m.viewport.SetItems(len(m.threadPosts), func(index int, selected bool) string {
-		lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+		nearVisible := m.viewport.IsNearVisible(index, m.viewport.Height())
+		lazy.NearVisible = nearVisible
+
+		if nearVisible && m.imageCache != nil {
+			tp := m.threadPosts[index]
+			if tp.Post != nil {
+				fvp := &bsky.FeedDefs_FeedViewPost{Post: tp.Post}
+				for _, url := range feed.ExtractImageURLs(fvp) {
+					if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+						refetchCmds = append(refetchCmds, cmd)
+					}
+				}
+				avatarURL := feed.ExtractAvatarURL(fvp)
+				if tp.Post.Author != nil {
+					if override, ok := m.avatarOverrides[tp.Post.Author.Did]; ok && override != "" {
+						avatarURL = override
+					}
+				}
+				if avatarURL != "" {
+					if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+						refetchCmds = append(refetchCmds, cmd)
+					}
+				}
+			}
+		}
+
 		return m.renderThreadPost(index, selected, lazy)
 	})
+	return refetchCmds
 }
 
 func (m ThreadModel) renderThreadPost(index int, selected bool, renderer images.ImageRenderer) string {

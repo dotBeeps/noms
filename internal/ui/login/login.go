@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
@@ -15,31 +15,14 @@ import (
 	"github.com/dotBeeps/noms/internal/ui/theme"
 )
 
-func titleStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorPrimary).Bold(true).Padding(1, 0)
-}
-func inputStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorText).Padding(0, 1)
-}
 func errorStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(theme.ColorError).Bold(true).Padding(1, 0)
-}
-func optionStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 2)
-}
-func selectedOptionStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorOnPrimary).Background(theme.ColorPrimary).Bold(true).Padding(0, 2)
-}
-func loadingStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(theme.ColorAccent).Padding(1, 0)
 }
 
 type LoginState int
 
 const (
-	LoginStateInput LoginState = iota
-	LoginStateChoosing
-	LoginStatePassword
+	LoginStateForm LoginState = iota
 	LoginStateLoading
 	LoginStateError
 )
@@ -96,62 +79,96 @@ var AppPasswordAuthSteps = []string{
 	"Authenticating...",
 }
 
+// formValues lives on the heap so huh's bound pointers survive
+// Bubble Tea's value-receiver model copies.
+type formValues struct {
+	handle     string
+	authChoice string
+	password   string
+}
+
 type LoginModel struct {
-	handleInput    textinput.Model
-	passwordInput  textinput.Model
-	spinner        spinner.Model
-	state          LoginState
-	selectedOption int
-	err            error
-	width          int
-	height         int
+	form    *huh.Form
+	vals    *formValues
+	spinner spinner.Model
+	state   LoginState
+	err     error
+	width   int
+	height  int
 
 	authMethod AuthMethod
 	authStep   int
 }
 
 func NewLoginModel() LoginModel {
-	ti := textinput.New()
-	ti.Prompt = "> "
-	ti.Placeholder = "Enter your handle (e.g., alice.bsky.social)"
-	ti.Focus()
-	ti.SetWidth(40)
-	ti.SetStyles(textinput.DefaultDarkStyles())
-
-	pi := textinput.New()
-	pi.Prompt = "> "
-	pi.Placeholder = "Paste your app password (xxxx-xxxx-xxxx-xxxx)"
-	pi.EchoMode = textinput.EchoPassword
-	pi.SetWidth(40)
-	pi.SetStyles(textinput.DefaultDarkStyles())
-
+	vals := &formValues{}
 	return LoginModel{
-		handleInput:    ti,
-		passwordInput:  pi,
-		spinner:        shared.NewNetworkSpinner(),
-		state:          LoginStateInput,
-		selectedOption: 0,
+		vals:    vals,
+		form:    buildForm(vals),
+		spinner: shared.NewNetworkSpinner(),
+		state:   LoginStateForm,
 	}
 }
 
+func buildForm(v *formValues) *huh.Form {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Key("handle").
+				Title("Handle").
+				Placeholder("alice.bsky.social").
+				Value(&v.handle).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("handle is required")
+					}
+					return nil
+				}),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Key("auth_method").
+				Title("Authentication Method").
+				Options(
+					huh.NewOption("Login with Browser (OAuth)", "browser"),
+					huh.NewOption("Login with App Password", "app_password"),
+				).
+				Value(&v.authChoice),
+		),
+		huh.NewGroup(
+			huh.NewInput().
+				Key("password").
+				Title("App Password").
+				Placeholder("xxxx-xxxx-xxxx-xxxx").
+				EchoMode(huh.EchoModePassword).
+				Value(&v.password).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("app password is required")
+					}
+					return nil
+				}),
+		).WithHideFunc(func() bool {
+			return v.authChoice != "app_password"
+		}),
+	).
+		WithShowHelp(false).
+		WithTheme(huh.ThemeFunc(huh.ThemeCharm)).
+		WithWidth(40)
+}
+
 func (m LoginModel) Init() tea.Cmd {
-	return textinput.Blink
+	return m.form.Init()
 }
 
 func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		w := min(40, msg.Width-10)
-		m.handleInput.SetWidth(w)
-		m.passwordInput.SetWidth(w)
+		w := min(50, msg.Width-10)
+		m.form = m.form.WithWidth(w)
 		return m, nil
-
-	case tea.KeyPressMsg:
-		return m.handleKeyPress(msg)
 
 	case AuthStepMsg:
 		m.authMethod = msg.Method
@@ -170,169 +187,80 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
-	}
 
-	switch m.state {
-	case LoginStateInput:
-		var cmd tea.Cmd
-		m.handleInput, cmd = m.handleInput.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	case LoginStatePassword:
-		var cmd tea.Cmd
-		m.passwordInput, cmd = m.passwordInput.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-
-	return m, tea.Batch(cmds...)
-}
-
-func (m LoginModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch m.state {
-	case LoginStateInput:
-		return m.handleInputState(msg)
-	case LoginStateChoosing:
-		return m.handleChoosingState(msg)
-	case LoginStatePassword:
-		return m.handlePasswordState(msg)
-	case LoginStateError:
-		return m.handleErrorState(msg)
-	}
-	return m, nil
-}
-
-func (m LoginModel) handleInputState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter", "tab":
-		if strings.TrimSpace(m.handleInput.Value()) != "" {
-			m.state = LoginStateChoosing
+	case tea.KeyPressMsg:
+		if m.state == LoginStateError {
+			switch msg.String() {
+			case "enter", "esc", "tab":
+				m.err = nil
+				return m.resetForm()
+			}
 			return m, nil
 		}
 	}
 
-	var cmd tea.Cmd
-	m.handleInput, cmd = m.handleInput.Update(msg)
-	return m, cmd
-}
+	if m.state == LoginStateForm {
+		form, cmd := m.form.Update(msg)
+		if f, ok := form.(*huh.Form); ok {
+			m.form = f
+		}
 
-func (m LoginModel) handleChoosingState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "up", "k":
-		if m.selectedOption > 0 {
-			m.selectedOption--
+		if m.form.State == huh.StateCompleted {
+			return m.handleFormComplete()
 		}
-		return m, nil
-	case "down", "j":
-		if m.selectedOption < 1 {
-			m.selectedOption++
+
+		if m.form.State == huh.StateAborted {
+			return m.resetForm()
 		}
-		return m, nil
-	case "enter":
-		handle := strings.TrimSpace(m.handleInput.Value())
-		if m.selectedOption == 0 {
-			m.state = LoginStateLoading
-			m.authMethod = AuthMethodBrowser
-			m.authStep = 0
-			return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
-				return StartBrowserAuthMsg{Handle: handle}
-			})
-		}
-		// App password — transition to password input
-		m.state = LoginStatePassword
-		m.handleInput.Blur()
-		m.passwordInput.Focus()
-		m.passwordInput.SetValue("")
-		return m, textinput.Blink
-	case "tab", "esc":
-		m.state = LoginStateInput
-		return m, nil
+
+		return m, cmd
 	}
+
 	return m, nil
 }
 
-func (m LoginModel) handlePasswordState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		password := strings.TrimSpace(m.passwordInput.Value())
-		if password == "" {
-			return m, nil
-		}
-		handle := strings.TrimSpace(m.handleInput.Value())
+func (m LoginModel) resetForm() (tea.Model, tea.Cmd) {
+	m.state = LoginStateForm
+	m.vals = &formValues{}
+	m.form = buildForm(m.vals)
+	return m, m.form.Init()
+}
+
+func (m LoginModel) handleFormComplete() (tea.Model, tea.Cmd) {
+	handle := strings.TrimSpace(m.vals.handle)
+	authChoice := m.vals.authChoice
+
+	if authChoice == "browser" {
 		m.state = LoginStateLoading
-		m.authMethod = AuthMethodAppPassword
+		m.authMethod = AuthMethodBrowser
 		m.authStep = 0
-		m.passwordInput.Blur()
 		return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
-			return StartAppPasswordAuthMsg{Handle: handle, Password: password}
+			return StartBrowserAuthMsg{Handle: handle}
 		})
-	case "esc":
-		m.state = LoginStateChoosing
-		m.passwordInput.Blur()
-		m.handleInput.Focus()
-		return m, nil
 	}
 
-	var cmd tea.Cmd
-	m.passwordInput, cmd = m.passwordInput.Update(msg)
-	return m, cmd
-}
-
-func (m LoginModel) handleErrorState(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter", "esc", "tab":
-		m.err = nil
-		m.state = LoginStateInput
-		return m, nil
-	}
-	return m, nil
+	// App password
+	password := strings.TrimSpace(m.vals.password)
+	m.state = LoginStateLoading
+	m.authMethod = AuthMethodAppPassword
+	m.authStep = 0
+	return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
+		return StartAppPasswordAuthMsg{
+			Handle:   handle,
+			Password: password,
+		}
+	})
 }
 
 func (m LoginModel) View() tea.View {
-
 	var content strings.Builder
 
-	content.WriteString(titleStyle().Render("noms - atproto + voresky TUI client"))
+	content.WriteString(theme.StyleTitle().Render("noms - atproto + voresky TUI client"))
 	content.WriteString("\n\n")
 
 	switch m.state {
-	case LoginStateInput, LoginStateChoosing:
-		content.WriteString(inputStyle().Render("Handle:"))
-		content.WriteString("\n")
-		content.WriteString(m.handleInput.View())
-		content.WriteString("\n\n")
-
-		if m.state == LoginStateChoosing {
-			content.WriteString(optionStyle().Render("Choose authentication method:"))
-			content.WriteString("\n")
-
-			options := []string{"Login with Browser (OAuth)", "Login with App Password"}
-			for i, opt := range options {
-				style := optionStyle()
-				if i == m.selectedOption {
-					style = selectedOptionStyle()
-				}
-				content.WriteString(style.Render(fmt.Sprintf("  %s", opt)))
-				content.WriteString("\n")
-			}
-			content.WriteString("\n")
-			content.WriteString(optionStyle().Render("Press Enter to select, Esc to go back"))
-		} else {
-			content.WriteString(optionStyle().Render("Press Enter to continue or Tab to choose auth method"))
-		}
-
-	case LoginStatePassword:
-		content.WriteString(inputStyle().Render("Handle:"))
-		content.WriteString("\n")
-		content.WriteString(optionStyle().Render(fmt.Sprintf("  %s", m.handleInput.Value())))
-		content.WriteString("\n\n")
-		content.WriteString(inputStyle().Render("App Password:"))
-		content.WriteString("\n")
-		content.WriteString(m.passwordInput.View())
-		content.WriteString("\n\n")
-		content.WriteString(optionStyle().Render("Press Enter to login, Esc to go back"))
+	case LoginStateForm:
+		content.WriteString(m.form.View())
 
 	case LoginStateLoading:
 		var steps []string
@@ -343,22 +271,18 @@ func (m LoginModel) View() tea.View {
 			steps = AppPasswordAuthSteps
 		}
 
-		doneStyle := lipgloss.NewStyle().Foreground(theme.ColorSuccess).Padding(0, 1)
-		activeStyle := lipgloss.NewStyle().Foreground(theme.ColorAccent).Padding(0, 1)
-		pendingStyle := lipgloss.NewStyle().Foreground(theme.ColorMuted).Padding(0, 1)
-
 		for i, label := range steps {
 			if i < m.authStep {
-				content.WriteString(doneStyle.Render("✓ " + label))
+				content.WriteString(theme.StyleStepDone().Render("✓ " + label))
 			} else if i == m.authStep {
-				content.WriteString(activeStyle.Render(m.spinner.View() + " " + label))
+				content.WriteString(theme.StyleStepActive().Render(m.spinner.View() + " " + label))
 			} else {
-				content.WriteString(pendingStyle.Render("  " + label))
+				content.WriteString(theme.StyleStepPending().Render("  " + label))
 			}
 			content.WriteString("\n")
 		}
 		content.WriteString("\n")
-		content.WriteString(optionStyle().Render("Please wait while we log you in."))
+		content.WriteString(theme.StyleHint().Render("Please wait while we log you in."))
 
 	case LoginStateError:
 		errMsg := "An error occurred"
@@ -367,18 +291,18 @@ func (m LoginModel) View() tea.View {
 		}
 		content.WriteString(errorStyle().Render(fmt.Sprintf("Error: %s", errMsg)))
 		content.WriteString("\n\n")
-		content.WriteString(optionStyle().Render("Press Enter to try again"))
+		content.WriteString(theme.StyleHint().Render("Press Enter to try again"))
 	}
 
 	return tea.NewView(content.String())
 }
 
 func (m *LoginModel) SetValue(val string) {
-	m.handleInput.SetValue(val)
+	m.vals.handle = val
 }
 
 func (m LoginModel) Value() string {
-	return m.handleInput.Value()
+	return m.vals.handle
 }
 
 func (m *LoginModel) SetError(err error) {

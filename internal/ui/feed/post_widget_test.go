@@ -80,6 +80,42 @@ func TestRenderPostWithExternalLinkEmbed(t *testing.T) {
 	}
 }
 
+// TestRenderPostExternalThumbPlaceholderWhenRenderEmpty verifies that when
+// an external link card's thumbnail is cached but RenderImage returns ""
+// (e.g. LazyRenderer, non-near-visible Kitty), a placeholder is shown
+// instead of silently dropping the thumbnail.
+func TestRenderPostExternalThumbPlaceholderWhenRenderEmpty(t *testing.T) {
+	t.Parallel()
+	thumbURL := "https://example.com/thumb.jpg"
+	post := createTestPost("Check this link", "test.bsky.social", "Tester", "at://uri_ext", "cid_ext")
+	post.Post.Embed = &bsky.FeedDefs_PostView_Embed{
+		EmbedExternal_View: &bsky.EmbedExternal_View{
+			External: &bsky.EmbedExternal_ViewExternal{
+				Title: "Cool Article",
+				Uri:   "https://example.com/article",
+				Thumb: &thumbURL,
+			},
+		},
+	}
+
+	stub := &stubImageRenderer{
+		enabled:  true,
+		isCached: func(url string) bool { return true },
+		render:   func(url string, cols, rows int) string { return "" },
+	}
+
+	rendered := stripAnsi(RenderPost(post, 80, false, stub, nil))
+
+	// Should contain placeholder box characters (┌ or [····]) not just the text link
+	hasPlaceholder := strings.Contains(rendered, "┌") || strings.Contains(rendered, "[····]")
+	if !hasPlaceholder {
+		t.Errorf("Expected placeholder for cached-but-empty-render external thumbnail, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Cool Article") {
+		t.Error("Expected link title in rendered post")
+	}
+}
+
 func TestRenderPostWithQuoteEmbed(t *testing.T) {
 	t.Parallel()
 	post := createTestPost("Great take", "dave.bsky.social", "Dave", "at://uri4", "cid4")

@@ -36,6 +36,10 @@ type ItemViewport struct {
 	scrollTarget float64
 	animating    bool
 	spring       harmonica.Spring
+
+	// rebuilding is true while SetItems is executing, used to direct
+	// IsNearVisible to the animation target instead of the in-flight position.
+	rebuilding bool
 }
 
 // NewItemViewport creates an ItemViewport with the given dimensions.
@@ -71,6 +75,17 @@ func (iv *ItemViewport) YOffset() int { return iv.vp.YOffset() }
 func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bool) string) {
 	wasAnimating := iv.animating
 	savedPos := iv.scrollPos
+	savedTarget := iv.scrollTarget
+
+	// While rebuilding, IsNearVisible should check against the scroll target
+	// (where the user will end up) rather than the animated position (where
+	// the spring currently is). Otherwise LazyRenderer skips Kitty
+	// transmissions for items near the target, leaving stale placeholders.
+	if wasAnimating {
+		iv.vp.SetYOffset(int(iv.scrollTarget))
+	}
+	iv.rebuilding = true
+	defer func() { iv.rebuilding = false }()
 
 	iv.animating = false
 	iv.itemCount = count
@@ -96,8 +111,14 @@ func (iv *ItemViewport) SetItems(count int, renderFn func(index int, selected bo
 	iv.ensureVisible()
 
 	if wasAnimating {
-		iv.scrollPos = savedPos
-		iv.scrollTarget = float64(iv.vp.YOffset())
+		// Adjust scrollPos for content-height changes (e.g. placeholder → image).
+		// The delta between old and new targets represents how much line offsets
+		// shifted above the selected item; apply it to keep the animation smooth.
+		newTarget := float64(iv.vp.YOffset())
+		targetDelta := newTarget - savedTarget
+		iv.scrollPos = savedPos + targetDelta
+		iv.scrollVel = 0
+		iv.scrollTarget = newTarget
 		iv.animating = true
 	}
 }

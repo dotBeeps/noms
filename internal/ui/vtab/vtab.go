@@ -104,22 +104,20 @@ func (m VoreskyModel) fetchCharactersCmd() tea.Msg {
 func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetSize(msg.Width, max(1, msg.Height-1))
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case CharactersLoadedMsg:
 		m.loading = false
 		m.characters = msg.Characters
 		m.mainCharacterID = msg.MainCharacterID
-		m.rebuildViewport()
 		var cmds []tea.Cmd
+		cmds = append(cmds, m.rebuildViewport()...)
 		if m.imageCache != nil && m.imageCache.Enabled() {
 			for _, char := range m.characters {
 				if char.Avatar != "" {
@@ -163,7 +161,7 @@ func (m VoreskyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			moved = m.viewport.MoveUpN(3)
 		}
 		if moved {
-			m.rebuildViewport()
+			return m, tea.Batch(m.rebuildViewport()...)
 		}
 		return m, nil
 	}
@@ -177,7 +175,7 @@ func (m VoreskyModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, km.Down):
 		if m.viewport.MoveDown() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		return m, m.viewport.SpringCmd()
@@ -185,7 +183,7 @@ func (m VoreskyModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, km.Up):
 		if m.viewport.MoveUp() {
 			prev := m.viewport.YOffset()
-			m.rebuildViewport()
+			_ = m.rebuildViewport()
 			m.viewport.AnimateFrom(prev)
 		}
 		return m, m.viewport.SpringCmd()
@@ -298,6 +296,9 @@ func (m VoreskyModel) renderCharacter(index int, selected bool, renderer images.
 	if renderer != nil && renderer.Enabled() && c.Avatar != "" {
 		if renderer.IsCached(c.Avatar) {
 			avatarBlock = renderer.RenderImage(c.Avatar, shared.AvatarCols, shared.AvatarRows)
+			if avatarBlock == "" {
+				avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
+			}
 		} else {
 			avatarBlock = shared.RenderPlaceholder(shared.AvatarCols, shared.AvatarRows)
 		}
@@ -329,9 +330,10 @@ func (m VoreskyModel) renderCharacter(index int, selected bool, renderer images.
 	return shared.RenderItemWithBorder(textContent, selected, m.width)
 }
 
-func (m *VoreskyModel) rebuildViewport() {
+func (m *VoreskyModel) rebuildViewport() []tea.Cmd {
 	m.viewport.SetItems(len(m.characters), func(index int, selected bool) string {
 		m.lazyRenderer.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
 		return m.renderCharacter(index, selected, m.lazyRenderer)
 	})
+	return nil
 }

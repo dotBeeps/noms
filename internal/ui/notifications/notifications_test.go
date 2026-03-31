@@ -1208,6 +1208,32 @@ func TestNoAvatarWhenImageCacheNil(t *testing.T) {
 	}
 }
 
+// TestAvatarPlaceholderWhenRenderReturnsEmpty verifies that when IsCached=true
+// but RenderImage returns "" (e.g. LazyRenderer with non-near-visible Kitty image),
+// the avatar falls back to a placeholder instead of vanishing.
+func TestAvatarPlaceholderWhenRenderReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: ""}
+	mockClient := &mockBlueskyClient{
+		notifications: []*bsky.NotificationListNotifications_Notification{
+			createTestNotificationWithAvatar("like", "alice.bsky.social", "did:plc:alice", false,
+				time.Now().Add(-5*time.Minute).Format(time.RFC3339),
+				"https://cdn.bsky.app/img/avatar/alice.jpg"),
+		},
+	}
+
+	m := NewNotificationsModel(mockClient, 80, 24, stub)
+	updated, _ := m.Update(NotificationsLoadedMsg{Notifications: mockClient.notifications})
+	m = updated.(NotificationsModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "[····]") {
+		t.Errorf("Expected placeholder '[····]' when RenderImage returns empty, got: %s", content)
+	}
+}
+
 func TestGroupingNavigationBounds(t *testing.T) {
 	t.Parallel()
 	notifs := []*bsky.NotificationListNotifications_Notification{

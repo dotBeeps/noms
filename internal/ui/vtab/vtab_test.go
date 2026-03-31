@@ -118,6 +118,28 @@ func TestVoreskyNilImageCache(t *testing.T) {
 	}
 }
 
+// TestVoreskyAvatarPlaceholderWhenRenderEmpty verifies that when IsCached=true
+// but RenderImage returns "" (LazyRenderer, non-near-visible Kitty), the avatar
+// falls back to placeholder instead of vanishing.
+func TestVoreskyAvatarPlaceholderWhenRenderEmpty(t *testing.T) {
+	t.Parallel()
+	stub := &stubImageRenderer{enabled: true, cached: true, img: ""}
+
+	m := NewVoreskyModel(nil, 80, 24, stub)
+	updated, _ := m.Update(CharactersLoadedMsg{
+		Characters:      []voresky.Character{makeTestCharacter("Foxy", "https://example.com/avatar.png")},
+		MainCharacterID: "",
+	})
+	m = updated.(VoreskyModel)
+
+	v := m.View()
+	content := v.Content
+
+	if !strings.Contains(content, "[····]") {
+		t.Errorf("Expected placeholder '[····]' when RenderImage returns empty, got: %s", content)
+	}
+}
+
 func TestVoreskyAvatarContentInsideBorder(t *testing.T) {
 	t.Parallel()
 	stub := &stubImageRenderer{enabled: true, cached: true, img: "VTAB_AVATAR"}

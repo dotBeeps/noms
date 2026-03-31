@@ -115,7 +115,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.input.SetWidth(m.width - 4)
 		m.viewport.SetSize(m.width, max(1, m.height-6))
-		m.rebuildViewport()
+		cmds = append(cmds, m.rebuildViewport()...)
 
 	case tea.KeyPressMsg:
 		km := m.keys
@@ -174,7 +174,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.input.Focused() {
 				if m.viewport.MoveUp() {
 					prev := m.viewport.YOffset()
-					m.rebuildViewport()
+					_ = m.rebuildViewport()
 					m.viewport.AnimateFrom(prev)
 				}
 				return m, m.viewport.SpringCmd()
@@ -184,7 +184,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.input.Focused() {
 				if m.viewport.MoveDown() {
 					prev := m.viewport.YOffset()
-					m.rebuildViewport()
+					_ = m.rebuildViewport()
 					m.viewport.AnimateFrom(prev)
 				}
 				if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
@@ -212,10 +212,11 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		if !m.input.Focused() {
 			mouse := msg.Mouse()
+			var navCmds []tea.Cmd
 			switch mouse.Button {
 			case tea.MouseWheelDown:
 				if m.viewport.MoveDownN(3) {
-					m.rebuildViewport()
+					navCmds = append(navCmds, m.rebuildViewport()...)
 				}
 				if m.viewport.NearBottom(shared.PaginationThreshold) && m.cursor != "" && !m.loading {
 					m.loading = true
@@ -223,10 +224,10 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case tea.MouseWheelUp:
 				if m.viewport.MoveUpN(3) {
-					m.rebuildViewport()
+					navCmds = append(navCmds, m.rebuildViewport()...)
 				}
 			}
-			return m, nil
+			return m, tea.Batch(navCmds...)
 		}
 
 	case debounceMsg:
@@ -282,14 +283,13 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.rebuildViewport()
+		fetchCmds = append(fetchCmds, m.rebuildViewport()...)
 		if len(fetchCmds) > 0 {
 			return m, tea.Batch(fetchCmds...)
 		}
 
 	case images.ImageFetchedMsg:
-		m.rebuildViewport()
-		return m, nil
+		return m, tea.Batch(m.rebuildViewport()...)
 
 	case SearchErrorMsg:
 		m.loading = false
@@ -335,22 +335,41 @@ func (m SearchModel) performSearch(query, cursor string, mode SearchMode, append
 	}
 }
 
-func (m *SearchModel) rebuildViewport() {
+func (m *SearchModel) rebuildViewport() []tea.Cmd {
 	if m.mode == ModePosts {
 		lazy := &images.LazyRenderer{Inner: m.imageCache}
+		var refetchCmds []tea.Cmd
 		m.viewport.SetItems(len(m.postResults), func(index int, selected bool) string {
 			if index < 0 || index >= len(m.postResults) {
 				return ""
 			}
-			lazy.NearVisible = m.viewport.IsNearVisible(index, m.viewport.Height())
+			nearVisible := m.viewport.IsNearVisible(index, m.viewport.Height())
+			lazy.NearVisible = nearVisible
+
+			if nearVisible && m.imageCache != nil {
+				fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[index]}
+				for _, url := range feed.ExtractImageURLs(fvp) {
+					if cmd := images.Fetch(m.imageCache, url); cmd != nil {
+						refetchCmds = append(refetchCmds, cmd)
+					}
+				}
+				avatarURL := feed.ExtractAvatarURL(fvp)
+				if avatarURL != "" {
+					if cmd := images.FetchAvatar(m.imageCache, avatarURL); cmd != nil {
+						refetchCmds = append(refetchCmds, cmd)
+					}
+				}
+			}
+
 			fvp := &bsky.FeedDefs_FeedViewPost{Post: m.postResults[index]}
 			return feed.RenderPost(fvp, m.width, selected, lazy, m.avatarOverrides)
 		})
-	} else {
-		m.viewport.SetItems(len(m.actorResults), func(index int, selected bool) string {
-			return m.renderPerson(index, selected)
-		})
+		return refetchCmds
 	}
+	m.viewport.SetItems(len(m.actorResults), func(index int, selected bool) string {
+		return m.renderPerson(index, selected)
+	})
+	return nil
 }
 
 func (m SearchModel) renderPerson(index int, selected bool) string {

@@ -181,7 +181,7 @@ func TestItemViewport_NeverSetItems(t *testing.T) {
 	t.Parallel()
 
 	iv := NewItemViewport(40, 10)
-	iv.SetSize(40, 10)          // must not panic
+	iv.SetSize(40, 10)              // must not panic
 	iv.SetItems(0, simpleRender(2)) // must not panic (calls ensureVisible)
 	_ = iv.View()
 }
@@ -333,6 +333,65 @@ func TestItemViewport_ShrinkItems(t *testing.T) {
 	iv.SetItems(5, simpleRender(2))
 	if iv.SelectedIndex() != 4 {
 		t.Errorf("expected selected 4 after shrink, got %d", iv.SelectedIndex())
+	}
+}
+
+// TestItemViewport_AnimationAdjustsForContentShift verifies that when content
+// height changes during an active spring animation (e.g. image placeholder →
+// loaded image), scrollPos is adjusted by the same delta as scrollTarget so
+// the animation doesn't jump.
+func TestItemViewport_AnimationAdjustsForContentShift(t *testing.T) {
+	t.Parallel()
+
+	// 5 items, 3 lines each. Viewport = 6 lines (fits ~2 items).
+	iv := NewItemViewport(40, 6)
+	iv.SetItems(5, simpleRender(3))
+
+	// Select item 3 and rebuild so the viewport scrolls down.
+	iv.MoveDownN(3)
+	iv.SetItems(5, simpleRender(3))
+	prevOffset := iv.YOffset()
+
+	// Move down to item 4 and start a spring animation.
+	iv.MoveDown()
+	iv.SetItems(5, simpleRender(3))
+	iv.AnimateFrom(prevOffset)
+
+	// Advance the spring a bit so scrollPos is between start and target.
+	for range 10 {
+		iv.UpdateSpring()
+	}
+	midPos := iv.YOffset()
+
+	// Now simulate an image loading that adds 2 lines to item 0 (above viewport).
+	// This shifts all line offsets below item 0 by +2.
+	growItem0 := func(index int, selected bool) string {
+		lines := 3
+		if index == 0 {
+			lines = 5 // grew by 2
+		}
+		sel := " "
+		if selected {
+			sel = ">"
+		}
+		var b strings.Builder
+		for j := range lines {
+			fmt.Fprintf(&b, "%sitem %d line %d\n", sel, index, j)
+		}
+		return b.String()
+	}
+	iv.SetItems(5, growItem0)
+
+	// The viewport YOffset isn't updated until the next spring tick.
+	// Advance one frame so the adjusted scrollPos takes effect.
+	iv.UpdateSpring()
+	newPos := iv.YOffset()
+	delta := newPos - midPos
+
+	// The shift should be approximately +2 (the extra lines added to item 0).
+	// Allow ±1 for spring rounding and int truncation.
+	if delta < 1 || delta > 3 {
+		t.Errorf("expected viewport to shift by ~2 after content grew above, got delta=%d (was %d, now %d)", delta, midPos, newPos)
 	}
 }
 

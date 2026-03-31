@@ -407,9 +407,10 @@ func renderEmbed(embed *bsky.FeedDefs_PostView_Embed, width int, cache images.Im
 		if ext.Thumb != nil && *ext.Thumb != "" && cache.Enabled() && cache.IsCached(*ext.Thumb) {
 			cols := max(10, width/4)
 			rendered := strings.TrimRight(cache.RenderImage(*ext.Thumb, cols, 4), "\n ")
-			if rendered != "" {
-				rendered += "\n"
+			if rendered == "" {
+				rendered = shared.RenderPlaceholder(cols, 4)
 			}
+			rendered += "\n"
 			rendered += embedBoxStyle.Render(fmt.Sprintf("🔗 %s", shared.TruncateStr(ext.Title, 50)))
 			return rendered
 		}

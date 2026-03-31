@@ -374,6 +374,28 @@ func TestVnotificationAvatarPresentInOutput(t *testing.T) {
 	}
 }
 
+// TestAvatarPlaceholderWhenRenderReturnsEmpty verifies that when IsCached=true
+// but RenderImage returns "" (LazyRenderer, non-near-visible Kitty), avatars
+// fall back to placeholder instead of vanishing.
+func TestAvatarPlaceholderWhenRenderReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	src := makeChar("Sable", "https://example.com/sable.jpg")
+	tgt := makeChar("Pip", "https://example.com/pip.jpg")
+	notif := makeNotif(voresky.NotifPoke, json.RawMessage(`{}`), src, tgt)
+
+	stub := &stubImageRenderer{cached: true, img: ""}
+	m := VNotificationsModel{
+		notifications: []voresky.Notification{notif},
+		imageCache:    stub,
+		width:         80,
+	}
+
+	out := m.renderNotification(0, false, m.imageCache)
+	if !strings.Contains(out, "[····]") {
+		t.Errorf("expected placeholder when RenderImage returns empty, got: %q", out)
+	}
+}
+
 func TestDualAvatarRenderContainsBothWhenWide(t *testing.T) {
 	t.Parallel()
 	src := makeChar("Sable", "https://example.com/sable.jpg")
