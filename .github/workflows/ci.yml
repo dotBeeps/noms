@@ -17,10 +17,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
+          # Pins the Go toolchain to the version declared in go.mod (currently 1.26).
           go-version-file: go.mod
           cache: true
+      - name: Check formatting (gofmt)
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Verify go.mod tidy
         run: go mod tidy && git diff --exit-code go.mod go.sum
+      - name: Vet
+        run: go vet ./...
       - name: Run tests
         run: go test -race -count=1 ./...
 
@@ -33,10 +44,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Run golangci-lint
-        run: golangci-lint run --timeout=5m
+        uses: golangci/golangci-lint-action@v9.2.1
+        with:
+          # Pinned golangci-lint version (was previously installed @latest).
+          version: v2.12.2
+          args: --timeout=5m
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})

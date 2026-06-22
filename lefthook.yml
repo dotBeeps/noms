@@ -1,0 +1,30 @@
+# Local git hooks for noms, managed by lefthook (https://lefthook.dev).
+# Gate tiering (agent-effectiveness P2):
+#   pre-commit  — fast local checks: gofmt format check + go vet
+#   pre-push    — project checks: full test suite
+# CI (.github/workflows/ci.yml) is the non-bypassable floor and runs everything.
+#
+# Install / refresh hooks after cloning:  lefthook install
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: gofmt
+      # Fail if any staged Go file is not gofmt-formatted. Lists the offenders.
+      glob: "*.go"
+      run: |
+        unformatted="$(gofmt -l {staged_files})"
+        if [ -n "$unformatted" ]; then
+          echo "gofmt: the following files need formatting (run: gofmt -w <file>):"
+          echo "$unformatted"
+          exit 1
+        fi
+    - name: go-vet
+      # vet operates per-package, so run against the whole module.
+      glob: "*.go"
+      run: go vet ./...
+
+pre-push:
+  jobs:
+    - name: go-test
+      run: go test ./...
