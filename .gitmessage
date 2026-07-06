@@ -1,0 +1,9 @@
+# <type>(<scope>): <subject>
+#
+# <body wrapped at 72 chars>
+#
+# <footer: BREAKING CHANGE: ... | Refs: <NNN>>
+
+# Types: feat fix docs style refactor perf test build chore ci revert
+# Subject: imperative mood, lowercase, no period, ≤72 chars
+# Body: explain why, not what; wrap at 72 chars

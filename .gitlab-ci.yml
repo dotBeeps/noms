@@ -1,0 +1,29 @@
+# CI on git.dotbeeps.dog: pi-review MR gates + the just gate (test-go).
+# Replaces the GitHub Actions ci/dep-review workflows — GitLab CI is the
+# quality gate; the GitHub twin keeps only release.yml (GoReleaser on tags).
+#
+# just ci here = format-check, vet + golangci-lint, tidy-check, build,
+# race-detector tests — parity with the retired GH test/lint jobs.
+
+include:
+  - project: dot/ci-components
+    file: templates/pi-review.yml
+  - project: dot/ci-components
+    file: templates/test-go.yml
+
+# Extends the template's before_script: also install pinned golangci-lint
+# into the cached project-local bin (justfile's lint recipe runs it).
+ci:
+  before_script:
+    - export PATH="$CI_BIN:$PATH"
+    - |
+      command -v just >/dev/null || {
+        mkdir -p "$CI_BIN"
+        command -v curl >/dev/null || (apt-get update -qq && apt-get install -y -qq curl >/dev/null)
+        curl -fsSL https://just.systems/install.sh | bash -s -- --to "$CI_BIN"
+      }
+    - |
+      command -v golangci-lint >/dev/null || {
+        mkdir -p "$CI_BIN"
+        curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$CI_BIN" v2.12.2
+      }

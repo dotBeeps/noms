@@ -204,10 +204,7 @@ func IsNetworkError(err error) bool {
 	}
 	// Unwrap and check for url.Error (wraps net errors from http.Client)
 	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &urlErr)
 }
 
 // Compile-time interface assertion.

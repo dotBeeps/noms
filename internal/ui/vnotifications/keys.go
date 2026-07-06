@@ -4,8 +4,8 @@ import "charm.land/bubbles/v2/key"
 
 // KeyMap defines key bindings for the Voresky notifications screen.
 type KeyMap struct {
-	Up      key.Binding
-	Down    key.Binding
+	Up       key.Binding
+	Down     key.Binding
 	MarkRead key.Binding
 }
 

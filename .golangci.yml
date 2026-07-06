@@ -1,0 +1,9 @@
+# golangci-lint configuration (https://golangci-lint.run).
+# Pinned to the v2 schema. Run via:  golangci-lint run
+# CI installs a pinned golangci-lint version (see .github/workflows/ci.yml).
+version: "2"
+
+linters:
+  # "standard" = the curated default linter set (errcheck, govet, ineffassign,
+  # staticcheck, unused). Keep this explicit so intent is unambiguous.
+  default: standard
