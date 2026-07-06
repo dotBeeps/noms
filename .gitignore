@@ -36,3 +36,6 @@ voresky-temp/
 *.swo
 *~
 .DS_Store
+
+# session scratch (handoff lives at .agents/handoff.md)
+.agents/
