@@ -538,7 +538,7 @@ func TestPostWidgetNoAvatarNoIndent(t *testing.T) {
 	rendered := stripAnsi(RenderPost(post, 80, false, nil, nil))
 
 	for _, line := range strings.Split(rendered, "\n") {
-		if !(strings.Contains(line, "NoIndentUser") || strings.Contains(line, "BodyLineNoAvatar")) {
+		if !strings.Contains(line, "NoIndentUser") && !strings.Contains(line, "BodyLineNoAvatar") {
 			continue
 		}
 		if strings.Contains(line, strings.Repeat(" ", shared.AvatarCols+1)+"BodyLineNoAvatar") {

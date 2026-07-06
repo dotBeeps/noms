@@ -1296,7 +1296,7 @@ func TestNotificationAvatarGutterIndentation(t *testing.T) {
 
 	foundIndented := false
 	for _, line := range lines {
-		if !(strings.Contains(line, "5m") || strings.Contains(line, "very long")) {
+		if !strings.Contains(line, "5m") && !strings.Contains(line, "very long") {
 			continue
 		}
 		idx := strings.Index(line, "5m")

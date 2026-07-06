@@ -13,9 +13,14 @@ setup:
 check:
     go build ./...
 
-# Run go vet across the module.
+# Run go vet and golangci-lint across the module.
 lint:
     go vet ./...
+    golangci-lint run --timeout=5m
+
+# Fail if go.mod/go.sum need `go mod tidy`.
+tidy-check:
+    go mod tidy -diff
 
 # Format tracked Go files with gofmt.
 format:
@@ -41,6 +46,10 @@ yummers: check lint format
 test:
     go test ./...
 
+# Run the test suite with the race detector (the CI gate).
+test-race:
+    go test -race -count=1 ./...
+
 # Build the noms binary.
 build:
     go build -o noms ./cmd/noms
@@ -49,5 +58,5 @@ build:
 run: build
     ./noms
 
-# Non-mutating full gate: format-check, lint, check, test.
-ci: format-check lint check test
+# Non-mutating full gate: format-check, lint, tidy-check, check, race tests.
+ci: format-check lint tidy-check check test-race

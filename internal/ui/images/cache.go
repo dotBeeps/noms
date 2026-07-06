@@ -308,15 +308,15 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 								delay = maxRetryDelay
 							}
 							c.logger.Printf("Fetch: 429 with Retry-After=%ds url=%s", seconds, truncateURL(url))
-							resp.Body.Close()
+							_ = resp.Body.Close()
 							time.Sleep(delay)
 							continue
 						}
 					}
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					continue
 				}
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 					break // don't retry client errors (except 429 handled above)
 				}
@@ -324,7 +324,7 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 			}
 
 			img, format, err := image.Decode(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if err != nil {
 				c.logger.Printf("Fetch: decode error url=%s err=%v", truncateURL(url), err)
 				lastErr = err
@@ -354,13 +354,13 @@ func fetchWithTransform(c *Cache, url string, transform func(image.Image) image.
 			}
 
 			if err := png.Encode(f, img); err != nil {
-				f.Close()
+				_ = f.Close()
 				_ = os.Remove(path)
 				c.logger.Printf("Fetch: encode error path=%s err=%v", path, err)
 				c.setError(fmt.Errorf("encode %s: %w", path, err))
 				return ImageFetchedMsg{URL: url}
 			}
-			f.Close()
+			_ = f.Close()
 
 			c.logger.Printf("Fetch: saved path=%s url=%s", path, truncateURL(url))
 			c.files.Store(url, path)
